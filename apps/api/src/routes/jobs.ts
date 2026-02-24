@@ -16,19 +16,9 @@ const RETRYABLE_JOB_STATUSES = ['failed', 'completed'] as const
 type RetryableJobStatus = (typeof RETRYABLE_JOB_STATUSES)[number]
 const RETRY_STATUS_OPTIONS = ['all', ...RETRYABLE_JOB_STATUSES] as const
 const STACKTRACE_KEEP_FIELD = 'stacktrace'
-
-function parseKeepMostRecent(rawValue: string | undefined): number | null {
-  if (!rawValue) {
-    return 0
-  }
-
-  const parsed = Number.parseInt(rawValue, 10)
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return null
-  }
-
-  return parsed
-}
+const CLEAR_RETENTION_SCHEMA = z.object({
+  keepMostRecent: z.number().int().min(0).default(0),
+})
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms))
@@ -338,11 +328,7 @@ const app = new Hono()
     const connectionUrl = c.get('connectionUrl')
     const queueName = c.req.param('queueName')
     const jobId = c.req.param('jobId')
-    const keepMostRecent = parseKeepMostRecent(c.req.query('keepMostRecent'))
-
-    if (keepMostRecent == null) {
-      return c.json({ error: 'Invalid keepMostRecent. Must be a non-negative integer.' }, 400)
-    }
+    const keepMostRecent = 0
 
     const queue = await getQueue(connectionId, connectionUrl, queueName)
     const job = await queue.getJob(jobId)
@@ -403,54 +389,124 @@ const app = new Hono()
 
     return c.json({
       success: true,
-      removed: removed > 0 ? removed : Math.max(countBefore - keepMostRecent, 0),
+      removed: removed > 0 ? removed : countBefore,
     })
   })
+  // Clear logs for a job while optionally keeping the most recent entries.
+  .post(
+    '/:queueName/jobs/:jobId/logs/clear',
+    zValidator('json', CLEAR_RETENTION_SCHEMA),
+    async (c) => {
+      const connectionId = c.get('connectionId')
+      const connectionUrl = c.get('connectionUrl')
+      const queueName = c.req.param('queueName')
+      const jobId = c.req.param('jobId')
+      const { keepMostRecent } = c.req.valid('json')
+
+      const queue = await getQueue(connectionId, connectionUrl, queueName)
+      const job = await queue.getJob(jobId)
+
+      if (!job) {
+        return c.json({ error: 'Job not found' }, 404)
+      }
+
+      const existingLogs = await queue.getJobLogs(jobId, 0, 0)
+      const countBefore = existingLogs.count ?? 0
+      let removed = 0
+
+      const queueWithLogRemoval = queue as typeof queue & {
+        removeJobLogs?: (jobId: string, keepLogs?: number) => Promise<number | undefined>
+        opts?: { prefix?: string }
+        client?: Promise<{
+          del: (key: string) => Promise<number>
+          llen: (key: string) => Promise<number>
+          ltrim: (key: string, start: number, stop: number) => Promise<'OK' | string>
+        }>
+      }
+
+      if (typeof queueWithLogRemoval.removeJobLogs === 'function') {
+        const removedCount = await queueWithLogRemoval.removeJobLogs(jobId, keepMostRecent)
+        removed = typeof removedCount === 'number' ? removedCount : countBefore
+      } else {
+        const jobWithClearLogs = job as typeof job & {
+          clearLogs?: (keepLogs?: number) => Promise<number | undefined>
+        }
+
+        if (typeof jobWithClearLogs.clearLogs === 'function') {
+          const removedCount = await jobWithClearLogs.clearLogs(keepMostRecent)
+          removed = typeof removedCount === 'number' ? removedCount : countBefore
+        } else if (queueWithLogRemoval.client) {
+          const prefix = queueWithLogRemoval.opts?.prefix ?? 'bull'
+          const redis = await queueWithLogRemoval.client
+          const logKey = `${prefix}:${queueName}:${jobId}:logs`
+
+          if (keepMostRecent <= 0) {
+            const deletedKeys = await redis.del(logKey)
+            removed = deletedKeys > 0 ? countBefore : 0
+          } else {
+            const listLength = await redis.llen(logKey)
+            const keep = Math.min(keepMostRecent, listLength)
+            if (keep <= 0) {
+              removed = 0
+            } else {
+              await redis.ltrim(logKey, -keep, -1)
+              removed = listLength - keep
+            }
+          }
+        }
+      }
+
+      return c.json({
+        success: true,
+        removed: removed > 0 ? removed : Math.max(countBefore - keepMostRecent, 0),
+      })
+    }
+  )
   // Clear stacktraces for a job while optionally keeping the most recent entries.
-  .delete('/:queueName/jobs/:jobId/stacktraces', async (c) => {
-    const connectionId = c.get('connectionId')
-    const connectionUrl = c.get('connectionUrl')
-    const queueName = c.req.param('queueName')
-    const jobId = c.req.param('jobId')
-    const keepMostRecent = parseKeepMostRecent(c.req.query('keepMostRecent'))
+  .post(
+    '/:queueName/jobs/:jobId/stacktraces/clear',
+    zValidator('json', CLEAR_RETENTION_SCHEMA),
+    async (c) => {
+      const connectionId = c.get('connectionId')
+      const connectionUrl = c.get('connectionUrl')
+      const queueName = c.req.param('queueName')
+      const jobId = c.req.param('jobId')
+      const { keepMostRecent } = c.req.valid('json')
 
-    if (keepMostRecent == null) {
-      return c.json({ error: 'Invalid keepMostRecent. Must be a non-negative integer.' }, 400)
+      const queue = await getQueue(connectionId, connectionUrl, queueName)
+      const job = await queue.getJob(jobId)
+
+      if (!job) {
+        return c.json({ error: 'Job not found' }, 404)
+      }
+
+      const allStacktraces = job.stacktrace ?? []
+      const countBefore = allStacktraces.length
+      const keep = Math.min(keepMostRecent, countBefore)
+      const nextStacktraces = keep > 0 ? allStacktraces.slice(-keep) : []
+
+      const queueWithClient = queue as typeof queue & {
+        client?: Promise<{
+          hset: (key: string, field: string, value: string) => Promise<number>
+        }>
+      }
+
+      if (!queueWithClient.client) {
+        return c.json({ error: 'Unable to access Redis client for stacktrace cleanup.' }, 500)
+      }
+
+      const redis = await queueWithClient.client
+      const jobKey = queue.toKey(jobId)
+
+      await redis.hset(jobKey, STACKTRACE_KEEP_FIELD, JSON.stringify(nextStacktraces))
+
+      return c.json({
+        success: true,
+        removed: countBefore - keep,
+        kept: keep,
+      })
     }
-
-    const queue = await getQueue(connectionId, connectionUrl, queueName)
-    const job = await queue.getJob(jobId)
-
-    if (!job) {
-      return c.json({ error: 'Job not found' }, 404)
-    }
-
-    const allStacktraces = job.stacktrace ?? []
-    const countBefore = allStacktraces.length
-    const keep = Math.min(keepMostRecent, countBefore)
-    const nextStacktraces = keep > 0 ? allStacktraces.slice(-keep) : []
-
-    const queueWithClient = queue as typeof queue & {
-      client?: Promise<{
-        hset: (key: string, field: string, value: string) => Promise<number>
-      }>
-    }
-
-    if (!queueWithClient.client) {
-      return c.json({ error: 'Unable to access Redis client for stacktrace cleanup.' }, 500)
-    }
-
-    const redis = await queueWithClient.client
-    const jobKey = queue.toKey(jobId)
-
-    await redis.hset(jobKey, STACKTRACE_KEEP_FIELD, JSON.stringify(nextStacktraces))
-
-    return c.json({
-      success: true,
-      removed: countBefore - keep,
-      kept: keep,
-    })
-  })
+  )
   // Retry jobs
   .post(
     '/:queueName/jobs/retry',

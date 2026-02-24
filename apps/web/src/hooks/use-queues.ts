@@ -768,10 +768,13 @@ export function useClearJobLogs() {
       jobId: string
       keepMostRecent?: number
     }) => {
-      const url = `/api/c/${connectionId}/queues/${encodeURIComponent(queueName)}/jobs/${encodeURIComponent(jobId)}/logs?keepMostRecent=${encodeURIComponent(String(keepMostRecent))}`
-      return fetchApi<{ success: boolean; removed: number }>(url, {
-        method: 'DELETE',
-      })
+      const res = await api.c[':connectionId'].queues[':queueName'].jobs[':jobId'].logs.clear.$post(
+        {
+          param: { connectionId: connectionId!, queueName, jobId },
+          json: { keepMostRecent },
+        }
+      )
+      return handleRes<{ success: boolean; removed: number }>(res)
     },
     onSuccess: (_, { queueName, jobId, keepMostRecent = 0 }) => {
       trackEvent(AnalyticsEvents.JOB_LOGS_CLEARED, {
@@ -810,10 +813,13 @@ export function useClearJobStacktraces() {
       jobId: string
       keepMostRecent?: number
     }) => {
-      const url = `/api/c/${connectionId}/queues/${encodeURIComponent(queueName)}/jobs/${encodeURIComponent(jobId)}/stacktraces?keepMostRecent=${encodeURIComponent(String(keepMostRecent))}`
-      return fetchApi<{ success: boolean; removed: number; kept: number }>(url, {
-        method: 'DELETE',
+      const res = await api.c[':connectionId'].queues[':queueName'].jobs[
+        ':jobId'
+      ].stacktraces.clear.$post({
+        param: { connectionId: connectionId!, queueName, jobId },
+        json: { keepMostRecent },
       })
+      return handleRes<{ success: boolean; removed: number; kept: number }>(res)
     },
     onSuccess: (_, { queueName, jobId }) => {
       queryClient.invalidateQueries({
