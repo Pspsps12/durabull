@@ -13,11 +13,16 @@ function parseEncryptionKey(rawKey: string | undefined): Buffer | null {
     return Buffer.from(key, 'hex')
   }
 
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(key)) {
+  // Accept both standard base64 and URL-safe base64 input.
+  const base64Candidate = key.replace(/-/g, '+').replace(/_/g, '/')
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64Candidate)) {
     return null
   }
 
-  const decoded = Buffer.from(key, 'base64')
+  const padding = (4 - (base64Candidate.length % 4)) % 4
+  const padded = base64Candidate + '='.repeat(padding)
+
+  const decoded = Buffer.from(padded, 'base64')
   if (decoded.length !== AES_256_KEY_BYTES) {
     return null
   }
@@ -34,6 +39,14 @@ function requireEncryptionKey(): Buffer {
   }
 
   return key
+}
+
+export function isRedisUrlEncryptionKeyConfigured(): boolean {
+  return parseEncryptionKey(env.DURABULL_REDIS_URL_ENCRYPTION_KEY) !== null
+}
+
+export function assertRedisUrlEncryptionKeyConfigured(): void {
+  requireEncryptionKey()
 }
 
 function toHex(buffer: Uint8Array): string {
@@ -53,10 +66,6 @@ export function isRedisUrlEncrypted(value: string): boolean {
 }
 
 export function encryptRedisUrl(url: string): string {
-  if (isRedisUrlEncrypted(url)) {
-    return url
-  }
-
   const key = requireEncryptionKey()
   const iv = randomBytes(GCM_IV_BYTES)
   const cipher = createCipheriv('aes-256-gcm', key, iv)
@@ -69,7 +78,7 @@ export function encryptRedisUrl(url: string): string {
 
 export function decryptRedisUrl(value: string): string {
   if (!isRedisUrlEncrypted(value)) {
-    return value
+    throw new Error('Redis connection URL is not encrypted.')
   }
 
   const key = requireEncryptionKey()

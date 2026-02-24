@@ -9,7 +9,7 @@
  */
 
 import {
-  decryptRedisUrl,
+  assertRedisUrlEncryptionKeyConfigured,
   encryptRedisUrl,
   eq,
   getDb,
@@ -52,39 +52,30 @@ function parseOptions(argv: string[]): CliOptions {
 
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2))
+  assertRedisUrlEncryptionKeyConfigured()
   const db = await getDb()
 
-  let query = db
-    .select({
-      id: redisConnection.id,
-      name: redisConnection.name,
-      url: redisConnection.url,
-      organizationId: redisConnection.organizationId,
-    })
-    .from(redisConnection)
-
-  if (options.organizationId) {
-    query = query.where(eq(redisConnection.organizationId, options.organizationId))
-  }
-
-  const rows = await query
+  const rows = options.organizationId
+    ? await db
+        .select({
+          id: redisConnection.id,
+          url: redisConnection.url,
+        })
+        .from(redisConnection)
+        .where(eq(redisConnection.organizationId, options.organizationId))
+    : await db
+        .select({
+          id: redisConnection.id,
+          url: redisConnection.url,
+        })
+        .from(redisConnection)
 
   let encryptedCount = 0
   let migratedCount = 0
-  let invalidEncryptedCount = 0
 
   for (const row of rows) {
     if (isRedisUrlEncrypted(row.url)) {
-      try {
-        decryptRedisUrl(row.url)
-        encryptedCount += 1
-      } catch (error) {
-        invalidEncryptedCount += 1
-        const message = error instanceof Error ? error.message : 'unknown error'
-        console.error(
-          `✗ Failed to decrypt existing encrypted URL for connection ${row.id} (${row.name}): ${message}`
-        )
-      }
+      encryptedCount += 1
       continue
     }
 
@@ -108,11 +99,6 @@ async function main(): Promise<void> {
   console.log(`- total rows scanned: ${rows.length}`)
   console.log(`- already encrypted: ${encryptedCount}`)
   console.log(`- migrated from plaintext: ${migratedCount}${options.dryRun ? ' (dry-run)' : ''}`)
-  console.log(`- invalid encrypted rows: ${invalidEncryptedCount}`)
-
-  if (invalidEncryptedCount > 0) {
-    process.exitCode = 1
-  }
 }
 
 main().catch((error) => {
@@ -120,4 +106,3 @@ main().catch((error) => {
   console.error(`Redis URL encryption migration failed: ${message}`)
   process.exit(1)
 })
-
