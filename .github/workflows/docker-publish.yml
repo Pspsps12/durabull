@@ -52,7 +52,9 @@ jobs:
 
   trigger-cloud-deploy-hook:
     name: Trigger Cloud Deploy Hook
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: docker
+    if: success() && github.event_name == 'push'
     steps:
       - name: Validate deploy hook secret
         run: |
