@@ -6,6 +6,7 @@ import {
   shouldUseEnvConnections,
   syncEnvConnectionsForOrganization,
 } from '../db/env-redis-connections'
+import { decryptRedisUrl, encryptRedisUrl } from '../db/redis-url-encryption'
 import { redisConnection } from '../db/schemas/redis-connection/schema'
 import type { NewRedisConnection, RedisConnection } from '../db/schemas/redis-connection/types'
 
@@ -18,6 +19,13 @@ async function getDbForOrganization(organizationId: string) {
 function assertConnectionWritesEnabled(): void {
   if (!shouldUseEnvConnections()) return
   throw new Error('Connection writes are disabled while DURABULL_ENV_CONNECTIONS=true.')
+}
+
+function withDecryptedUrl(connection: RedisConnection): RedisConnection {
+  return {
+    ...connection,
+    url: decryptRedisUrl(connection.url),
+  }
 }
 
 /**
@@ -43,12 +51,13 @@ export const redisConnectionRepository = {
       .values({
         id,
         ...data,
+        url: encryptRedisUrl(data.url),
         createdAt: now,
         updatedAt: now,
       })
       .returning()
 
-    return result
+    return withDecryptedUrl(result)
   },
 
   /**
@@ -77,7 +86,7 @@ export const redisConnectionRepository = {
       )
       .limit(1)
 
-    return result[0] ?? null
+    return result[0] ? withDecryptedUrl(result[0]) : null
   },
 
   /**
@@ -93,7 +102,7 @@ export const redisConnectionRepository = {
       .where(eq(redisConnection.id, id))
       .limit(1)
 
-    return result[0] ?? null
+    return result[0] ? withDecryptedUrl(result[0]) : null
   },
 
   /**
@@ -109,7 +118,7 @@ export const redisConnectionRepository = {
       return []
     }
 
-    return db
+    const connections = await db
       .select()
       .from(redisConnection)
       .where(
@@ -119,6 +128,8 @@ export const redisConnectionRepository = {
         )
       )
       .orderBy(redisConnection.createdAt)
+
+    return connections.map(withDecryptedUrl)
   },
 
   /**
@@ -146,7 +157,7 @@ export const redisConnectionRepository = {
       )
       .limit(1)
 
-    return result[0] ?? null
+    return result[0] ? withDecryptedUrl(result[0]) : null
   },
 
   /**
@@ -161,16 +172,22 @@ export const redisConnectionRepository = {
     assertConnectionWritesEnabled()
     const db = await getDbForOrganization(organizationId)
 
+    const updateData: Partial<Pick<RedisConnection, 'name' | 'url' | 'isDefault' | 'environment'>> =
+      { ...data }
+    if (updateData.url !== undefined) {
+      updateData.url = encryptRedisUrl(updateData.url)
+    }
+
     const [result] = await db
       .update(redisConnection)
       .set({
-        ...data,
+        ...updateData,
         updatedAt: new Date(),
       })
       .where(and(eq(redisConnection.id, id), eq(redisConnection.organizationId, organizationId)))
       .returning()
 
-    return result ?? null
+    return result ? withDecryptedUrl(result) : null
   },
 
   /**
@@ -211,7 +228,7 @@ export const redisConnectionRepository = {
       .where(and(eq(redisConnection.id, id), eq(redisConnection.organizationId, organizationId)))
       .returning()
 
-    return result ?? null
+    return result ? withDecryptedUrl(result) : null
   },
 
   /**

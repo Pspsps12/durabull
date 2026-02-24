@@ -30,6 +30,7 @@ description: Complete runtime environment variable reference for local and produ
 | `DURABULL_POSTGRES_PORT` | Optional | Host port mapped to Docker Postgres (`55432` default) |
 | `DATABASE_URL` | Optional | Enables PostgreSQL mode when set |
 | `REDIS_URL` | Optional | Generic Redis URL used by scripts/defaults |
+| `DURABULL_REDIS_URL_ENCRYPTION_KEY` | Required when persisting connections | 32-byte key (hex/base64) used to encrypt Redis connection URLs at rest |
 | `DURABULL_PGLITE_DIR` | Optional | Override PGlite data directory |
 
 ## Connection Mode
@@ -67,6 +68,7 @@ APP_BASE_URL=https://your-domain.example
 VITE_PUBLIC_APP_URL=https://your-domain.example
 DURABULL_AUTHLESS=false
 BETTER_AUTH_SECRET=<long-random-secret>
+DURABULL_REDIS_URL_ENCRYPTION_KEY=<openssl-rand-hex-32>
 DURABULL_ENV_CONNECTIONS=true
 DURABULL_REDIS_URL_MAIN=redis://...
 DURABULL_REDIS_URL_MAIN_ENVIRONMENT=production

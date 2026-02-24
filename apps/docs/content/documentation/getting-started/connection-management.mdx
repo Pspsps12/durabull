@@ -41,6 +41,7 @@ When creating/testing a connection URL:
 - URL is validated to reduce SSRF risk.
 - Connection test endpoint is rate-limited.
 - Production error messages are sanitized.
+- Redis connection URLs are encrypted at rest in the `redis_connection` table.
 
 ## Default Connection Rules
 

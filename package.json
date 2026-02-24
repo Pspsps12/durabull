@@ -23,6 +23,7 @@
     "docker:seed": "sh -c 'DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:${DURABULL_POSTGRES_PORT:-55432}/durabull} REDIS_URL=${REDIS_URL:-redis://localhost:6379} bun tooling/scripts/seed/index.ts'",
     "docker:seed:workers": "sh -c 'DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:${DURABULL_POSTGRES_PORT:-55432}/durabull} REDIS_URL=${REDIS_URL:-redis://localhost:6379} bun tooling/scripts/seed/index.ts --workers'",
     "docker:wipe": "sh -c 'DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:${DURABULL_POSTGRES_PORT:-55432}/durabull} REDIS_URL=${REDIS_URL:-redis://localhost:6379} bun tooling/scripts/wipe.ts --force'",
+    "db:encrypt-redis-urls": "bun tooling/scripts/encrypt-redis-connection-urls.ts",
     "docker:seed:demo": "DURABULL_DEMO_ACCOUNT_REDIS_CONNECTION_STRING=redis://localhost:6379 bun tooling/scripts/seed-demo-account.ts",
     "workload:start": "bun run --filter @durabull/fleet-demo-workload start",
     "workload:dev": "bun run --filter @durabull/fleet-demo-workload dev",

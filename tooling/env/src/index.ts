@@ -71,6 +71,7 @@ const envSchema = z.object({
   POSTHOG_HOST: optionalString,
   DURABULL_AUTHLESS: optionalBoolean,
   DURABULL_ENV_CONNECTIONS: optionalBoolean,
+  DURABULL_REDIS_URL_ENCRYPTION_KEY: optionalString,
   DURABULL_REDIS_URL_DEFAULT: optionalString,
   DURABULL_DEMO_ACCOUNT_REDIS_CONNECTION_STRING: optionalString,
   DEMO_HEALTH_MAX_AGE_HOURS: optionalNonNegativeInt,

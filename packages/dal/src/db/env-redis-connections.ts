@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { env } from '@durabull/env'
 import { eq } from 'drizzle-orm'
 import type { Database } from './client'
+import { encryptRedisUrl } from './redis-url-encryption'
 import { validateRedisUrlForEnvironment } from './redis-url-validation'
 import { redisConnection } from './schemas/redis-connection/schema'
 import type { ConnectionEnvironment } from './schemas/redis-connection/schema'
@@ -192,7 +193,7 @@ export async function syncEnvConnectionsForOrganization(
       updatedAt: Date
     }> = {
       name: connection.name,
-      url: connection.url,
+      url: encryptRedisUrl(connection.url),
       environment: connection.environment,
       isDefault,
       updatedAt: now,
@@ -203,7 +204,7 @@ export async function syncEnvConnectionsForOrganization(
       .values({
         id,
         name: connection.name,
-        url: connection.url,
+        url: encryptRedisUrl(connection.url),
         environment: connection.environment,
         isDefault,
         organizationId,
