@@ -37,9 +37,10 @@ describe('DeleteJobLogsButton', () => {
     const user = userEvent.setup()
 
     render(<DeleteJobLogsButton queueName="emails" jobId="job-1" logCount={30} />)
-    await user.click(screen.getByRole('button', { name: 'Delete Logs' }))
+    await user.click(screen.getByRole('button', { name: /Clear Logs/i }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete all logs' }))
 
-    expect(screen.getByText('Delete Job Logs?')).toBeInTheDocument()
+    expect(screen.getByText('Clear Job Logs?')).toBeInTheDocument()
     expect(
       screen.getByText(/This will permanently delete 30 logs from Redis for this job/i)
     ).toBeInTheDocument()
@@ -50,10 +51,11 @@ describe('DeleteJobLogsButton', () => {
     const user = userEvent.setup()
 
     render(<DeleteJobLogsButton queueName="emails" jobId="job-1" logCount={30} />)
-    await user.click(screen.getByRole('button', { name: 'Delete Logs' }))
+    await user.click(screen.getByRole('button', { name: /Clear Logs/i }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete all logs' }))
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
-    await waitFor(() => expect(screen.queryByText('Delete Job Logs?')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText('Clear Job Logs?')).not.toBeInTheDocument())
     expect(mutateMock).not.toHaveBeenCalled()
   })
 
@@ -61,12 +63,13 @@ describe('DeleteJobLogsButton', () => {
     const user = userEvent.setup()
 
     render(<DeleteJobLogsButton queueName="emails" jobId="job-1" logCount={30} />)
-    await user.click(screen.getByRole('button', { name: 'Delete Logs' }))
+    await user.click(screen.getByRole('button', { name: /Clear Logs/i }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete all logs' }))
     await user.click(screen.getByRole('button', { name: 'Delete 30 logs' }))
 
     expect(mutateMock).toHaveBeenCalledTimes(1)
     expect(mutateMock).toHaveBeenCalledWith(
-      { queueName: 'emails', jobId: 'job-1' },
+      { queueName: 'emails', jobId: 'job-1', keepMostRecent: 0 },
       expect.objectContaining({
         onSuccess: expect.any(Function),
         onError: expect.any(Function),
@@ -88,6 +91,6 @@ describe('DeleteJobLogsButton', () => {
 
   it('is disabled when there are no logs to delete', () => {
     render(<DeleteJobLogsButton queueName="emails" jobId="job-1" logCount={0} />)
-    expect(screen.getByRole('button', { name: 'Delete Logs' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Clear Logs/i })).toBeDisabled()
   })
 })

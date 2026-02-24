@@ -759,16 +759,26 @@ export function useClearJobLogs() {
   const connectionId = currentConnection?.id
 
   return useMutation({
-    mutationFn: async ({ queueName, jobId }: { queueName: string; jobId: string }) => {
+    mutationFn: async ({
+      queueName,
+      jobId,
+      keepMostRecent = 0,
+    }: {
+      queueName: string
+      jobId: string
+      keepMostRecent?: number
+    }) => {
       const res = await api.c[':connectionId'].queues[':queueName'].jobs[':jobId'].logs.$delete({
         param: { connectionId: connectionId!, queueName, jobId },
+        query: { keepMostRecent: String(keepMostRecent) },
       })
       return handleRes<{ success: boolean; removed: number }>(res)
     },
-    onSuccess: (_, { queueName, jobId }) => {
+    onSuccess: (_, { queueName, jobId, keepMostRecent = 0 }) => {
       trackEvent(AnalyticsEvents.JOB_LOGS_CLEARED, {
         queue_name: queueName,
         job_id: jobId,
+        keep_most_recent: keepMostRecent,
         success: true,
       })
       queryClient.invalidateQueries({
@@ -781,6 +791,37 @@ export function useClearJobLogs() {
         job_id: jobId,
         success: false,
         error_message: error.message,
+      })
+    },
+  })
+}
+
+export function useClearJobStacktraces() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async ({
+      queueName,
+      jobId,
+      keepMostRecent = 0,
+    }: {
+      queueName: string
+      jobId: string
+      keepMostRecent?: number
+    }) => {
+      const url = `/api/c/${connectionId}/queues/${encodeURIComponent(queueName)}/jobs/${encodeURIComponent(jobId)}/stacktraces?keepMostRecent=${encodeURIComponent(String(keepMostRecent))}`
+      return fetchApi<{ success: boolean; removed: number; kept: number }>(url, {
+        method: 'DELETE',
+      })
+    },
+    onSuccess: (_, { queueName, jobId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.jobStacktraces(connectionId ?? '', queueName, jobId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.job(connectionId ?? '', queueName, jobId),
       })
     },
   })
