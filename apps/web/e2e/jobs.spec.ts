@@ -243,7 +243,7 @@ test.describe('Jobs', () => {
     const clearButton = page.getByRole('button', { name: /Clear Stacktraces/i })
     await expect(clearButton).toBeVisible({ timeout: 15000 })
     await clearButton.click()
-    await page.getByRole('menuitem', { name: `Keep latest ${keepMostRecent}` }).click()
+    await page.getByRole('menuitem', { name: `Keep latest ${keepMostRecent}`, exact: true }).click()
 
     await expect
       .poll(async () => {
