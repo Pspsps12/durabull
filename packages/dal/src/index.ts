@@ -57,13 +57,6 @@ export {
   isRedisUrlEncryptionKeyConfigured,
 } from './db/redis-url-encryption'
 export {
-  assertRedisConnectionUrlEncryptionReady,
-  auditRedisConnectionUrlEncryption,
-  resetRedisUrlEncryptionAuditWarningsForTests,
-  shouldEnforceRedisUrlEncryption,
-  shouldRunRedisUrlStartupMigration,
-} from './db/redis-url-encryption-audit'
-export {
   allowsInternalConnections,
   validateRedisUrl,
   validateRedisUrlForEnvironment,

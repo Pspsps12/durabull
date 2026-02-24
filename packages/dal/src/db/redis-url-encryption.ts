@@ -66,10 +66,6 @@ export function isRedisUrlEncrypted(value: string): boolean {
 }
 
 export function encryptRedisUrl(url: string): string {
-  if (isRedisUrlEncrypted(url)) {
-    return url
-  }
-
   const key = requireEncryptionKey()
   const iv = randomBytes(GCM_IV_BYTES)
   const cipher = createCipheriv('aes-256-gcm', key, iv)
@@ -82,7 +78,7 @@ export function encryptRedisUrl(url: string): string {
 
 export function decryptRedisUrl(value: string): string {
   if (!isRedisUrlEncrypted(value)) {
-    return value
+    throw new Error('Redis connection URL is not encrypted.')
   }
 
   const key = requireEncryptionKey()

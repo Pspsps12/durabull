@@ -10,8 +10,11 @@
 
 import {
   assertRedisUrlEncryptionKeyConfigured,
-  auditRedisConnectionUrlEncryption,
+  encryptRedisUrl,
+  eq,
   getDb,
+  isRedisUrlEncrypted,
+  redisConnection,
 } from '@durabull/dal'
 
 interface CliOptions {
@@ -51,27 +54,51 @@ async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2))
   assertRedisUrlEncryptionKeyConfigured()
   const db = await getDb()
-  const result = await auditRedisConnectionUrlEncryption(db, {
-    organizationId: options.organizationId,
-    migratePlaintext: true,
-    dryRun: options.dryRun,
-  })
+
+  const rows = options.organizationId
+    ? await db
+        .select({
+          id: redisConnection.id,
+          url: redisConnection.url,
+        })
+        .from(redisConnection)
+        .where(eq(redisConnection.organizationId, options.organizationId))
+    : await db
+        .select({
+          id: redisConnection.id,
+          url: redisConnection.url,
+        })
+        .from(redisConnection)
+
+  let encryptedCount = 0
+  let migratedCount = 0
+
+  for (const row of rows) {
+    if (isRedisUrlEncrypted(row.url)) {
+      encryptedCount += 1
+      continue
+    }
+
+    const encryptedUrl = encryptRedisUrl(row.url)
+    migratedCount += 1
+
+    if (options.dryRun) {
+      continue
+    }
+
+    await db
+      .update(redisConnection)
+      .set({
+        url: encryptedUrl,
+        updatedAt: new Date(),
+      })
+      .where(eq(redisConnection.id, row.id))
+  }
 
   console.log('Redis URL encryption migration complete:')
-  console.log(`- total rows scanned: ${result.totalRows}`)
-  console.log(`- already encrypted: ${result.encryptedRows}`)
-  console.log(
-    `- migrated from plaintext: ${result.migratedRows}${options.dryRun ? ' (dry-run)' : ''}`
-  )
-  console.log(`- invalid encrypted rows: ${result.invalidEncryptedRows}`)
-
-  if (result.invalidEncryptedRows > 0) {
-    const sampleIds = result.invalidEncryptedConnectionIds.slice(0, 5).join(', ')
-    if (sampleIds) {
-      console.error(`- sample invalid connection IDs: ${sampleIds}`)
-    }
-    process.exitCode = 1
-  }
+  console.log(`- total rows scanned: ${rows.length}`)
+  console.log(`- already encrypted: ${encryptedCount}`)
+  console.log(`- migrated from plaintext: ${migratedCount}${options.dryRun ? ' (dry-run)' : ''}`)
 }
 
 main().catch((error) => {

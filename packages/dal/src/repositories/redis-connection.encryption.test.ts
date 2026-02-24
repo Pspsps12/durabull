@@ -117,15 +117,15 @@ describe('redisConnectionRepository encryption', () => {
     expect(isRedisUrlEncrypted(row[0]!.url)).toBe(true)
   })
 
-  it('decrypts both legacy plaintext and encrypted rows on read methods', async () => {
+  it('decrypts encrypted rows on read methods', async () => {
     const db = await setupBaseOrganization()
     const now = new Date()
 
     await db.insert(redisConnection).values([
       {
         id: '55555555-5555-4555-8555-555555555555',
-        name: 'Legacy Plaintext',
-        url: 'redis://legacy:secret@localhost:6379/2',
+        name: 'Encrypted A',
+        url: encryptRedisUrl('redis://encrypted-a:secret@localhost:6379/2'),
         environment: 'development',
         isDefault: true,
         organizationId: TEST_ORG_ID,
@@ -154,10 +154,13 @@ describe('redisConnectionRepository encryption', () => {
     )
     const all = await redisConnectionRepository.findAll(TEST_ORG_ID)
 
-    expect(byIdLegacy?.url).toBe('redis://legacy:secret@localhost:6379/2')
+    expect(byIdLegacy?.url).toBe('redis://encrypted-a:secret@localhost:6379/2')
     expect(byIdEncrypted?.url).toBe('redis://encrypted:secret@localhost:6379/3')
     expect(all.map((connection) => connection.url).sort()).toEqual(
-      ['redis://encrypted:secret@localhost:6379/3', 'redis://legacy:secret@localhost:6379/2'].sort()
+      [
+        'redis://encrypted:secret@localhost:6379/3',
+        'redis://encrypted-a:secret@localhost:6379/2',
+      ].sort()
     )
   })
 })

@@ -29,9 +29,9 @@ describe('redis-url-encryption', () => {
     expect(decryptRedisUrl(encrypted)).toBe(url)
   })
 
-  it('keeps plaintext values unchanged when decrypting legacy rows', () => {
+  it('throws when decrypting a plaintext value', () => {
     const plaintext = 'redis://localhost:6379'
-    expect(decryptRedisUrl(plaintext)).toBe(plaintext)
+    expect(() => decryptRedisUrl(plaintext)).toThrow('Redis connection URL is not encrypted.')
     expect(isRedisUrlEncrypted(plaintext)).toBe(false)
   })
 
