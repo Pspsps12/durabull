@@ -1,117 +1,115 @@
-import { test as base, expect, type APIResponse, type Page } from "@playwright/test";
+import { type APIResponse, test as base, expect, type Page } from '@playwright/test'
 
-export const test = base;
-export { expect };
+export const test = base
+export { expect }
 
-export const TEST_ORG_SLUG = "acme";
-export const TEST_CONNECTION_NAME = "Acme Production";
-export const TEST_QUEUE_NAME = "payment-processing";
+export const TEST_ORG_SLUG = 'acme'
+export const TEST_CONNECTION_NAME = 'Acme Production'
+export const TEST_QUEUE_NAME = 'payment-processing'
 
 type Connection = {
-  id: string;
-  name: string;
-  isDefault: boolean;
-  environment: string;
-};
+  id: string
+  name: string
+  isDefault: boolean
+  environment: string
+}
 
 type QueueSummary = {
-  name: string;
-};
+  name: string
+}
 
 type JobDetail = {
-  id: string;
-  name: string;
-  status: string;
-  data?: Record<string, unknown>;
-  delay?: number;
-};
+  id: string
+  name: string
+  status: string
+  data?: Record<string, unknown>
+  delay?: number
+  stacktraceCount?: number
+}
 
 type JobSummary = {
-  id: string;
-  name: string;
-  status: string;
-};
+  id: string
+  name: string
+  status: string
+}
 
 type ScheduledJobsResponse = {
   scheduledJobs: Array<{
-    queueName: string;
-    jobName: string;
-    schedulerId: string;
-  }>;
-  total: number;
-};
+    queueName: string
+    jobName: string
+    schedulerId: string
+  }>
+  total: number
+}
 
 async function apiJson<T>(response: APIResponse, context: string): Promise<T> {
   if (response.ok()) {
-    return (await response.json()) as T;
+    return (await response.json()) as T
   }
 
-  let body = "";
+  let body = ''
   try {
-    body = await response.text();
+    body = await response.text()
   } catch {
-    body = "<unable to read body>";
+    body = '<unable to read body>'
   }
-  throw new Error(`${context} failed with ${response.status()}: ${body.slice(0, 500)}`);
+  throw new Error(`${context} failed with ${response.status()}: ${body.slice(0, 500)}`)
 }
 
 export async function ensureActiveOrg(page: Page, orgSlug = TEST_ORG_SLUG): Promise<void> {
-  await page.goto(`/${orgSlug}`);
-  await expect(page.getByTestId("org-selector")).toBeVisible({ timeout: 15000 });
+  await page.goto(`/${orgSlug}`)
+  await expect(page.getByTestId('org-selector')).toBeVisible({ timeout: 15000 })
   await expect
     .poll(
       async () => {
-        const response = await page.request.get("/api/session");
-        if (!response.ok()) return null;
-        const data = (await response.json()) as { session?: { activeOrganizationId?: string } };
-        return data.session?.activeOrganizationId ?? null;
+        const response = await page.request.get('/api/session')
+        if (!response.ok()) return null
+        const data = (await response.json()) as { session?: { activeOrganizationId?: string } }
+        return data.session?.activeOrganizationId ?? null
       },
       { timeout: 15000 }
     )
-    .not.toBeNull();
+    .not.toBeNull()
 }
 
 export async function getConnections(page: Page): Promise<Connection[]> {
-  const response = await page.request.get("/api/connections");
-  const data = await apiJson<{ connections: Connection[] }>(response, "GET /api/connections");
+  const response = await page.request.get('/api/connections')
+  const data = await apiJson<{ connections: Connection[] }>(response, 'GET /api/connections')
   if (!data.connections || data.connections.length === 0) {
-    throw new Error("No connections found. Ensure the seed script ran successfully.");
+    throw new Error('No connections found. Ensure the seed script ran successfully.')
   }
-  return data.connections;
+  return data.connections
 }
 
 export async function getDefaultConnectionId(page: Page): Promise<string> {
-  const connections = await getConnections(page);
+  const connections = await getConnections(page)
   const defaultConnection =
     connections.find((connection) => connection.name === TEST_CONNECTION_NAME) ||
     connections.find((connection) => connection.isDefault) ||
-    connections[0];
+    connections[0]
 
   if (!defaultConnection) {
-    throw new Error("Unable to determine a default connection.");
+    throw new Error('Unable to determine a default connection.')
   }
 
-  return defaultConnection.id;
+  return defaultConnection.id
 }
 
 export async function getQueues(page: Page, connectionId: string): Promise<QueueSummary[]> {
-  const response = await page.request.get(`/api/c/${connectionId}/queues?page=1&pageSize=100`);
+  const response = await page.request.get(`/api/c/${connectionId}/queues?page=1&pageSize=100`)
   const data = await apiJson<{ queues: QueueSummary[] }>(
     response,
     `GET /api/c/${connectionId}/queues`
-  );
-  return data.queues ?? [];
+  )
+  return data.queues ?? []
 }
 
 export async function getScheduledJobs(
   page: Page,
   connectionId: string
 ): Promise<ScheduledJobsResponse> {
-  const response = await page.request.get(`/api/c/${connectionId}/scheduled-jobs`);
-  return apiJson<ScheduledJobsResponse>(
-    response,
-    `GET /api/c/${connectionId}/scheduled-jobs`
-  );
+  const response = await page.request.get(`/api/c/${connectionId}/scheduled-jobs`)
+  return apiJson<ScheduledJobsResponse>(response, `GET /api/c/${connectionId}/scheduled-jobs`)
 }
 
 export async function getJobs(
@@ -120,17 +118,17 @@ export async function getJobs(
   queueName: string,
   options?: { status?: string; page?: number; pageSize?: number }
 ): Promise<{ jobs: JobSummary[]; total: number }> {
-  const params = new URLSearchParams();
-  if (options?.status) params.set("status", options.status);
-  params.set("page", String(options?.page ?? 1));
-  params.set("pageSize", String(options?.pageSize ?? 20));
+  const params = new URLSearchParams()
+  if (options?.status) params.set('status', options.status)
+  params.set('page', String(options?.page ?? 1))
+  params.set('pageSize', String(options?.pageSize ?? 20))
   const response = await page.request.get(
     `/api/c/${connectionId}/queues/${queueName}/jobs?${params.toString()}`
-  );
+  )
   return apiJson<{ jobs: JobSummary[]; total: number }>(
     response,
     `GET /api/c/${connectionId}/queues/${queueName}/jobs`
-  );
+  )
 }
 
 export async function findJobByStatus(
@@ -138,46 +136,47 @@ export async function findJobByStatus(
   connectionId: string,
   status: string
 ): Promise<{ queueName: string; jobId: string }> {
-  const queues = await getQueues(page, connectionId);
+  const queues = await getQueues(page, connectionId)
   for (const queue of queues) {
     const data = await getJobs(page, connectionId, queue.name, {
       status,
       page: 1,
       pageSize: 1,
-    });
+    })
     if (data.jobs.length > 0) {
-      return { queueName: queue.name, jobId: String(data.jobs[0].id) };
+      return { queueName: queue.name, jobId: String(data.jobs[0].id) }
     }
   }
-  throw new Error(`No jobs with status "${status}" found in any queue.`);
+  throw new Error(`No jobs with status "${status}" found in any queue.`)
 }
 
 export async function getTestQueueName(page: Page, connectionId: string): Promise<string> {
-  const queues = await getQueues(page, connectionId);
+  const queues = await getQueues(page, connectionId)
   if (queues.length === 0) {
-    throw new Error("No queues found. Ensure Redis seed data exists.");
+    throw new Error('No queues found. Ensure Redis seed data exists.')
   }
 
-  const match = queues.find((queue) => queue.name === TEST_QUEUE_NAME);
+  const match = queues.find((queue) => queue.name === TEST_QUEUE_NAME)
   if (!match) {
-    const available = queues.map((queue) => queue.name).join(", ");
-    throw new Error(
-      `Expected queue "${TEST_QUEUE_NAME}" not found. Available queues: ${available}`
-    );
+    const available = queues.map((queue) => queue.name).join(', ')
+    throw new Error(`Expected queue "${TEST_QUEUE_NAME}" not found. Available queues: ${available}`)
   }
 
-  return match.name;
+  return match.name
 }
 
-export async function createJob(page: Page, options: {
-  connectionId: string;
-  queueName: string;
-  name: string;
-  data: unknown;
-  delay?: number;
-  priority?: number;
-  attempts?: number;
-}): Promise<string> {
+export async function createJob(
+  page: Page,
+  options: {
+    connectionId: string
+    queueName: string
+    name: string
+    data: unknown
+    delay?: number
+    priority?: number
+    attempts?: number
+  }
+): Promise<string> {
   const response = await page.request.post(
     `/api/c/${options.connectionId}/queues/${options.queueName}/jobs`,
     {
@@ -189,13 +188,13 @@ export async function createJob(page: Page, options: {
         attempts: options.attempts,
       },
     }
-  );
+  )
 
   const data = await apiJson<{ jobId: string | number }>(
     response,
     `POST /api/c/${options.connectionId}/queues/${options.queueName}/jobs`
-  );
-  return String(data.jobId);
+  )
+  return String(data.jobId)
 }
 
 export async function getJob(
@@ -206,23 +205,23 @@ export async function getJob(
 ): Promise<JobDetail> {
   const response = await page.request.get(
     `/api/c/${connectionId}/queues/${queueName}/jobs/${jobId}`
-  );
+  )
   return apiJson<JobDetail>(
     response,
     `GET /api/c/${connectionId}/queues/${queueName}/jobs/${jobId}`
-  );
+  )
 }
 
 export async function removeJobs(
   page: Page,
   options: {
-    connectionId: string;
-    queueName: string;
-    jobIds: string[];
-    removeScheduler?: boolean;
+    connectionId: string
+    queueName: string
+    jobIds: string[]
+    removeScheduler?: boolean
   }
 ): Promise<void> {
-  if (options.jobIds.length === 0) return;
+  if (options.jobIds.length === 0) return
 
   const response = await page.request.post(
     `/api/c/${options.connectionId}/queues/${options.queueName}/jobs/remove`,
@@ -232,10 +231,10 @@ export async function removeJobs(
         removeScheduler: options.removeScheduler ?? false,
       },
     }
-  );
+  )
 
   await apiJson(
     response,
     `POST /api/c/${options.connectionId}/queues/${options.queueName}/jobs/remove`
-  );
+  )
 }
