@@ -12,12 +12,21 @@ import {
   XCircle,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { RetryCountdown } from '@/components/retry-countdown'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useJobStacktraces } from '@/hooks/use-queues'
+import { useClearJobStacktraces, useJobStacktraces } from '@/hooks/use-queues'
 import { cn, formatDateWithTimezone } from '@/lib/utils'
 
 // Stacktrace item type - matches API response
@@ -59,7 +68,9 @@ export function FailedAttempts({
   status,
   className,
 }: FailedAttemptsProps) {
+  const clearStacktracesMutation = useClearJobStacktraces()
   const [expandedAttempt, setExpandedAttempt] = useState<number | null>(0)
+  const [customKeepInput, setCustomKeepInput] = useState('25')
   const parentRef = useRef<HTMLDivElement>(null)
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError } =
@@ -203,9 +214,106 @@ export function FailedAttempts({
             />
           </div>
         </div>
-        <Badge variant="destructive" className="font-mono">
-          {((attemptsMade / maxAttempts) * 100).toFixed(0)}% exhausted
-        </Badge>
+        <div className="flex items-center gap-2">
+          {totalItems > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  disabled={clearStacktracesMutation.isPending}
+                >
+                  <Terminal className="mr-1.5 h-3.5 w-3.5" />
+                  Clear Stacktraces
+                  <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() =>
+                    clearStacktracesMutation.mutate(
+                      { queueName, jobId, keepMostRecent: 0 },
+                      {
+                        onSuccess: ({ removed }) =>
+                          toast.success('Stacktraces cleared', {
+                            description: `Deleted ${removed.toLocaleString()} stacktrace${removed === 1 ? '' : 's'}.`,
+                          }),
+                        onError: (error) =>
+                          toast.error('Failed to clear stacktraces', {
+                            description: error.message,
+                          }),
+                      }
+                    )
+                  }
+                >
+                  Delete all stacktraces
+                </DropdownMenuItem>
+                {[10, 50, 100].map((keep) => (
+                  <DropdownMenuItem
+                    key={keep}
+                    onClick={() =>
+                      clearStacktracesMutation.mutate(
+                        { queueName, jobId, keepMostRecent: keep },
+                        {
+                          onSuccess: ({ removed }) =>
+                            toast.success('Stacktraces trimmed', {
+                              description: `Deleted ${removed.toLocaleString()} stacktrace${removed === 1 ? '' : 's'} and kept ${keep.toLocaleString()}.`,
+                            }),
+                          onError: (error) =>
+                            toast.error('Failed to clear stacktraces', {
+                              description: error.message,
+                            }),
+                        }
+                      )
+                    }
+                  >
+                    Keep latest {keep.toLocaleString()}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuItem
+                  onClick={() => {
+                    const parsed = Number.parseInt(customKeepInput, 10)
+                    const keep = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
+                    clearStacktracesMutation.mutate(
+                      { queueName, jobId, keepMostRecent: keep },
+                      {
+                        onSuccess: ({ removed }) =>
+                          toast.success('Stacktraces trimmed', {
+                            description:
+                              keep > 0
+                                ? `Deleted ${removed.toLocaleString()} stacktrace${removed === 1 ? '' : 's'} and kept ${keep.toLocaleString()}.`
+                                : `Deleted ${removed.toLocaleString()} stacktrace${removed === 1 ? '' : 's'}.`,
+                          }),
+                        onError: (error) =>
+                          toast.error('Failed to clear stacktraces', {
+                            description: error.message,
+                          }),
+                      }
+                    )
+                  }}
+                >
+                  Apply custom keep value
+                </DropdownMenuItem>
+                <div className="px-2 pb-1.5 pt-1">
+                  <Label htmlFor="custom-stacktrace-keep" className="text-xs text-muted-foreground">
+                    Keep most recent X stacktraces
+                  </Label>
+                  <Input
+                    id="custom-stacktrace-keep"
+                    value={customKeepInput}
+                    onChange={(event) => setCustomKeepInput(event.target.value)}
+                    inputMode="numeric"
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          <Badge variant="destructive" className="font-mono">
+            {((attemptsMade / maxAttempts) * 100).toFixed(0)}% exhausted
+          </Badge>
+        </div>
       </div>
 
       {/* Virtualized attempts timeline */}

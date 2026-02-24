@@ -759,16 +759,28 @@ export function useClearJobLogs() {
   const connectionId = currentConnection?.id
 
   return useMutation({
-    mutationFn: async ({ queueName, jobId }: { queueName: string; jobId: string }) => {
-      const res = await api.c[':connectionId'].queues[':queueName'].jobs[':jobId'].logs.$delete({
-        param: { connectionId: connectionId!, queueName, jobId },
-      })
+    mutationFn: async ({
+      queueName,
+      jobId,
+      keepMostRecent = 0,
+    }: {
+      queueName: string
+      jobId: string
+      keepMostRecent?: number
+    }) => {
+      const res = await api.c[':connectionId'].queues[':queueName'].jobs[':jobId'].logs.clear.$post(
+        {
+          param: { connectionId: connectionId!, queueName, jobId },
+          json: { keepMostRecent },
+        }
+      )
       return handleRes<{ success: boolean; removed: number }>(res)
     },
-    onSuccess: (_, { queueName, jobId }) => {
+    onSuccess: (_, { queueName, jobId, keepMostRecent = 0 }) => {
       trackEvent(AnalyticsEvents.JOB_LOGS_CLEARED, {
         queue_name: queueName,
         job_id: jobId,
+        keep_most_recent: keepMostRecent,
         success: true,
       })
       queryClient.invalidateQueries({
@@ -781,6 +793,40 @@ export function useClearJobLogs() {
         job_id: jobId,
         success: false,
         error_message: error.message,
+      })
+    },
+  })
+}
+
+export function useClearJobStacktraces() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async ({
+      queueName,
+      jobId,
+      keepMostRecent = 0,
+    }: {
+      queueName: string
+      jobId: string
+      keepMostRecent?: number
+    }) => {
+      const res = await api.c[':connectionId'].queues[':queueName'].jobs[
+        ':jobId'
+      ].stacktraces.clear.$post({
+        param: { connectionId: connectionId!, queueName, jobId },
+        json: { keepMostRecent },
+      })
+      return handleRes<{ success: boolean; removed: number; kept: number }>(res)
+    },
+    onSuccess: (_, { queueName, jobId }) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.jobStacktraces(connectionId ?? '', queueName, jobId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.job(connectionId ?? '', queueName, jobId),
       })
     },
   })

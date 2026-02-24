@@ -1,32 +1,91 @@
 import {
-  expect,
   createJob,
   ensureActiveOrg,
+  expect,
   getDefaultConnectionId,
   getJob,
+  getJobs,
+  getQueues,
   getTestQueueName,
   removeJobs,
-  test,
   TEST_ORG_SLUG,
-} from "./fixtures/test";
+  test,
+} from './fixtures/test'
 
 async function safeRemoveJobs(
   page: Parameters<typeof removeJobs>[0],
   options: Parameters<typeof removeJobs>[1]
 ) {
   try {
-    await removeJobs(page, options);
+    await removeJobs(page, options)
   } catch (error) {
-    console.warn("Failed to cleanup jobs:", error);
+    console.warn('Failed to cleanup jobs:', error)
   }
 }
 
-test.describe("Jobs", () => {
-  test("job detail shows duplicate dialog", async ({ page }) => {
-    await ensureActiveOrg(page);
-    const connectionId = await getDefaultConnectionId(page);
-    const queueName = await getTestQueueName(page, connectionId);
-    const createdJobs: string[] = [];
+async function getJobLogsCount(
+  page: Parameters<typeof removeJobs>[0],
+  connectionId: string,
+  queueName: string,
+  jobId: string
+): Promise<number> {
+  const response = await page.request.get(
+    `/api/c/${connectionId}/queues/${queueName}/jobs/${jobId}/logs?page=1&pageSize=1`
+  )
+  if (!response.ok()) {
+    throw new Error(`Failed to get logs for ${queueName}/${jobId}: ${response.status()}`)
+  }
+  const data = (await response.json()) as { count?: number }
+  return data.count ?? 0
+}
+
+async function findJobWithLogs(
+  page: Parameters<typeof removeJobs>[0],
+  connectionId: string,
+  minLogs: number
+): Promise<{ queueName: string; jobId: string; logCount: number } | null> {
+  const queues = await getQueues(page, connectionId)
+  for (const queue of queues) {
+    const jobs = await getJobs(page, connectionId, queue.name, { page: 1, pageSize: 25 })
+    for (const job of jobs.jobs) {
+      const logCount = await getJobLogsCount(page, connectionId, queue.name, String(job.id))
+      if (logCount >= minLogs) {
+        return { queueName: queue.name, jobId: String(job.id), logCount }
+      }
+    }
+  }
+  return null
+}
+
+async function findFailedJobWithStacktraces(
+  page: Parameters<typeof removeJobs>[0],
+  connectionId: string,
+  minStacktraces: number
+): Promise<{ queueName: string; jobId: string; stacktraceCount: number } | null> {
+  const queues = await getQueues(page, connectionId)
+  for (const queue of queues) {
+    const jobs = await getJobs(page, connectionId, queue.name, {
+      status: 'failed',
+      page: 1,
+      pageSize: 25,
+    })
+    for (const job of jobs.jobs) {
+      const detail = await getJob(page, connectionId, queue.name, String(job.id))
+      const stacktraceCount = detail.stacktraceCount ?? 0
+      if (stacktraceCount >= minStacktraces) {
+        return { queueName: queue.name, jobId: String(job.id), stacktraceCount }
+      }
+    }
+  }
+  return null
+}
+
+test.describe('Jobs', () => {
+  test('job detail shows duplicate dialog', async ({ page }) => {
+    await ensureActiveOrg(page)
+    const connectionId = await getDefaultConnectionId(page)
+    const queueName = await getTestQueueName(page, connectionId)
+    const createdJobs: string[] = []
 
     try {
       const jobId = await createJob(page, {
@@ -34,31 +93,31 @@ test.describe("Jobs", () => {
         queueName,
         name: `e2e-job-${Date.now()}`,
         data: { e2e: true },
-      });
-      createdJobs.push(jobId);
+      })
+      createdJobs.push(jobId)
 
-      await page.goto(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}/jobs/${jobId}`);
+      await page.goto(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}/jobs/${jobId}`)
 
-      const duplicateButton = page.getByRole("button", { name: "Duplicate" });
-      await expect(duplicateButton).toBeEnabled({ timeout: 15000 });
-      await duplicateButton.click();
+      const duplicateButton = page.getByRole('button', { name: 'Duplicate' })
+      await expect(duplicateButton).toBeEnabled({ timeout: 15000 })
+      await duplicateButton.click()
 
-      const dialog = page.getByRole("dialog");
-      await expect(dialog).toBeVisible();
-      await expect(dialog.getByText("Duplicate Job")).toBeVisible();
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible()
+      await expect(dialog.getByText('Duplicate Job')).toBeVisible()
 
-      await dialog.getByRole("button", { name: "Cancel" }).click();
-      await expect(dialog).not.toBeVisible();
+      await dialog.getByRole('button', { name: 'Cancel' }).click()
+      await expect(dialog).not.toBeVisible()
     } finally {
-      await safeRemoveJobs(page, { connectionId, queueName, jobIds: createdJobs });
+      await safeRemoveJobs(page, { connectionId, queueName, jobIds: createdJobs })
     }
-  });
+  })
 
-  test("invoke promotes a delayed job", async ({ page }) => {
-    await ensureActiveOrg(page);
-    const connectionId = await getDefaultConnectionId(page);
-    const queueName = await getTestQueueName(page, connectionId);
-    const createdJobs: string[] = [];
+  test('invoke promotes a delayed job', async ({ page }) => {
+    await ensureActiveOrg(page)
+    const connectionId = await getDefaultConnectionId(page)
+    const queueName = await getTestQueueName(page, connectionId)
+    const createdJobs: string[] = []
 
     try {
       const jobId = await createJob(page, {
@@ -67,46 +126,45 @@ test.describe("Jobs", () => {
         name: `e2e-delayed-${Date.now()}`,
         data: { e2e: true, delayed: true },
         delay: 10 * 60 * 1000,
-      });
-      createdJobs.push(jobId);
+      })
+      createdJobs.push(jobId)
 
-      await page.goto(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}/jobs/${jobId}`);
-      const invokeButton = page.getByRole("button", { name: "Invoke" });
-      await expect(invokeButton).toBeVisible({ timeout: 15000 });
-      await expect(invokeButton).toBeEnabled();
+      await page.goto(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}/jobs/${jobId}`)
+      const invokeButton = page.getByRole('button', { name: 'Invoke' })
+      await expect(invokeButton).toBeVisible({ timeout: 15000 })
+      await expect(invokeButton).toBeEnabled()
 
-      await invokeButton.click();
-      const dialog = page.getByRole("dialog");
-      await expect(dialog).toBeVisible();
-      await expect(dialog.getByText("Invoke Job")).toBeVisible();
+      await invokeButton.click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible()
+      await expect(dialog.getByText('Invoke Job')).toBeVisible()
 
-      const invokeNowButton = dialog.getByRole("button", { name: "Invoke Now" });
-      await expect(invokeNowButton).toBeEnabled();
-      await invokeNowButton.click();
-      await page.waitForURL(
-        new RegExp(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}`),
-        { timeout: 15000 }
-      );
+      const invokeNowButton = dialog.getByRole('button', { name: 'Invoke Now' })
+      await expect(invokeNowButton).toBeEnabled()
+      await invokeNowButton.click()
+      await page.waitForURL(new RegExp(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}`), {
+        timeout: 15000,
+      })
 
       await expect
         .poll(
           async () => {
-            const job = await getJob(page, connectionId, queueName, jobId);
-            return job.status;
+            const job = await getJob(page, connectionId, queueName, jobId)
+            return job.status
           },
           { timeout: 15000 }
         )
-        .not.toBe("delayed");
+        .not.toBe('delayed')
     } finally {
-      await safeRemoveJobs(page, { connectionId, queueName, jobIds: createdJobs });
+      await safeRemoveJobs(page, { connectionId, queueName, jobIds: createdJobs })
     }
-  });
+  })
 
-  test("remove job from detail page", async ({ page }) => {
-    await ensureActiveOrg(page);
-    const connectionId = await getDefaultConnectionId(page);
-    const queueName = await getTestQueueName(page, connectionId);
-    const createdJobs: string[] = [];
+  test('remove job from detail page', async ({ page }) => {
+    await ensureActiveOrg(page)
+    const connectionId = await getDefaultConnectionId(page)
+    const queueName = await getTestQueueName(page, connectionId)
+    const createdJobs: string[] = []
 
     try {
       const jobId = await createJob(page, {
@@ -116,30 +174,82 @@ test.describe("Jobs", () => {
         data: { e2e: true },
         // Keep the job out of active processing while validating remove behavior.
         delay: 10 * 60 * 1000,
-      });
-      createdJobs.push(jobId);
+      })
+      createdJobs.push(jobId)
 
-      await page.goto(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}/jobs/${jobId}`);
-      await expect(page.getByRole("button", { name: "Remove" })).toBeVisible();
+      await page.goto(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}/jobs/${jobId}`)
+      await expect(page.getByRole('button', { name: 'Remove' })).toBeVisible()
 
-      await page.getByRole("button", { name: "Remove" }).click();
-      await page.waitForURL(
-        new RegExp(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}`)
-      );
+      await page.getByRole('button', { name: 'Remove' }).click()
+      await page.waitForURL(new RegExp(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}`))
 
       await expect
         .poll(
           async () => {
             const response = await page.request.get(
               `/api/c/${connectionId}/queues/${queueName}/jobs/${jobId}`
-            );
-            return response.status();
+            )
+            return response.status()
           },
           { timeout: 15000 }
         )
-        .toBe(404);
+        .toBe(404)
     } finally {
-      await safeRemoveJobs(page, { connectionId, queueName, jobIds: createdJobs });
+      await safeRemoveJobs(page, { connectionId, queueName, jobIds: createdJobs })
     }
-  });
-});
+  })
+
+  test('clear logs keeps most recent X logs', async ({ page }) => {
+    await ensureActiveOrg(page)
+    const connectionId = await getDefaultConnectionId(page)
+    const target = await findJobWithLogs(page, connectionId, 15)
+    test.skip(!target, 'No job with enough logs found in seed data.')
+    if (!target) return
+
+    const keepMostRecent = 10
+    await page.goto(
+      `/${TEST_ORG_SLUG}/c/${connectionId}/queues/${target.queueName}/jobs/${target.jobId}?tab=logs`
+    )
+
+    const clearButton = page.getByRole('button', { name: /Clear Logs/i })
+    await expect(clearButton).toBeVisible({ timeout: 15000 })
+    await clearButton.click()
+    await page.getByRole('menuitem', { name: `Keep latest ${keepMostRecent} logs` }).click()
+
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await page.getByRole('button', { name: `Keep ${keepMostRecent} logs` }).click()
+    await expect(page.getByRole('dialog')).not.toBeVisible()
+
+    await expect
+      .poll(async () => {
+        const count = await getJobLogsCount(page, connectionId, target.queueName, target.jobId)
+        return count
+      })
+      .toBe(keepMostRecent)
+  })
+
+  test('clear stacktraces keeps most recent X stacktraces', async ({ page }) => {
+    await ensureActiveOrg(page)
+    const connectionId = await getDefaultConnectionId(page)
+    const target = await findFailedJobWithStacktraces(page, connectionId, 15)
+    test.skip(!target, 'No failed job with enough stacktraces found in seed data.')
+    if (!target) return
+
+    const keepMostRecent = 10
+    await page.goto(
+      `/${TEST_ORG_SLUG}/c/${connectionId}/queues/${target.queueName}/jobs/${target.jobId}?tab=attempts`
+    )
+
+    const clearButton = page.getByRole('button', { name: /Clear Stacktraces/i })
+    await expect(clearButton).toBeVisible({ timeout: 15000 })
+    await clearButton.click()
+    await page.getByRole('menuitem', { name: `Keep latest ${keepMostRecent}`, exact: true }).click()
+
+    await expect
+      .poll(async () => {
+        const detail = await getJob(page, connectionId, target.queueName, target.jobId)
+        return detail.stacktraceCount ?? 0
+      })
+      .toBe(keepMostRecent)
+  })
+})
