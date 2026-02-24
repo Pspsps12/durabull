@@ -768,11 +768,10 @@ export function useClearJobLogs() {
       jobId: string
       keepMostRecent?: number
     }) => {
-      const res = await api.c[':connectionId'].queues[':queueName'].jobs[':jobId'].logs.$delete({
-        param: { connectionId: connectionId!, queueName, jobId },
-        query: { keepMostRecent: String(keepMostRecent) },
+      const url = `/api/c/${connectionId}/queues/${encodeURIComponent(queueName)}/jobs/${encodeURIComponent(jobId)}/logs?keepMostRecent=${encodeURIComponent(String(keepMostRecent))}`
+      return fetchApi<{ success: boolean; removed: number }>(url, {
+        method: 'DELETE',
       })
-      return handleRes<{ success: boolean; removed: number }>(res)
     },
     onSuccess: (_, { queueName, jobId, keepMostRecent = 0 }) => {
       trackEvent(AnalyticsEvents.JOB_LOGS_CLEARED, {
