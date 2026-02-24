@@ -1,0 +1,19 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+
+# Allow Google to access favicon files
+Allow: /favicon.ico
+Allow: /favicon.svg
+Allow: /favicon-*.png
+Allow: /apple-touch-icon.png
+Allow: /site.webmanifest
+
+# Disallow authenticated/private routes
+Disallow: /auth-error
+Disallow: /setup-organization
+Disallow: /settings
+Disallow: /invite/
+
+# Sitemap location
+Sitemap: https://durabull.io/sitemap.xml

@@ -1,0 +1,749 @@
+import { AnalyticsEvents, trackEvent } from '@durabull/analytics'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { zodValidator } from '@tanstack/zod-adapter'
+import {
+  AlertCircle,
+  ArrowLeft,
+  Check,
+  Clock,
+  Copy,
+  CopyPlus,
+  FileJson2,
+  History,
+  Loader2,
+  RefreshCw,
+  ScrollText,
+  Settings2,
+  Trash2,
+  Zap,
+} from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { z } from 'zod'
+import { DuplicateJobDialog } from '@/components/duplicate-job-dialog'
+import { FailedAttempts } from '@/components/failed-attempts'
+import { JsonViewer } from '@/components/json-viewer'
+import { QueueNameTag } from '@/components/queue-name-tag'
+import { RetryCountdown } from '@/components/retry-countdown'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useJob, useJobLogs, usePromoteJobs, useRemoveJobs, useRetryJobs } from '@/hooks/use-queues'
+import { formatDate, formatDuration, getTimezoneAbbreviation } from '@/lib/utils'
+
+const jobSearchSchema = z.object({
+  tab: z.enum(['attempts', 'data', 'logs', 'options']).catch('data'),
+})
+
+export const Route = createFileRoute('/$orgSlug/c/$connectionId/queues/$queueName_/jobs/$jobId')({
+  validateSearch: zodValidator(jobSearchSchema),
+  component: JobDetailPage,
+})
+
+function JobDetailPage() {
+  const { orgSlug, connectionId, queueName, jobId } = Route.useParams()
+  const { tab } = Route.useSearch()
+  const navigate = useNavigate()
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false)
+
+  const { data: job, isLoading, error } = useJob(queueName, jobId)
+  const { data: logsData } = useJobLogs(queueName, jobId)
+
+  const retryMutation = useRetryJobs()
+  const removeMutation = useRemoveJobs()
+  const promoteMutation = usePromoteJobs()
+
+  // Track job view when job data is loaded
+  useEffect(() => {
+    if (job) {
+      trackEvent(AnalyticsEvents.JOB_VIEWED, {
+        queue_name: queueName,
+        job_id: jobId,
+        job_status: job.status,
+      })
+    }
+  }, [job, queueName, jobId])
+
+  // Track tab changes
+  const handleTabChange = (newTab: string) => {
+    trackEvent(AnalyticsEvents.JOB_TAB_CHANGED, {
+      job_id: jobId,
+      job_tab: newTab,
+    })
+  }
+
+  // Truncate long job IDs intelligently - show meaningful parts (must be before early returns)
+  const truncatedJobId = useMemo(() => {
+    const id = job?.id ?? ''
+    if (id.length <= 36) return id
+    // Show first 16 + … + last 16 chars for long IDs
+    return `${id.slice(0, 16)}…${id.slice(-16)}`
+  }, [job?.id])
+
+  const isIdTruncated = (job?.id?.length ?? 0) > 36
+
+  const statusConfig: Record<string, { variant: string; color: string }> = {
+    waiting: { variant: 'secondary', color: 'text-muted-foreground' },
+    active: { variant: 'default', color: 'text-blue-600 dark:text-blue-400' },
+    delayed: { variant: 'warning', color: 'text-orange-600 dark:text-orange-400' },
+    completed: { variant: 'success', color: 'text-green-600 dark:text-green-400' },
+    failed: { variant: 'destructive', color: 'text-red-600 dark:text-red-400' },
+  }
+
+  const hasFailedAttempts = (job?.stacktraceCount ?? 0) > 0
+  const hasFailed = job?.status === 'failed'
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Job not found</h2>
+        <p className="text-muted-foreground mb-4">{error.message}</p>
+        <Button
+          variant="outline"
+          onClick={() =>
+            navigate({
+              to: '/$orgSlug/c/$connectionId/queues/$queueName',
+              params: { orgSlug, connectionId, queueName },
+              search: {},
+            })
+          }
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Queue
+        </Button>
+      </div>
+    )
+  }
+
+  const handleRetry = () => {
+    retryMutation.mutate(
+      { queueName, jobIds: [jobId] },
+      {
+        onSuccess: () => {
+          navigate({
+            to: '/$orgSlug/c/$connectionId/queues/$queueName',
+            params: { orgSlug, connectionId, queueName },
+            search: {},
+          })
+        },
+      }
+    )
+  }
+
+  const handleRemove = () => {
+    removeMutation.mutate(
+      { queueName, jobIds: [jobId] },
+      {
+        onSuccess: () => {
+          navigate({
+            to: '/$orgSlug/c/$connectionId/queues/$queueName',
+            params: { orgSlug, connectionId, queueName },
+            search: {},
+          })
+        },
+      }
+    )
+  }
+
+  const handlePromote = () => {
+    promoteMutation.mutate(
+      { queueName, jobIds: [jobId] },
+      {
+        onSuccess: () => {
+          navigate({
+            to: '/$orgSlug/c/$connectionId/queues/$queueName',
+            params: { orgSlug, connectionId, queueName },
+            search: {},
+          })
+        },
+      }
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-6">
+        <div className="flex items-start gap-4 min-w-0 flex-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="mt-1 shrink-0"
+            onClick={() =>
+              navigate({
+                to: '/$orgSlug/c/$connectionId/queues/$queueName',
+                params: { orgSlug, connectionId, queueName },
+                search: {},
+              })
+            }
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="min-w-0 flex-1">
+            {isLoading ? (
+              <Skeleton className="h-8 w-64" />
+            ) : (
+              <div className="space-y-2">
+                {/* Job ID with copy button */}
+                <div className="flex items-center gap-2">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <h1 className="text-2xl font-bold tracking-tight font-mono cursor-default select-none whitespace-nowrap">
+                          {truncatedJobId}
+                        </h1>
+                      </TooltipTrigger>
+                      {isIdTruncated && (
+                        <TooltipContent
+                          side="bottom"
+                          className="max-w-lg font-mono text-xs break-all p-3"
+                        >
+                          {job?.id}
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                  <CopyJobIdButton jobId={job?.id ?? ''} />
+                </div>
+                {/* Queue / Job name breadcrumb */}
+                <div className="flex items-center gap-2 mt-1">
+                  <QueueNameTag name={queueName} asLink size="sm" />
+                  <span className="text-muted-foreground">/</span>
+                  <span className="text-muted-foreground">{job?.name}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Actions on the right - vertically aligned */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Status badge - prominent and separate */}
+          {!isLoading && job?.status && (
+            <Badge
+              variant={(statusConfig[job.status]?.variant as 'default') || 'secondary'}
+              className="capitalize h-7 px-3 text-sm"
+            >
+              {job.status}
+            </Badge>
+          )}
+
+          {job?.status === 'failed' && (
+            <Button
+              variant="outline"
+              onClick={handleRetry}
+              disabled={retryMutation.isPending}
+              className="border-green-500/30 text-green-600 hover:bg-green-500/10 hover:text-green-600"
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Retry Job
+            </Button>
+          )}
+          {job?.status === 'delayed' && (
+            <Button variant="outline" onClick={handlePromote} disabled={promoteMutation.isPending}>
+              <Zap className="mr-2 h-4 w-4" />
+              Promote
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => setDuplicateDialogOpen(true)} disabled={!job}>
+            <CopyPlus className="mr-2 h-4 w-4" />
+            Duplicate
+          </Button>
+          <Button variant="destructive" onClick={handleRemove} disabled={removeMutation.isPending}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            Remove
+          </Button>
+        </div>
+      </div>
+
+      {/* Quick stats */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        <StatCard
+          label={`Created (${getTimezoneAbbreviation()})`}
+          value={formatDate(job?.timestamp)}
+          icon={<Clock className="h-4 w-4" />}
+          isLoading={isLoading}
+        />
+        <StatCard
+          label={`Processed (${getTimezoneAbbreviation()})`}
+          value={formatDate(job?.processedOn)}
+          isLoading={isLoading}
+        />
+        <StatCard
+          label={`Finished (${getTimezoneAbbreviation()})`}
+          value={formatDate(job?.finishedOn)}
+          isLoading={isLoading}
+        />
+        <StatCard
+          label="Duration"
+          value={
+            job?.processedOn && job?.finishedOn
+              ? formatDuration(job.finishedOn - job.processedOn)
+              : '-'
+          }
+          isLoading={isLoading}
+        />
+        <StatCard
+          label="Attempts"
+          value={
+            <div className="flex items-center gap-2">
+              <span className={hasFailed ? 'text-destructive' : ''}>{job?.attemptsMade}</span>
+              <span className="text-muted-foreground font-normal">/ {job?.maxAttempts}</span>
+            </div>
+          }
+          isLoading={isLoading}
+          highlight={hasFailed}
+        />
+      </div>
+
+      {/* Retry countdown - shows when job is waiting for retry */}
+      <RetryCountdown
+        processedOn={job?.processedOn}
+        finishedOn={job?.finishedOn}
+        attemptsMade={job?.attemptsMade ?? 0}
+        maxAttempts={job?.maxAttempts ?? 1}
+        backoff={
+          job?.opts?.backoff as { type?: 'fixed' | 'exponential'; delay?: number } | undefined
+        }
+        status={job?.status}
+      />
+
+      {/* Failed reason alert - prominent for failed jobs */}
+      {job?.failedReason && (
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-destructive flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              Error Message
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ErrorDisplay error={job.failedReason} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tabs */}
+      <Tabs
+        value={tab}
+        onValueChange={(newTab) => {
+          handleTabChange(newTab)
+          navigate({
+            to: '.',
+            search: { tab: newTab as typeof tab },
+            replace: true,
+          })
+        }}
+      >
+        <TabsList className="w-full justify-start">
+          {(hasFailedAttempts || hasFailed) && (
+            <TabsTrigger value="attempts" className="gap-2">
+              <History className="h-4 w-4" />
+              Failed Attempts
+              {hasFailedAttempts && (
+                <Badge variant="destructive" className="ml-1 h-5 px-1.5 text-xs">
+                  {(job?.stacktraceCount ?? 0).toLocaleString()}
+                </Badge>
+              )}
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="data" className="gap-2">
+            <FileJson2 className="h-4 w-4" />
+            Job Data
+          </TabsTrigger>
+          <TabsTrigger value="logs" className="gap-2">
+            <ScrollText className="h-4 w-4" />
+            Logs
+            {logsData?.pages?.[0]?.count ? (
+              <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                {logsData.pages[0].count.toLocaleString()}
+              </Badge>
+            ) : null}
+          </TabsTrigger>
+          <TabsTrigger value="options" className="gap-2">
+            <Settings2 className="h-4 w-4" />
+            Options
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Failed Attempts Tab */}
+        {(hasFailedAttempts || hasFailed) && (
+          <TabsContent value="attempts" className="mt-6">
+            <FailedAttempts
+              queueName={queueName}
+              jobId={jobId}
+              attemptsMade={job?.attemptsMade ?? 0}
+              maxAttempts={job?.maxAttempts ?? 1}
+              stacktraceCount={job?.stacktraceCount ?? 0}
+              failedReason={job?.failedReason}
+              processedOn={job?.processedOn}
+              finishedOn={job?.finishedOn}
+              backoff={
+                job?.opts?.backoff as { type?: 'fixed' | 'exponential'; delay?: number } | undefined
+              }
+              status={job?.status}
+            />
+          </TabsContent>
+        )}
+
+        {/* Job Data Tab */}
+        <TabsContent value="data" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <FileJson2 className="h-4 w-4" />
+                Job Payload
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <Skeleton className="h-48" />
+              ) : (
+                <JsonViewer data={job?.data} maxInitialDepth={3} />
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Return value if completed */}
+          {job?.returnvalue != null && (
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle className="text-sm font-medium flex items-center gap-2 text-green-600">
+                  <Check className="h-4 w-4" />
+                  Return Value
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <JsonViewer data={job.returnvalue} maxInitialDepth={3} />
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Logs Tab */}
+        <TabsContent value="logs" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <ScrollText className="h-4 w-4" />
+                Job Logs
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <LogViewer queueName={queueName} jobId={jobId} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Options Tab */}
+        <TabsContent value="options" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Settings2 className="h-4 w-4" />
+                Job Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <Skeleton className="h-48" />
+              ) : (
+                <JsonViewer data={job?.opts} maxInitialDepth={2} />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Duplicate Job Dialog */}
+      {job && (
+        <DuplicateJobDialog
+          open={duplicateDialogOpen}
+          onOpenChange={setDuplicateDialogOpen}
+          queueName={queueName}
+          originalJobId={job.id}
+          originalJobName={job.name}
+          originalJobData={job.data}
+          originalOptions={{
+            delay: job.delay,
+            priority: job.priority,
+            attempts: job.maxAttempts,
+          }}
+          onSuccess={() => {
+            navigate({
+              to: '/$orgSlug/c/$connectionId/queues/$queueName',
+              params: { orgSlug, connectionId, queueName },
+              search: {},
+            })
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Stat card component
+function StatCard({
+  label,
+  value,
+  icon,
+  isLoading,
+  highlight,
+}: {
+  label: string
+  value: React.ReactNode
+  icon?: React.ReactNode
+  isLoading?: boolean
+  highlight?: boolean
+}) {
+  return (
+    <Card className={highlight ? 'border-destructive/30' : ''}>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-xs font-medium text-muted-foreground">{label}</CardTitle>
+        {icon && <span className="text-muted-foreground">{icon}</span>}
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-5 w-24" />
+        ) : (
+          <div className="text-sm font-semibold">{value}</div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// Error display component with copy functionality
+function ErrorDisplay({ error }: { error: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(error)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
+  return (
+    <div className="relative group">
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-2 top-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+              onClick={handleCopy}
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-green-500" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{copied ? 'Copied!' : 'Copy error'}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <pre className="text-sm text-destructive bg-destructive/10 p-4 rounded-lg overflow-auto max-h-48 font-mono whitespace-pre-wrap wrap-break-word">
+        {error}
+      </pre>
+    </div>
+  )
+}
+
+// Log viewer component with infinite scrolling and virtualization
+function LogViewer({ queueName, jobId }: { queueName: string; jobId: string }) {
+  const [copied, setCopied] = useState(false)
+  const parentRef = useRef<HTMLDivElement>(null)
+  const loadMoreRef = useRef<HTMLDivElement>(null)
+
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useJobLogs(
+    queueName,
+    jobId
+  )
+
+  // Flatten all pages into a single array
+  const allLogs = data?.pages.flatMap((page) => page.logs) ?? []
+  const totalLogs = data?.pages[0]?.count ?? 0
+
+  // Virtualizer for efficient rendering
+  const virtualizer = useVirtualizer({
+    count: allLogs.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 28,
+    overscan: 10,
+  })
+
+  // Infinite scroll - load more when near bottom
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage()
+        }
+      },
+      { threshold: 0.1, rootMargin: '100px' }
+    )
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current)
+    }
+
+    return () => observer.disconnect()
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage])
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(allLogs.join('\n'))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="py-12 text-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-4" />
+        <p className="text-sm text-muted-foreground">Loading logs...</p>
+      </div>
+    )
+  }
+
+  if (allLogs.length === 0) {
+    return (
+      <div className="py-12 text-center">
+        <ScrollText className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
+        <p className="text-muted-foreground">No logs available</p>
+        <p className="text-sm text-muted-foreground/70 mt-1">
+          Logs can be added using job.log() during processing
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative group">
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-2 top-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+              onClick={handleCopy}
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-green-500" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{copied ? 'Copied!' : 'Copy visible logs'}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <div className="rounded-lg bg-[#0d1117] border border-[#30363d] overflow-hidden">
+        <div ref={parentRef} className="p-4 overflow-auto max-h-[500px] font-mono text-sm">
+          <div
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const log = allLogs[virtualRow.index]
+              return (
+                <div
+                  key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                  className="py-0.5 flex gap-3 hover:bg-[#161b22] px-2 rounded"
+                >
+                  <span className="text-[#8b949e] select-none w-8 text-right shrink-0">
+                    {virtualRow.index + 1}
+                  </span>
+                  <span className="text-[#c9d1d9] break-all">{log}</span>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Load more trigger */}
+          <div ref={loadMoreRef} className="h-4" />
+
+          {/* Loading indicator */}
+          {isFetchingNextPage && (
+            <div className="flex items-center justify-center py-2 gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-xs">Loading more logs...</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Total count indicator */}
+      {totalLogs > 0 && (
+        <div className="flex justify-end mt-2">
+          <span className="text-xs text-muted-foreground">
+            Showing {allLogs.length.toLocaleString()} of {totalLogs.toLocaleString()} logs
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Copy Job ID button with animated feedback
+function CopyJobIdButton({ jobId }: { jobId: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(jobId)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 opacity-50 hover:opacity-100 transition-all shrink-0"
+            onClick={handleCopy}
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-green-500" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{copied ? 'Copied!' : 'Copy job ID'}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}

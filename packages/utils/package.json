@@ -1,0 +1,28 @@
+{
+  "name": "@durabull/utils",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./uuid": {
+      "types": "./src/uuid.ts",
+      "import": "./src/uuid.ts",
+      "require": "./src/uuid.ts",
+      "default": "./src/uuid.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint ./src",
+    "lint:fix": "biome lint --write ./src",
+    "format": "biome format --write ./src",
+    "format:check": "biome format ./src"
+  },
+  "dependencies": {
+    "uuidv7": "^1.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.2"
+  }
+}

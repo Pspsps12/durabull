@@ -1,0 +1,68 @@
+---
+title: Authentication and Organizations
+description: Configure authless or Better Auth mode and understand organization-scoped behavior.
+---
+
+## Authentication Modes
+
+### Authless Mode
+
+Use when operating in trusted private environments.
+
+```bash
+DURABULL_AUTHLESS=true
+```
+
+Behavior:
+
+- Login is bypassed.
+- A local authless user and organization are auto-initialized.
+- Organization-scoped operations still apply, but without external identity flow.
+
+### Authenticated Mode (Better Auth)
+
+Use for team and internet-facing deployments.
+
+```bash
+DURABULL_AUTHLESS=false
+BETTER_AUTH_SECRET=<long-random-secret>
+```
+
+Optional OAuth providers:
+
+- Google: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`
+- GitHub: `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`
+
+## Organization Model
+
+Most operational resources are organization-scoped:
+
+- Redis connections
+- Team members
+- Invitations
+- Active org context used by connection-scoped routes
+
+If no active organization exists, users are routed through organization setup.
+
+## Invite Flow
+
+Invite acceptance uses a public invitation endpoint and then transitions into authenticated org context.
+
+Core behavior:
+
+- Pending and non-expired invitations can be accepted.
+- Expired or already-processed invites are rejected with explicit errors.
+- Accepted invite flow can route user to sign-in or sign-up then activate org.
+
+## Settings and Account Linking
+
+Authenticated users can link/unlink social providers in settings.
+
+Use this when:
+
+- Migrating from password login to OAuth
+- Enabling multiple sign-in methods for the same account
+
+Screenshot placeholder: login/signup/invite acceptance screens.
+
+Video placeholder: member invite from owner to accepted user session.

@@ -1,0 +1,76 @@
+---
+title: Environment Variables
+description: Complete runtime environment variable reference for local and production Durabull deployments.
+---
+
+## Core Runtime
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `NODE_ENV` | No | Runtime mode (`development`, `test`, `production`) |
+| `PORT` | No | API server port |
+| `APP_BASE_URL` | Recommended | Canonical app URL used by auth and email flows |
+| `VITE_PUBLIC_APP_URL` | Recommended | Public URL exposed to browser clients |
+
+## Auth and Identity
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DURABULL_AUTHLESS` | No | Enable/disable authless mode |
+| `BETTER_AUTH_SECRET` | Required when auth enabled | Session/auth signing secret |
+| `GOOGLE_OAUTH_CLIENT_ID` | Optional | Google OAuth client ID |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Optional | Google OAuth secret |
+| `GITHUB_OAUTH_CLIENT_ID` | Optional | GitHub OAuth client ID |
+| `GITHUB_OAUTH_CLIENT_SECRET` | Optional | GitHub OAuth secret |
+
+## Persistence and Data
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DURABULL_POSTGRES_PORT` | Optional | Host port mapped to Docker Postgres (`55432` default) |
+| `DATABASE_URL` | Optional | Enables PostgreSQL mode when set |
+| `REDIS_URL` | Optional | Generic Redis URL used by scripts/defaults |
+| `DURABULL_PGLITE_DIR` | Optional | Override PGlite data directory |
+
+## Connection Mode
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DURABULL_ENV_CONNECTIONS` | No | Use env-driven connection set |
+| `DURABULL_REDIS_URL_DEFAULT` | Recommended | Default env connection key |
+| `DURABULL_REDIS_URL_<NAME>` | When env mode enabled | Redis URL for named connection |
+| `DURABULL_REDIS_URL_<NAME>_ENVIRONMENT` | Optional | `development`, `staging`, or `production` |
+
+## Optional Integrations
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `RESEND_API_KEY` | Optional | Invitation email delivery |
+| `POSTHOG_KEY` | Optional | PostHog project API key |
+| `POSTHOG_HOST` | Optional | PostHog upstream host for the reverse proxy (defaults to `https://us.i.posthog.com`) |
+
+> **Note:** The web app receives PostHog configuration from the API at `/api/app/config`. You only need to set the server-side `POSTHOG_KEY` and `POSTHOG_HOST` variables — no `VITE_` prefix is required. Set `POSTHOG_HOST` to PostHog's ingestion domain (for example `https://us.i.posthog.com`), not your own app `/ingest` URL. The API reverse-proxies analytics traffic through `/ingest` to bypass ad blockers.
+
+## Optional Runtime Toggles
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DISABLE_RATE_LIMIT` | No | Disable in-memory rate limiting |
+| `ASSET_PRELOAD_MAX_SIZE` | No | Asset preload tuning |
+| `ASSET_PRELOAD_VERBOSE_LOGGING` | No | Extra preload diagnostics |
+
+## Recommended Production Baseline
+
+```bash
+NODE_ENV=production
+APP_BASE_URL=https://your-domain.example
+VITE_PUBLIC_APP_URL=https://your-domain.example
+DURABULL_AUTHLESS=false
+BETTER_AUTH_SECRET=<long-random-secret>
+DURABULL_ENV_CONNECTIONS=true
+DURABULL_REDIS_URL_MAIN=redis://...
+DURABULL_REDIS_URL_MAIN_ENVIRONMENT=production
+DURABULL_REDIS_URL_DEFAULT=MAIN
+```
+
+Screenshot placeholder: `.env` sample file in docs-friendly format.

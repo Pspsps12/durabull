@@ -1,0 +1,25 @@
+{
+  "name": "@durabull/scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "seed": "bun run seed/index.ts",
+    "seed:demo": "bun run seed-demo-account.ts",
+    "check:demo": "bun run check-demo-health.ts",
+    "wipe": "bun run wipe.ts",
+    "generate-favicons": "bun run generate-favicons.ts"
+  },
+  "dependencies": {
+    "@durabull/dal": "workspace:*",
+    "@durabull/env": "workspace:*",
+    "@durabull/utils": "workspace:*",
+    "@noble/hashes": "^2.0.0",
+    "bullmq": "^5.34.8",
+    "ioredis": "^5.4.2"
+  },
+  "devDependencies": {
+    "sharp": "^0.33.5",
+    "@types/sharp": "^0.32.0"
+  }
+}

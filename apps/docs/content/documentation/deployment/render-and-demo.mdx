@@ -1,0 +1,53 @@
+---
+title: Render and Demo Account Pipeline
+description: Deploy Durabull with Render blueprint and understand the automated demo data refresh architecture.
+---
+
+## Render Blueprint
+
+Blueprint file:
+
+- `render.yaml`
+
+Services provisioned:
+
+- `durabull` web service
+- `demo-redis` managed Redis (Render KV)
+- `seed-demo-account` cron job (every 12 hours)
+
+## Demo Refresh Pipeline
+
+The cron job:
+
+- reads `DURABULL_DEMO_ACCOUNT_REDIS_CONNECTION_STRING`
+- flushes the demo Redis database
+- reseeds realistic queues/jobs/scheduled jobs/redis keys
+- writes health metadata keys
+
+Reference:
+
+- `DEMO_ACCOUNT_SETUP.md`
+
+## Demo Health Keys
+
+- `durabull:demo:seed-metadata`
+- `durabull:demo:last-seeded`
+
+These can be checked from Redis CLI or monitoring scripts.
+
+## Manual Verification Steps
+
+1. Trigger `seed-demo-account` run from Render dashboard.
+2. Confirm successful run logs.
+3. Open Durabull using demo connection.
+4. Verify queues, delayed jobs, and scheduled jobs appear fresh.
+
+## Important Safety Rule
+
+The demo Redis instance is intentionally wiped every cycle.
+
+- Do not store production data in this instance.
+
+Screenshot placeholder: Render service overview and cron run logs.
+
+Video placeholder: end-to-end demo reseed verification.

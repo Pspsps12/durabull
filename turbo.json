@@ -1,0 +1,76 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".output/**", ".next/**", "out/**"],
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "REDIS_URL",
+        "DOTENV_PRIVATE_KEY",
+        "MARKETPLACE_*",
+        "RESEND_API_KEY",
+        "DURABULL_*",
+        "VITE_PUBLIC_APP_URL",
+        "NEXT_PUBLIC_WEB_APP_URL",
+        "NEXT_PUBLIC_POSTHOG_KEY",
+        "POSTHOG_KEY",
+        "POSTHOG_HOST"
+      ]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "REDIS_URL",
+        "DOTENV_PRIVATE_KEY",
+        "MARKETPLACE_*",
+        "RESEND_API_KEY",
+        "GOOGLE_OAUTH_CLIENT_ID",
+        "GOOGLE_OAUTH_CLIENT_SECRET",
+        "GITHUB_CLIENT_ID",
+        "GITHUB_CLIENT_SECRET",
+        "DURABULL_*",
+        "VITE_PUBLIC_APP_URL",
+        "NEXT_PUBLIC_WEB_APP_URL",
+        "NEXT_PUBLIC_POSTHOG_KEY",
+        "POSTHOG_KEY",
+        "POSTHOG_HOST"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "clean": {
+      "cache": false
+    },
+    "lint": {
+      "dependsOn": ["^build"]
+    },
+    "lint:fix": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "format": {
+      "cache": false
+    },
+    "format:check": {},
+    "test:e2e": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "REDIS_URL",
+        "CI",
+        "DURABULL_*",
+        "APP_BASE_URL",
+        "VITE_PUBLIC_APP_URL",
+        "NEXT_PUBLIC_WEB_APP_URL",
+        "NEXT_PUBLIC_POSTHOG_KEY",
+        "POSTHOG_KEY",
+        "POSTHOG_HOST"
+      ]
+    }
+  }
+}

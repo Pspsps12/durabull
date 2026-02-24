@@ -1,0 +1,37 @@
+---
+title: Connection Troubleshooting
+description: Learn how to add a Redis connection and resolve common setup errors.
+---
+
+Use this guide if you are adding a new Redis connection and the test or create flow fails.
+
+## How to Add a Connection
+
+1. Open **Connections** in the app.
+2. Click **Add Connection**.
+3. Fill in:
+   - **Connection Name**
+   - **Connection URL**
+   - **Environment**
+4. Click **Test** to verify connectivity before saving.
+5. Click **Create Connection**.
+
+## Common Connection Issues
+
+### TLS Encryption
+
+Ensure your protocol is set to `rediss://` instead of `redis://` (note the extra `s`).
+
+### IP Allowlisting
+
+If your setup restricts incoming traffic, you will need to allowlist these Durabull IP ranges:
+
+- `74.220.48.0/24`
+- `74.220.56.0/24`
+
+## Quick Verification Checklist
+
+- Confirm host, port, username, and password are correct.
+- Confirm TLS is enabled when your provider requires it.
+- Confirm network allowlists and firewall rules include Durabull source ranges.
+- Re-run **Test** in the modal after each change.

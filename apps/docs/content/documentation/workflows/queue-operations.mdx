@@ -1,0 +1,84 @@
+---
+title: Queue Operations
+description: Perform queue-level control actions including pause, resume, status-based purge, clean, delete, and obliterate.
+---
+
+## Route Scope
+
+Queue detail route:
+
+- `/$orgSlug/c/$connectionId/queues/$queueName`
+
+This page combines queue summary, jobs table, and scheduled-job tab.
+
+## Available Queue Controls
+
+### Pause/Resume Queue
+
+- `POST /api/c/:connectionId/queues/:queueName/pause`
+- `POST /api/c/:connectionId/queues/:queueName/resume`
+
+Use pause during incidents, downstream outages, or controlled maintenance.
+
+### Clean Queue by Status
+
+- `POST /api/c/:connectionId/queues/:queueName/clean`
+- Requires `status`, optional `gracePeriod`, optional `limit`
+
+Supported clean statuses include `completed`, `failed`, `delayed`, `paused`, `waiting`, and `active` (mapped internally to BullMQ equivalents).
+
+### Purge Queue Jobs (Guarded + Multi-Status)
+
+- `POST /api/c/:connectionId/queues/:queueName/purge`
+- Requires:
+  - `confirmName` (must exactly match queue name)
+  - `statuses` (one or more specific statuses, or `["all"]`)
+
+This is designed for full destructive cleanup of selected queue states.
+
+Operational behavior:
+
+- users can select any status combination (`waiting`, `active`, `delayed`, `completed`, `failed`, `paused`, `prioritized`)
+- users can choose full purge via `statuses: ["all"]`
+- confirmation input only authorizes purge when exact queue name is entered
+
+Response includes:
+
+- `statusesPurged`
+- `totalRemoved`
+- `removedByStatus`
+- `removedJobIdsSample` (sample only)
+
+### Purge Flow in the UI
+
+1. Open queue detail settings menu.
+2. Choose **Purge Jobs**.
+3. Select one or more statuses, or **All jobs**.
+4. Type exact queue name to enable the destructive action.
+5. Submit purge and verify updated queue counts.
+
+### Obliterate Queue
+
+- `POST /api/c/:connectionId/queues/:queueName/obliterate`
+
+Removes queue data forcefully. Use only with clear intent.
+
+### Delete Queue (Guarded)
+
+- `DELETE /api/c/:connectionId/queues/:queueName`
+- Requires `confirmName` that must match queue name
+- Refuses deletion if active queue states still contain jobs
+
+Use pre-flight check route:
+
+- `GET /api/c/:connectionId/queues/:queueName/can-delete`
+
+## Safe Deletion Procedure
+
+1. Purge jobs by status (`POST /api/c/:connectionId/queues/:queueName/purge`) until queue is empty, or clean statuses manually.
+2. Confirm queue is deletable via `can-delete`.
+3. Delete with exact queue name confirmation.
+
+Screenshot placeholder: queue action menu showing pause/purge/delete controls.
+
+Video placeholder: safe queue cleanup and delete flow.

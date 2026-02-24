@@ -1,0 +1,51 @@
+---
+title: Workers Topology
+description: Understand worker connectivity, queue assignments, and active/idle status from the workers view.
+---
+
+## Route Scope
+
+Workers route:
+
+- `/$orgSlug/c/$connectionId/workers`
+
+This view combines topology visualization and worker detail table.
+
+## Topology Model
+
+The graph renders nodes and edges for:
+
+- Redis node
+- Queue nodes
+- Worker nodes per queue
+
+Queues and workers are sorted for stable layout. Edge styling reflects queue and worker activity.
+
+## Worker Status Rules
+
+Durabull classifies workers as active/idle using idle time.
+
+Current UI rule:
+
+- `idle <= 5000ms`: active
+- `idle > 5000ms`: idle
+
+## API Endpoint
+
+- `GET /api/c/:connectionId/workers`
+
+Returns:
+
+- worker list with queue context
+- queue rollups (worker count, pause status, active/waiting counts)
+- queue-level pagination metadata
+
+## Practical Use Cases
+
+- Verify worker registration after deployment changes.
+- Detect queues with waiting jobs but no workers.
+- Confirm whether queue pause state is intentional.
+
+Screenshot placeholder: workers graph with queue branches and worker nodes.
+
+Video placeholder: diagnosing an idle worker fleet incident.

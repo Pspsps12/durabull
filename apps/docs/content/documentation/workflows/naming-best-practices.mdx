@@ -1,0 +1,90 @@
+---
+title: Queue and Scheduled Job Naming Best Practices
+description: Use consistent naming for queues, jobs, and schedulers so teams can triage faster and automate safely.
+---
+
+Good names reduce incident time.
+
+When queue, job, and scheduler names are predictable, you can filter faster, debug faster, and avoid destructive mistakes.
+
+## Queue Naming Rules
+
+Use a stable, descriptive format:
+
+```text
+<domain>.<resource>.<action>
+```
+
+Examples:
+
+- `billing.invoice.sync`
+- `notifications.email.send`
+- `orders.fulfillment.reconcile`
+
+Guidelines:
+
+- Use lowercase.
+- Use one separator style (`.` recommended).
+- Keep names capability-focused, not team-focused.
+- Do not include environment names in queue names when environments are already separate by connection.
+
+## Job Name Rules
+
+Use the job name to represent the specific operation inside a queue:
+
+```text
+<verb>.<object>[.<variant>]
+```
+
+Examples:
+
+- `sync.invoice`
+- `send.email.receipt`
+- `rebuild.search-index`
+
+Guidelines:
+
+- Prefer explicit verbs (`sync`, `send`, `reconcile`, `cleanup`).
+- Keep the same meaning across all queues.
+- Avoid random suffixes in names (use job data for uniqueness instead).
+
+## Scheduled Job and Scheduler ID Rules
+
+Scheduled jobs need deterministic IDs so you can update or remove them safely.
+
+Recommended scheduler ID format:
+
+```text
+<queue>.<job>.<cadence>.v<version>
+```
+
+Examples:
+
+- `billing.invoice.sync.hourly.v1`
+- `notifications.email.send.daily.v2`
+
+Guidelines:
+
+- Include cadence (`hourly`, `daily`, `every-5m`, etc.).
+- Version IDs when schedule semantics change.
+- Keep timezone handling explicit in job logic/config, not implied by the name.
+
+## What to Avoid
+
+- `queue1`, `default`, `worker-tasks`, `misc`
+- Same queue meaning with multiple spellings (`invoice-sync`, `invoice_sync`, `invoice.sync`)
+- Scheduler IDs that include random UUIDs when you need repeatable updates/removals
+
+## Team Conventions Checklist
+
+- Define one naming template for queue, job, and scheduler IDs.
+- Enforce the template in worker code reviews.
+- Keep names and log fields aligned (`queue`, `jobName`, `schedulerId`).
+- Document ownership per domain so alerts route to the right team.
+
+## Pair Naming with Structured Logs
+
+Naming is most powerful when logs are consistent too.
+
+Next guide:
+[Log Formatting and Highlighting](/documentation/workflows/log-formatting-and-highlighting)

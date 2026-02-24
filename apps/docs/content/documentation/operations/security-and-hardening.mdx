@@ -1,0 +1,55 @@
+---
+title: Security and Hardening
+description: Security checklist and operational hardening guidance for production Durabull deployments.
+---
+
+## Critical Baseline
+
+- Run authenticated mode for internet-facing deployments.
+- Use strong `BETTER_AUTH_SECRET`.
+- Enforce HTTPS at edge/load balancer.
+- Keep `APP_BASE_URL` and `VITE_PUBLIC_APP_URL` accurate and consistent.
+
+## Authless Mode Safety
+
+Authless mode should be treated as trusted-admin mode.
+
+If authless is enabled:
+
+- restrict access by private network controls
+- avoid direct public ingress
+- add external auth/VPN/IP allow-listing at perimeter
+
+## Connection URL Safety
+
+Durabull validates Redis URLs and restricts unsafe patterns during connection create/test workflows.
+
+Operational guidance:
+
+- grant connection management permissions sparingly
+- separate staging and production Redis credentials
+
+## API Protection
+
+Built-in controls include:
+
+- secure headers
+- CORS policy
+- request body size limit (`1MB`)
+- in-memory rate limiting in production
+
+If running multiple API replicas, consider moving rate limits to a shared backend.
+
+## Secrets Handling
+
+- never commit `.env` with real secrets
+- rotate OAuth and auth secrets periodically
+- use platform secret stores (Render/Railway/Kubernetes secrets)
+
+## Data Plane and Network
+
+- prefer private Redis/Postgres connectivity
+- limit Redis exposure to trusted subnets
+- monitor unusual connection test or auth bursts
+
+Screenshot placeholder: security checklist screenshot for runbooks.

@@ -1,0 +1,56 @@
+{
+  "name": "durabull",
+  "version": "0.0.17",
+  "private": true,
+  "license": "Elastic-2.0",
+  "scripts": {
+    "dev": "turbo dev --ui tui --filter=!@durabull/docs",
+    "dev:authless": "bun tooling/scripts/authless-dev.ts",
+    "dev:docs": "turbo dev --filter=@durabull/docs",
+    "dev:all": "turbo dev",
+    "build": "turbo build",
+    "build:docs": "turbo build --filter=@durabull/docs",
+    "build:prod": "turbo build",
+    "typecheck": "turbo typecheck",
+    "clean": "turbo clean",
+    "lint": "turbo lint",
+    "lint:fix": "turbo lint:fix",
+    "format": "turbo format",
+    "format:check": "turbo format:check",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "docker": "docker compose -f tooling/docker/docker-compose.yaml up -d && echo '✅ Docker services running. Run: bun docker:seed'",
+    "docker:seed": "sh -c 'DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:${DURABULL_POSTGRES_PORT:-55432}/durabull} REDIS_URL=${REDIS_URL:-redis://localhost:6379} bun tooling/scripts/seed/index.ts'",
+    "docker:seed:workers": "sh -c 'DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:${DURABULL_POSTGRES_PORT:-55432}/durabull} REDIS_URL=${REDIS_URL:-redis://localhost:6379} bun tooling/scripts/seed/index.ts --workers'",
+    "docker:wipe": "sh -c 'DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@localhost:${DURABULL_POSTGRES_PORT:-55432}/durabull} REDIS_URL=${REDIS_URL:-redis://localhost:6379} bun tooling/scripts/wipe.ts --force'",
+    "docker:seed:demo": "DURABULL_DEMO_ACCOUNT_REDIS_CONNECTION_STRING=redis://localhost:6379 bun tooling/scripts/seed-demo-account.ts",
+    "workload:start": "bun run --filter @durabull/fleet-demo-workload start",
+    "workload:dev": "bun run --filter @durabull/fleet-demo-workload dev",
+    "docker:down": "docker compose -f tooling/docker/docker-compose.yaml down",
+    "docker:logs": "docker compose -f tooling/docker/docker-compose.yaml logs -f",
+    "docker:reset": "docker compose -f tooling/docker/docker-compose.yaml down -v && docker compose -f tooling/docker/docker-compose.yaml up -d",
+    "prod": "bun run build && bun apps/api/src/index.ts",
+    "prod:start": "bun apps/api/src/index.ts",
+    "docker:build": "docker build -t durabull .",
+    "release": "release-it",
+    "test:e2e": "cd apps/web && bun run test:e2e",
+    "test:e2e:ui": "cd apps/web && bun run test:e2e:ui",
+    "test:e2e:debug": "cd apps/web && bun run test:e2e:debug"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.0.0",
+    "@types/bun": "latest",
+    "release-it": "^19.2.4",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "bun@1.3.5",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tooling/*"
+  ],
+  "dependencies": {
+    "better-auth": "^1.4.9"
+  }
+}

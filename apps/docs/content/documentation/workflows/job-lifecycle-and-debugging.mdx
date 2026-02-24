@@ -1,0 +1,83 @@
+---
+title: Job Lifecycle and Debugging
+description: Inspect, filter, retry, remove, invoke, and create jobs with logs and stacktrace analysis.
+---
+
+## Job List
+
+Queue jobs route context:
+
+- `/$orgSlug/c/$connectionId/queues/$queueName`
+
+Job listing supports:
+
+- status filter
+- job name filter
+- pagination (`page`, `pageSize`)
+
+API route:
+
+- `GET /api/c/:connectionId/queues/:queueName/jobs`
+
+## Job Detail
+
+Job detail route:
+
+- `/$orgSlug/c/$connectionId/queues/$queueName/jobs/$jobId`
+
+Shows:
+
+- job data payload
+- options and retry metadata
+- progress/attempt counters
+- return value
+- failure reason
+- timestamps
+
+API route:
+
+- `GET /api/c/:connectionId/queues/:queueName/jobs/:jobId`
+
+## Logs and Stacktraces
+
+Logs are paginated via BullMQ log API:
+
+- `GET /api/c/:connectionId/queues/:queueName/jobs/:jobId/logs`
+- `DELETE /api/c/:connectionId/queues/:queueName/jobs/:jobId/logs` clears all logs for the job (permanent Redis deletion)
+
+Stacktraces are served paginated (application-level slicing):
+
+- `GET /api/c/:connectionId/queues/:queueName/jobs/:jobId/stacktraces`
+
+Important detail:
+
+- BullMQ stores stacktraces in the job hash as an array.
+- Pagination reduces transfer cost but still starts from full job retrieval.
+
+## Bulk and Single-Job Actions
+
+Supported actions:
+
+- Retry failed jobs
+  - `POST /jobs/retry`
+- Remove jobs
+  - `POST /jobs/remove`
+- Invoke delayed jobs now (optional data override)
+  - `POST /jobs/invoke`
+- Add new job
+  - `POST /jobs`
+
+Request safety limits:
+
+- Bulk endpoints cap `jobIds` arrays at 100 per request.
+
+## Scheduled/Repeat Job Removal Nuance
+
+For repeat/scheduled jobs (`jobId` starts with `repeat:`):
+
+- removing the job may require removing its scheduler
+- UI/API support a "remove scheduler too" behavior to stop future runs
+
+Screenshot placeholder: job detail view with tabs for data/logs/stacktraces.
+
+Video placeholder: failed job triage from queue list to retry/remove decision.

@@ -1,0 +1,959 @@
+/**
+ * Queue-related hooks using Hono RPC client
+ * Types are inferred from the server via InferResponseType
+ */
+
+import { AnalyticsEvents, trackEvent } from '@durabull/analytics'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useConnection } from '@/components/connection-provider'
+import { ApiError, api, fetchApi, handleRes, type InferResponseType } from '@/lib/api'
+import { PAGINATION } from '@/lib/constants'
+
+// Re-export ApiError for backward compatibility
+export { ApiError }
+
+// Type aliases for cleaner type inference
+type QueuesEndpoint = (typeof api.c)[':connectionId']['queues']
+type QueueEndpoint = (typeof api.c)[':connectionId']['queues'][':queueName']
+type JobEndpoint = (typeof api.c)[':connectionId']['queues'][':queueName']['jobs'][':jobId']
+type ScheduledJobsEndpoint = (typeof api.c)[':connectionId']['scheduled-jobs']
+type MetricsEndpoint = (typeof api.c)[':connectionId']['metrics']
+type WorkersEndpoint = (typeof api.c)[':connectionId']['workers']
+type CanDeleteEndpoint = (typeof api.c)[':connectionId']['queues'][':queueName']['can-delete']
+type PurgeQueueEndpoint = (typeof api.c)[':connectionId']['queues'][':queueName']['purge']
+
+// Type helpers using Hono's InferResponseType
+type ListQueuesResponse = InferResponseType<QueuesEndpoint['$get'], 200>
+type GetQueueResponse = InferResponseType<QueueEndpoint['$get'], 200>
+type GetJobResponse = InferResponseType<JobEndpoint['$get'], 200>
+type ListScheduledJobsResponse = InferResponseType<ScheduledJobsEndpoint['$get'], 200>
+type ListMetricsResponse = InferResponseType<MetricsEndpoint['$get'], 200>
+type ListWorkersResponse = InferResponseType<WorkersEndpoint['$get'], 200>
+type CanDeleteQueueResponse = InferResponseType<CanDeleteEndpoint['$get'], 200>
+type PurgeQueueResponse = InferResponseType<PurgeQueueEndpoint['$post'], 200>
+
+export interface QueueMetricsPoint {
+  metricIndex: number
+  minuteOffset: number
+  timestamp: number
+  completed: number
+  failed: number
+  total: number
+  successRate: number
+  failureRate: number
+}
+
+export interface QueueNativeMetricsResponse {
+  queueName: string
+  range: {
+    granularityMinutes: 1
+    requestedWindowMinutes: number | null
+    start: number
+    end: number
+    returnedPoints: number
+    newestFirst: boolean
+    retainedPoints: number
+    oldestPointTimestamp: number | null
+    newestPointTimestamp: number | null
+    latestPointAgeMs: number | null
+    requestedWindowCoverage: number | null
+  }
+  series: {
+    completed: {
+      meta: { count: number; prevTS: number; prevCount: number }
+      data: number[]
+      count: number
+    }
+    failed: {
+      meta: { count: number; prevTS: number; prevCount: number }
+      data: number[]
+      count: number
+    }
+    points: QueueMetricsPoint[]
+    totals: {
+      completedInWindow: number
+      failedInWindow: number
+      finishedInWindow: number
+      minutesInWindow: number
+      minutesWithCompletionsInWindow: number
+      minutesWithFailuresInWindow: number
+      minutesWithFinishedJobsInWindow: number
+      avgCompletedPerMinuteInWindow: number
+      avgFailedPerMinuteInWindow: number
+      avgFinishedPerMinuteInWindow: number
+      peakCompletedPerMinuteInWindow: number
+      peakFailedPerMinuteInWindow: number
+      peakFinishedPerMinuteInWindow: number
+      longestFailureStreakMinutesInWindow: number
+      longestCompletionStreakMinutesInWindow: number
+      successRateInWindow: number
+      failureRateInWindow: number
+      completedLifetime: number
+      failedLifetime: number
+      finishedLifetime: number
+      successRateLifetime: number
+      failureRateLifetime: number
+      estimatedDrainMinutes: number | null
+    }
+  }
+  queue: {
+    isPaused: boolean
+    isMaxed: boolean
+    waitingToProcess: number
+    workersCount: number
+    schedulersCount: number
+    workers: Array<{
+      id: string
+      name: string
+      address: string
+      ageMs: number
+      idleMs: number
+      raw: Record<string, string>
+    }>
+    queueEventsCount: number
+    queueEvents: Array<{
+      id: string
+      name: string
+      address: string
+      ageMs: number
+      idleMs: number
+      raw: Record<string, string>
+    }>
+  }
+  counts: {
+    waiting: number
+    active: number
+    delayed: number
+    completed: number
+    failed: number
+    paused: number
+    prioritized: number
+    waitingChildren: number
+  }
+  controls: {
+    rateLimitTtlMs: number
+    rateLimited: boolean
+    globalConcurrency: number | null
+    globalRateLimit: { max: number; durationMs: number } | null
+  }
+  priorities: {
+    sampled: number[]
+    counts: Record<string, number>
+  }
+  meta: {
+    concurrency: number | null
+    max: number | null
+    duration: number | null
+    maxLenEvents: number | null
+    paused: boolean | null
+    version: string | null
+  }
+  prometheus: {
+    included: boolean
+    metrics: string | null
+  }
+  warnings: string[]
+}
+
+export interface QueueMetricsOptions {
+  windowMinutes?: number
+  start?: number
+  end?: number
+  includePrometheus?: boolean
+  priorities?: number[]
+}
+
+export const PURGE_QUEUE_STATUSES = [
+  'waiting',
+  'active',
+  'delayed',
+  'completed',
+  'failed',
+  'paused',
+  'prioritized',
+] as const
+
+export type PurgeQueueStatus = (typeof PURGE_QUEUE_STATUSES)[number]
+export type PurgeQueueStatusOption = PurgeQueueStatus | 'all'
+
+export const RETRY_QUEUE_STATUSES = ['failed', 'completed'] as const
+export type RetryQueueStatus = (typeof RETRY_QUEUE_STATUSES)[number]
+export type RetryQueueStatusOption = RetryQueueStatus | 'all'
+
+// Re-export response types for consumers
+export type {
+  ListQueuesResponse,
+  GetQueueResponse,
+  GetJobResponse,
+  ListScheduledJobsResponse,
+  ListWorkersResponse,
+}
+
+/**
+ * Query key factory for queue-related queries
+ * Includes connection ID for proper cache isolation
+ */
+export const queryKeys = {
+  queues: (connectionId: string) => ['queues', connectionId] as const,
+  queue: (connectionId: string, name: string) => ['queue', connectionId, name] as const,
+  queueMetrics: (connectionId: string, name: string, options?: QueueMetricsOptions) =>
+    ['queue', connectionId, name, 'metrics', options] as const,
+  jobs: (
+    connectionId: string,
+    queueName: string,
+    filters?: { status?: string; name?: string; jobId?: string; page?: number; pageSize?: number }
+  ) => ['jobs', connectionId, queueName, filters] as const,
+  job: (connectionId: string, queueName: string, jobId: string) =>
+    ['job', connectionId, queueName, jobId] as const,
+  jobLogs: (connectionId: string, queueName: string, jobId: string) =>
+    ['job', connectionId, queueName, jobId, 'logs'] as const,
+  jobStacktraces: (connectionId: string, queueName: string, jobId: string) =>
+    ['job', connectionId, queueName, jobId, 'stacktraces'] as const,
+  scheduledJobs: (connectionId: string) => ['scheduledJobs', connectionId] as const,
+  queueScheduledJobs: (connectionId: string, queueName: string) =>
+    ['scheduledJobs', connectionId, queueName] as const,
+  allMetrics: (connectionId: string) => ['metrics', connectionId] as const,
+  allWorkers: (connectionId: string) => ['workers', connectionId] as const,
+}
+
+// Queue Queries
+export function useQueues() {
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useQuery({
+    queryKey: queryKeys.queues(connectionId ?? ''),
+    queryFn: async () => {
+      const res = await api.c[':connectionId'].queues.$get({
+        param: { connectionId: connectionId! },
+      })
+      return handleRes<ListQueuesResponse>(res)
+    },
+    enabled: !!connectionId,
+  })
+}
+
+export function useQueue(queueName: string) {
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useQuery({
+    queryKey: queryKeys.queue(connectionId ?? '', queueName),
+    queryFn: async () => {
+      const res = await api.c[':connectionId'].queues[':queueName'].$get({
+        param: { connectionId: connectionId!, queueName },
+      })
+      return handleRes<GetQueueResponse>(res)
+    },
+    enabled: !!queueName && !!connectionId,
+  })
+}
+
+export function useQueueMetrics(queueName: string, options?: QueueMetricsOptions) {
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useQuery({
+    queryKey: queryKeys.queueMetrics(connectionId ?? '', queueName, options),
+    queryFn: async () => {
+      const params = new URLSearchParams()
+
+      if (options?.windowMinutes !== undefined) {
+        params.set('windowMinutes', String(options.windowMinutes))
+      }
+
+      if (options?.start !== undefined) {
+        params.set('start', String(options.start))
+      }
+
+      if (options?.end !== undefined) {
+        params.set('end', String(options.end))
+      }
+
+      if (options?.includePrometheus) {
+        params.set('includePrometheus', '1')
+      }
+
+      if (options?.priorities?.length) {
+        params.set('priorities', options.priorities.join(','))
+      }
+
+      const query = params.toString()
+      const url = `/api/c/${connectionId}/queues/${encodeURIComponent(queueName)}/metrics${query ? `?${query}` : ''}`
+
+      return fetchApi<QueueNativeMetricsResponse>(url)
+    },
+    placeholderData: (previousData) => previousData,
+    enabled: !!queueName && !!connectionId,
+  })
+}
+
+// Job Queries - uses fetchApi since route doesn't have zValidator for query params
+export function useJobs(
+  queueName: string,
+  filters?: { status?: string; name?: string; jobId?: string; page?: number; pageSize?: number }
+) {
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useQuery({
+    queryKey: queryKeys.jobs(connectionId ?? '', queueName, filters),
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (filters?.status) params.set('status', filters.status)
+      if (filters?.name) params.set('name', filters.name)
+      if (filters?.jobId) params.set('jobId', filters.jobId)
+      if (filters?.page) params.set('page', filters.page.toString())
+      if (filters?.pageSize) params.set('pageSize', filters.pageSize.toString())
+      const query = params.toString()
+
+      const url = `/api/c/${connectionId}/queues/${encodeURIComponent(queueName)}/jobs${query ? `?${query}` : ''}`
+      return fetchApi<{
+        jobs: Array<{
+          id: string
+          name: string
+          status: string
+          data: Record<string, unknown>
+          progress: number | string | object | boolean
+          attemptsMade: number
+          maxAttempts: number
+          failedReason?: string
+          processedOn?: number
+          finishedOn?: number
+          timestamp: number
+          delay: number
+          priority: number
+        }>
+        total: number
+        page: number
+        pageSize: number
+        totalPages: number
+      }>(url)
+    },
+    enabled: !!queueName && !!connectionId,
+  })
+}
+
+export function useJob(queueName: string, jobId: string) {
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useQuery({
+    queryKey: queryKeys.job(connectionId ?? '', queueName, jobId),
+    queryFn: async () => {
+      const res = await api.c[':connectionId'].queues[':queueName'].jobs[':jobId'].$get({
+        param: { connectionId: connectionId!, queueName, jobId },
+      })
+      return handleRes<GetJobResponse>(res)
+    },
+    enabled: !!queueName && !!jobId && !!connectionId,
+  })
+}
+
+export function useJobLogs(queueName: string, jobId: string) {
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useInfiniteQuery({
+    queryKey: queryKeys.jobLogs(connectionId ?? '', queueName, jobId),
+    queryFn: async ({ pageParam = 1 }) => {
+      const params = new URLSearchParams()
+      params.set('page', String(pageParam))
+      params.set('pageSize', String(PAGINATION.LOGS_PAGE_SIZE))
+
+      const url = `/api/c/${connectionId}/queues/${encodeURIComponent(queueName)}/jobs/${encodeURIComponent(jobId)}/logs?${params}`
+      return fetchApi<{
+        logs: string[]
+        count: number
+        page: number
+        pageSize: number
+        totalPages: number
+        hasMore: boolean
+      }>(url)
+    },
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+    initialPageParam: 1,
+    enabled: !!queueName && !!jobId && !!connectionId,
+  })
+}
+
+export function useJobStacktraces(queueName: string, jobId: string, enabled = true) {
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useInfiniteQuery({
+    queryKey: queryKeys.jobStacktraces(connectionId ?? '', queueName, jobId),
+    queryFn: async ({ pageParam = 1 }) => {
+      const params = new URLSearchParams()
+      params.set('page', String(pageParam))
+      params.set('pageSize', String(PAGINATION.STACKTRACES_PAGE_SIZE))
+
+      const url = `/api/c/${connectionId}/queues/${encodeURIComponent(queueName)}/jobs/${encodeURIComponent(jobId)}/stacktraces?${params}`
+      return fetchApi<{
+        items: Array<{ attemptNumber: number; stacktrace: string; isLatest: boolean }>
+        total: number
+        page: number
+        pageSize: number
+        totalPages: number
+        hasMore: boolean
+      }>(url)
+    },
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+    initialPageParam: 1,
+    enabled: !!queueName && !!jobId && !!connectionId && enabled,
+  })
+}
+
+// Scheduled Jobs Queries
+export function useScheduledJobs() {
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useQuery({
+    queryKey: queryKeys.scheduledJobs(connectionId ?? ''),
+    queryFn: async () => {
+      const res = await api.c[':connectionId']['scheduled-jobs'].$get({
+        param: { connectionId: connectionId! },
+      })
+      return handleRes<ListScheduledJobsResponse>(res)
+    },
+    enabled: !!connectionId,
+  })
+}
+
+export function useQueueScheduledJobs(queueName: string) {
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useQuery({
+    queryKey: queryKeys.queueScheduledJobs(connectionId ?? '', queueName),
+    queryFn: async () => {
+      const res = await api.c[':connectionId']['scheduled-jobs'].queue[':queueName'].$get({
+        param: { connectionId: connectionId!, queueName },
+      })
+      return handleRes<ListScheduledJobsResponse>(res)
+    },
+    enabled: !!queueName && !!connectionId,
+  })
+}
+
+// Metrics Query
+export function useAllMetrics() {
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useQuery({
+    queryKey: queryKeys.allMetrics(connectionId ?? ''),
+    queryFn: async () => {
+      const res = await api.c[':connectionId'].metrics.$get({
+        param: { connectionId: connectionId! },
+        query: {},
+      })
+      return handleRes<ListMetricsResponse>(res)
+    },
+    enabled: !!connectionId,
+  })
+}
+
+// Workers Query
+export function useAllWorkers() {
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useQuery({
+    queryKey: queryKeys.allWorkers(connectionId ?? ''),
+    queryFn: async () => {
+      const res = await api.c[':connectionId'].workers.$get({
+        param: { connectionId: connectionId! },
+      })
+      return handleRes<ListWorkersResponse>(res)
+    },
+    enabled: !!connectionId,
+  })
+}
+
+// Queue Mutations
+export function usePauseQueue() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async (queueName: string) => {
+      const res = await api.c[':connectionId'].queues[':queueName'].pause.$post({
+        param: { connectionId: connectionId!, queueName },
+      })
+      return handleRes<{ success: boolean; message: string }>(res)
+    },
+    onSuccess: (_, queueName) => {
+      trackEvent(AnalyticsEvents.QUEUE_PAUSED, {
+        queue_name: queueName,
+        success: true,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues(connectionId ?? '') })
+    },
+    onError: (_, queueName) => {
+      trackEvent(AnalyticsEvents.QUEUE_PAUSED, {
+        queue_name: queueName,
+        success: false,
+      })
+    },
+  })
+}
+
+export function useResumeQueue() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async (queueName: string) => {
+      const res = await api.c[':connectionId'].queues[':queueName'].resume.$post({
+        param: { connectionId: connectionId!, queueName },
+      })
+      return handleRes<{ success: boolean; message: string }>(res)
+    },
+    onSuccess: (_, queueName) => {
+      trackEvent(AnalyticsEvents.QUEUE_RESUMED, {
+        queue_name: queueName,
+        success: true,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues(connectionId ?? '') })
+    },
+    onError: (_, queueName) => {
+      trackEvent(AnalyticsEvents.QUEUE_RESUMED, {
+        queue_name: queueName,
+        success: false,
+      })
+    },
+  })
+}
+
+export function useCleanQueue() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async ({
+      queueName,
+      status,
+      gracePeriod,
+      limit,
+    }: {
+      queueName: string
+      status: string
+      gracePeriod?: number
+      limit?: number
+    }) => {
+      const res = await api.c[':connectionId'].queues[':queueName'].clean.$post({
+        param: { connectionId: connectionId!, queueName },
+        json: { status, gracePeriod, limit },
+      })
+      return handleRes<{ removed: number; removedJobIds: string[] }>(res)
+    },
+    onSuccess: (data, { queueName, status }) => {
+      trackEvent(AnalyticsEvents.QUEUE_CLEANED, {
+        queue_name: queueName,
+        queue_status: status,
+        job_count: data.removed,
+        success: true,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues(connectionId ?? '') })
+      queryClient.invalidateQueries({ queryKey: ['jobs', connectionId, queueName] })
+    },
+    onError: (_, { queueName, status }) => {
+      trackEvent(AnalyticsEvents.QUEUE_CLEANED, {
+        queue_name: queueName,
+        queue_status: status,
+        success: false,
+      })
+    },
+  })
+}
+
+export function usePurgeQueue() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async ({
+      queueName,
+      confirmName,
+      statuses,
+    }: {
+      queueName: string
+      confirmName: string
+      statuses: PurgeQueueStatusOption[]
+    }) => {
+      const res = await api.c[':connectionId'].queues[':queueName'].purge.$post({
+        param: { connectionId: connectionId!, queueName },
+        json: { confirmName, statuses },
+      })
+      return handleRes<PurgeQueueResponse>(res)
+    },
+    onSuccess: (data, { queueName, statuses }) => {
+      trackEvent(AnalyticsEvents.QUEUE_PURGED, {
+        queue_name: queueName,
+        queue_status: statuses.includes('all') ? 'all' : statuses.join(','),
+        job_count: data.totalRemoved,
+        success: true,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues(connectionId ?? '') })
+      queryClient.invalidateQueries({ queryKey: ['jobs', connectionId, queueName] })
+      queryClient.invalidateQueries({ queryKey: ['canDeleteQueue', connectionId, queueName] })
+    },
+    onError: (_, { queueName, statuses }) => {
+      trackEvent(AnalyticsEvents.QUEUE_PURGED, {
+        queue_name: queueName,
+        queue_status: statuses.includes('all') ? 'all' : statuses.join(','),
+        success: false,
+      })
+    },
+  })
+}
+
+export function useObliterateQueue() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async (queueName: string) => {
+      const res = await api.c[':connectionId'].queues[':queueName'].obliterate.$post({
+        param: { connectionId: connectionId!, queueName },
+      })
+      return handleRes<{ success: boolean; message: string }>(res)
+    },
+    onSuccess: (_, queueName) => {
+      trackEvent(AnalyticsEvents.QUEUE_OBLITERATED, {
+        queue_name: queueName,
+        success: true,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues(connectionId ?? '') })
+      queryClient.invalidateQueries({ queryKey: ['jobs', connectionId, queueName] })
+    },
+    onError: (_, queueName) => {
+      trackEvent(AnalyticsEvents.QUEUE_OBLITERATED, {
+        queue_name: queueName,
+        success: false,
+      })
+    },
+  })
+}
+
+// Job Mutations
+export function useRetryJobs() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async (
+      payload:
+        | { queueName: string; jobIds: Array<string> }
+        | { queueName: string; statuses: RetryQueueStatusOption[] }
+    ) => {
+      const json = 'jobIds' in payload ? { jobIds: payload.jobIds } : { statuses: payload.statuses }
+      const res = await api.c[':connectionId'].queues[':queueName'].jobs.retry.$post({
+        param: { connectionId: connectionId!, queueName: payload.queueName },
+        json,
+      })
+      return handleRes<{
+        success: number
+        failed: number
+        errors: Array<{ jobId: string; error: string }>
+        statusesRetried?: RetryQueueStatus[]
+        retriedByStatus?: Partial<Record<RetryQueueStatus, number>>
+      }>(res)
+    },
+    onSuccess: (data, payload) => {
+      const queueName = payload.queueName
+      const jobIds = 'jobIds' in payload ? payload.jobIds : []
+      const jobCount = 'jobIds' in payload ? jobIds.length : data.success + data.failed
+
+      trackEvent(AnalyticsEvents.JOBS_RETRIED, {
+        queue_name: queueName,
+        job_ids: jobIds,
+        job_count: jobCount,
+        success: data.failed === 0,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
+      queryClient.invalidateQueries({ queryKey: ['jobs', connectionId, queueName] })
+    },
+    onError: (_, payload) => {
+      const queueName = payload.queueName
+      const jobIds = 'jobIds' in payload ? payload.jobIds : []
+      trackEvent(AnalyticsEvents.JOBS_RETRIED, {
+        queue_name: queueName,
+        job_ids: jobIds,
+        job_count: jobIds.length,
+        success: false,
+      })
+    },
+  })
+}
+
+export function useRemoveJobs() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async ({
+      queueName,
+      jobIds,
+      removeScheduler,
+    }: {
+      queueName: string
+      jobIds: Array<string>
+      removeScheduler?: boolean
+    }) => {
+      const res = await api.c[':connectionId'].queues[':queueName'].jobs.remove.$post({
+        param: { connectionId: connectionId!, queueName },
+        json: { jobIds, removeScheduler },
+      })
+      return handleRes<{
+        success: number
+        failed: number
+        errors: Array<{ jobId: string; error: string }>
+        schedulersRemoved?: number
+        warnings?: Array<{ jobId: string; message: string }>
+      }>(res)
+    },
+    onSuccess: (data, { queueName, jobIds }) => {
+      trackEvent(AnalyticsEvents.JOBS_REMOVED, {
+        queue_name: queueName,
+        job_ids: jobIds,
+        job_count: jobIds.length,
+        success: data.failed === 0,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues(connectionId ?? '') })
+      queryClient.invalidateQueries({ queryKey: ['jobs', connectionId, queueName] })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.queueScheduledJobs(connectionId ?? '', queueName),
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.scheduledJobs(connectionId ?? '') })
+    },
+    onError: (_, { queueName, jobIds }) => {
+      trackEvent(AnalyticsEvents.JOBS_REMOVED, {
+        queue_name: queueName,
+        job_ids: jobIds,
+        job_count: jobIds.length,
+        success: false,
+      })
+    },
+  })
+}
+
+export function useClearJobLogs() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async ({ queueName, jobId }: { queueName: string; jobId: string }) => {
+      const res = await api.c[':connectionId'].queues[':queueName'].jobs[':jobId'].logs.$delete({
+        param: { connectionId: connectionId!, queueName, jobId },
+      })
+      return handleRes<{ success: boolean; removed: number }>(res)
+    },
+    onSuccess: (_, { queueName, jobId }) => {
+      trackEvent(AnalyticsEvents.JOB_LOGS_CLEARED, {
+        queue_name: queueName,
+        job_id: jobId,
+        success: true,
+      })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.jobLogs(connectionId ?? '', queueName, jobId),
+      })
+    },
+    onError: (error, { queueName, jobId }) => {
+      trackEvent(AnalyticsEvents.JOB_LOGS_CLEARED, {
+        queue_name: queueName,
+        job_id: jobId,
+        success: false,
+        error_message: error.message,
+      })
+    },
+  })
+}
+
+export function useInvokeJobs() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async ({
+      queueName,
+      jobIds,
+      jobData,
+    }: {
+      queueName: string
+      jobIds: Array<string>
+      jobData?: Record<string, unknown>
+    }) => {
+      const res = await api.c[':connectionId'].queues[':queueName'].jobs.invoke.$post({
+        param: { connectionId: connectionId!, queueName },
+        json: { jobIds, jobData },
+      })
+      return handleRes<{
+        success: number
+        failed: number
+        errors: Array<{ jobId: string; error: string }>
+      }>(res)
+    },
+    onSuccess: (data, { queueName, jobIds }) => {
+      trackEvent(AnalyticsEvents.JOBS_INVOKED, {
+        queue_name: queueName,
+        job_ids: jobIds,
+        job_count: jobIds.length,
+        success: data.failed === 0,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
+      queryClient.invalidateQueries({ queryKey: ['jobs', connectionId, queueName] })
+    },
+    onError: (_, { queueName, jobIds }) => {
+      trackEvent(AnalyticsEvents.JOBS_INVOKED, {
+        queue_name: queueName,
+        job_ids: jobIds,
+        job_count: jobIds.length,
+        success: false,
+      })
+    },
+  })
+}
+
+export function useAddJob() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async ({
+      queueName,
+      name,
+      jobData,
+      options,
+    }: {
+      queueName: string
+      name: string
+      jobData: unknown
+      options?: { delay?: number; priority?: number; attempts?: number }
+    }) => {
+      const res = await api.c[':connectionId'].queues[':queueName'].jobs.$post({
+        param: { connectionId: connectionId!, queueName },
+        json: { name, data: jobData, ...options },
+      })
+      return handleRes<{ jobId: string | undefined; queueName: string; jobName: string }>(res)
+    },
+    onSuccess: (data, { queueName }) => {
+      trackEvent(AnalyticsEvents.JOB_ADDED, {
+        queue_name: queueName,
+        job_id: data.jobId,
+        success: true,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues(connectionId ?? '') })
+      queryClient.invalidateQueries({ queryKey: ['jobs', connectionId, queueName] })
+    },
+    onError: (_, { queueName }) => {
+      trackEvent(AnalyticsEvents.JOB_ADDED, {
+        queue_name: queueName,
+        success: false,
+      })
+    },
+  })
+}
+
+// Scheduled Job Mutations
+export function useRemoveScheduledJob() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async ({ queueName, schedulerId }: { queueName: string; schedulerId: string }) => {
+      const res = await api.c[':connectionId']['scheduled-jobs'].queue[':queueName'][
+        ':schedulerId'
+      ].$delete({
+        param: { connectionId: connectionId!, queueName, schedulerId },
+      })
+      return handleRes<{ success: boolean; schedulerId: string; message: string }>(res)
+    },
+    onSuccess: (_, { queueName, schedulerId }) => {
+      trackEvent(AnalyticsEvents.SCHEDULED_JOB_REMOVED, {
+        queue_name: queueName,
+        scheduler_id: schedulerId,
+        success: true,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.scheduledJobs(connectionId ?? '') })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.queueScheduledJobs(connectionId ?? '', queueName),
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
+    },
+    onError: (_, { queueName, schedulerId }) => {
+      trackEvent(AnalyticsEvents.SCHEDULED_JOB_REMOVED, {
+        queue_name: queueName,
+        scheduler_id: schedulerId,
+        success: false,
+      })
+    },
+  })
+}
+
+// Check if queue can be deleted
+export function useCanDeleteQueue(queueName: string) {
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useQuery({
+    queryKey: ['canDeleteQueue', connectionId, queueName],
+    queryFn: async () => {
+      const res = await api.c[':connectionId'].queues[':queueName']['can-delete'].$get({
+        param: { connectionId: connectionId!, queueName },
+      })
+      return handleRes<CanDeleteQueueResponse>(res)
+    },
+    enabled: !!queueName && !!connectionId,
+  })
+}
+
+// Delete queue mutation
+export function useDeleteQueue() {
+  const queryClient = useQueryClient()
+  const { currentConnection } = useConnection()
+  const connectionId = currentConnection?.id
+
+  return useMutation({
+    mutationFn: async ({ queueName, confirmName }: { queueName: string; confirmName: string }) => {
+      const res = await api.c[':connectionId'].queues[':queueName'].$delete({
+        param: { connectionId: connectionId!, queueName },
+        json: { confirmName },
+      })
+      return handleRes<{ success: boolean; deleted: string }>(res)
+    },
+    onSuccess: (_, { queueName }) => {
+      trackEvent(AnalyticsEvents.QUEUE_DELETED, {
+        queue_name: queueName,
+        success: true,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues(connectionId ?? '') })
+    },
+    onError: (_, { queueName }) => {
+      trackEvent(AnalyticsEvents.QUEUE_DELETED, {
+        queue_name: queueName,
+        success: false,
+      })
+    },
+  })
+}

@@ -1,0 +1,13 @@
+/*
+ * Keep inline-code chips for prose text, but do not apply those styles
+ * to fenced code blocks rendered as <pre><code>...</code></pre>.
+ */
+.prose :where(pre > code):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  background: transparent;
+}

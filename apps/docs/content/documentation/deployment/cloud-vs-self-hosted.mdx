@@ -1,0 +1,43 @@
+---
+title: Cloud vs Self-Hosted
+description: Choose between Durabull Cloud and open-source self-hosted deployment based on team constraints.
+---
+
+## Decision Factors
+
+### Choose Durabull Cloud When
+
+- You want the fastest time to value.
+- You do not want to operate API/web infrastructure.
+- You prefer managed availability and maintenance overhead offload.
+
+### Choose Self-Hosted When
+
+- You require full infrastructure control.
+- You need private-network-only operation.
+- You want custom deployment topologies and security controls.
+
+## Self-Hosted Responsibilities
+
+If self-hosting, plan for:
+
+- deployment and upgrades
+- secrets management
+- network segmentation and edge protection
+- monitoring and alerting
+- backup and restore strategy (Postgres + Redis as needed)
+
+## Hybrid Pattern
+
+Some teams start in cloud for onboarding speed and move to self-hosted when governance requirements increase.
+
+## Migration Readiness Checklist
+
+- mode and env var parity documented
+- connection source strategy decided (env vs DB)
+- auth mode aligned to security model
+- production backup and rollback plan validated
+
+Screenshot placeholder: architecture comparison chart (cloud vs self-hosted).
+
+Video placeholder: migration strategy overview.

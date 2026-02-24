@@ -1,0 +1,97 @@
+---
+title: Local Development
+description: Contributor-focused local setup with fast authless mode or a full seeded stack.
+---
+
+If you are self-hosting for the first time, start with
+[Installation](/documentation/self-hosting/installation).
+
+This page is optimized for local contributor workflows.
+
+## Prerequisites
+
+- Bun `1.3+`
+- Redis (local or remote)
+- Optional: Docker (for Postgres + Redis local stack)
+
+## Path A: Fast Local Run (Authless + Env Connections)
+
+This is the fastest onboarding path and avoids full auth setup.
+
+```bash
+bun install
+bun run dev:authless
+```
+
+`dev:authless` defaults:
+
+- `DURABULL_AUTHLESS=true`
+- `DURABULL_ENV_CONNECTIONS=true`
+- `DURABULL_REDIS_URL_MAIN` from `REDIS_URL` or `redis://localhost:6379`
+- `DURABULL_REDIS_URL_DEFAULT=MAIN`
+
+App URLs:
+
+- API: `http://localhost:3001/api`
+- Web: `http://localhost:5173`
+
+Security note:
+
+- Authless mode disables login and identity checks.
+- Do not expose authless mode directly to the public internet.
+
+## Path B: Full Local Stack (Postgres + Redis + Seeded Data)
+
+1. Start infrastructure:
+
+```bash
+bun docker
+```
+
+If another local Postgres container already uses Durabull's default host port, set
+`DURABULL_POSTGRES_PORT` in your `.env` (for example `55433`) and keep
+`DATABASE_URL` on the same port.
+
+2. Seed realistic development data:
+
+```bash
+bun docker:seed
+```
+
+Optional worker simulation:
+
+```bash
+bun docker:seed:workers
+```
+
+3. Run app services:
+
+```bash
+bun run dev
+```
+
+## Local Validation Checklist
+
+- `/api/health` returns `status: ok`
+- `/api/mode` returns expected auth/connection/persistence mode
+- Connections list loads in UI
+- Queues page shows discovered queues
+- Scheduled jobs/workers/redis explorer all load without API errors
+
+## Resetting Local Data
+
+- Wipe seeded state:
+
+```bash
+bun docker:wipe
+```
+
+- Re-seed from scratch:
+
+```bash
+bun docker:seed
+```
+
+Screenshot placeholder: terminal session of `dev:authless` and first dashboard load.
+
+Video placeholder: local bootstrap from clone to first queue inspection.

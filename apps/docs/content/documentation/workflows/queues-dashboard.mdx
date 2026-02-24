@@ -1,0 +1,51 @@
+---
+title: Queues Dashboard
+description: Use the queues dashboard to monitor queue health and navigate queue-specific operations.
+---
+
+## Route Scope
+
+Primary queues overview route:
+
+- `/$orgSlug/c/$connectionId/`
+
+This route is connection-scoped and aggregates queue-level status data for the selected Redis connection.
+
+For queue-level native telemetry charts and worker metrics setup, see:
+
+- [BullMQ Native Metrics](/documentation/workflows/bullmq-native-metrics)
+
+## What You See
+
+- Queue summary cards:
+  - Waiting
+  - Active
+  - Delayed
+  - Completed
+  - Failed
+- Queue table with per-queue job counts and status
+- Empty state guidance when no BullMQ queues are discovered
+
+## Data Source Behavior
+
+Queue discovery is Redis key based:
+
+- Scans for `bull:*:meta`
+- Extracts queue names from those meta keys
+- Pulls job counts and pause state for each discovered queue
+
+This is why empty results usually indicate either:
+
+- wrong connection
+- empty Redis instance
+- non-BullMQ workloads only
+
+## Operational Reading Tips
+
+- High waiting + low active often indicates worker capacity bottlenecks.
+- Rising failed counts should be investigated from queue/job details.
+- Delayed growth can be expected for time-based workloads but should be correlated with scheduled jobs and invoke actions.
+
+Screenshot placeholder: queues dashboard with stats cards and populated table.
+
+Video placeholder: from queue list to queue detail drill-down.

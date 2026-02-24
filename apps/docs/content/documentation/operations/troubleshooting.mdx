@@ -1,0 +1,109 @@
+---
+title: Troubleshooting
+description: Diagnose and resolve common Durabull setup and runtime issues.
+---
+
+## Quick Triage Endpoints
+
+Check these first:
+
+- `GET /api/health`
+- `GET /api/mode`
+- `GET /api/connections`
+
+These immediately confirm runtime health, mode selection, and connection availability.
+
+## Common Issues
+
+### 1. No Queues Detected
+
+Symptoms:
+
+- queues dashboard shows empty state
+
+Checks:
+
+- verify selected connection points to expected Redis
+- verify BullMQ is writing keys (`bull:*:meta`)
+- confirm env connection names and default key are correct
+
+### 2. Cannot Create/Edit Connections
+
+Symptoms:
+
+- connection API returns `403`
+
+Cause:
+
+- `DURABULL_ENV_CONNECTIONS=true`
+
+Fix:
+
+- set `DURABULL_ENV_CONNECTIONS=false` if you need UI-managed CRUD
+
+### 3. Login/Session Issues
+
+Checks:
+
+- `DURABULL_AUTHLESS` value
+- `BETTER_AUTH_SECRET` configured when auth enabled
+- `APP_BASE_URL` and browser origin alignment
+- OAuth callback URLs match deployment host
+
+### 4. PostgreSQL Connection Refused (`ECONNREFUSED`)
+
+Symptoms:
+
+- API logs show failed schema/query bootstrapping with `ECONNREFUSED`
+
+Checks:
+
+- ensure Docker Postgres is running: `bun docker`
+- verify `DURABULL_POSTGRES_PORT` in `.env` matches `DATABASE_URL`
+- if that port is already in use, pick another free port (for example `55433`)
+
+### 5. Rate Limit Responses (`429`)
+
+Checks:
+
+- high burst traffic against auth/API routes
+- whether `DISABLE_RATE_LIMIT` is intentionally configured in non-production
+
+### 6. Redis Explorer Delete Blocked
+
+Symptom:
+
+- deletion denied for BullMQ keys
+
+Expected:
+
+- Bull keys (`bull:`/`bullmq:`) are protected and must be managed through queue/job workflows
+
+## Local Reset Recipes
+
+Rebuild local stack state:
+
+```bash
+bun docker:down
+bun docker
+bun docker:seed
+```
+
+Wipe and reseed:
+
+```bash
+bun docker:wipe
+bun docker:seed
+```
+
+## Incident Debug Sequence
+
+1. Confirm mode and active connection.
+2. Check queue/job API responses directly.
+3. Inspect worker connectivity and idle/active states.
+4. Validate Redis keyspace health.
+5. Audit recent deployment/env changes.
+
+Screenshot placeholder: troubleshooting flowchart.
+
+Video placeholder: live incident triage from queue failure to recovery.

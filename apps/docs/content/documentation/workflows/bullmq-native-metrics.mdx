@@ -1,0 +1,118 @@
+---
+title: BullMQ Native Metrics
+description: Enable BullMQ worker metrics and use Durabull's native telemetry charts without storing extra metrics data.
+---
+
+## Why This Page Exists
+
+Durabull's queue telemetry panels pull directly from BullMQ and Redis at request time.
+
+- No extra metrics database
+- No custom aggregation pipeline
+- No background sync job
+
+Everything shown in the charts is BullMQ-native data.
+
+## Where to View It
+
+Queue detail route:
+
+- `/$orgSlug/c/$connectionId/queues/$queueName`
+
+Open a queue and use the **BullMQ Native Telemetry** section.
+
+## Enable Metrics in BullMQ Workers
+
+BullMQ metrics are only populated when workers are configured with `metrics.maxDataPoints`.
+
+```ts
+import { MetricsTime, Worker } from 'bullmq'
+
+const worker = new Worker('email:delivery', async (job) => {
+  // process job
+}, {
+  connection: { host: 'localhost', port: 6379 },
+  metrics: {
+    // Keep 1 week of 1-minute buckets
+    maxDataPoints: MetricsTime.ONE_WEEK,
+  },
+})
+```
+
+You can also pass an integer directly (in minutes):
+
+```ts
+metrics: {
+  maxDataPoints: 60 * 24 * 14, // 2 weeks
+}
+```
+
+## `maxDataPoints` Sizing Guide
+
+Each point is one minute of finished-job counts.
+
+- 1 hour: `60`
+- 24 hours: `1_440`
+- 1 week: `10_080`
+- 2 weeks: `20_160`
+- 4 weeks: `80_640`
+
+If you want native enum values, BullMQ exposes `MetricsTime` constants for these ranges.
+
+## Native Data Durabull Pulls
+
+Durabull requests all of the following directly from BullMQ queue APIs:
+
+- `getMetrics("completed")` and `getMetrics("failed")`
+  - raw `data[]` buckets
+  - `meta.count`, `meta.prevTS`, `meta.prevCount`
+  - returned window `count`
+- `getJobCounts(...)`
+  - waiting, active, delayed, completed, failed, paused, prioritized, waiting-children
+- `count()`
+  - jobs waiting to be processed (waiting + delayed + prioritized + waiting-children)
+- `getMeta()`
+  - `concurrency`, `max`, `duration`, `maxLenEvents`, `paused`, `version`
+- `getWorkersCount()` and `getWorkers()`
+- `getJobSchedulersCount()`
+- `isPaused()` and `isMaxed()`
+- `getRateLimitTtl()`
+- `getGlobalConcurrency()`
+- `getGlobalRateLimit()`
+- `getCountsPerPriority([...])`
+- `exportPrometheusMetrics()` (optional via API query)
+
+## Queue Metrics API Query Controls
+
+Durabull exposes native metrics tuning in:
+
+- `GET /api/c/:connectionId/queues/:queueName/metrics`
+
+Optional query params:
+
+- `windowMinutes`: convenience range (e.g. `60`, `360`, `1440`, `10080`)
+- `start`: BullMQ metrics index start (`0` is newest point)
+- `end`: BullMQ metrics index end (`-1` means oldest available)
+- `priorities`: CSV list for `getCountsPerPriority` (e.g. `1,2,5,10,20,50`)
+- `includePrometheus`: `1` or `true` to include `exportPrometheusMetrics()` output
+
+## Reading the Charts
+
+- **Finished/min** trends up while queue latency stays stable: healthy throughput growth.
+- **Failed/min** spikes without matching volume increase: investigate worker/runtime regressions.
+- **Waiting to process** climbing while workers stay flat: capacity bottleneck.
+- **Rate limit TTL > 0** with high waiting: throughput is policy-limited, not necessarily worker-limited.
+- **Priority skew** concentrated in one bucket: review priority assignment strategy.
+
+## Troubleshooting Empty Charts
+
+If chart data stays empty:
+
+1. Confirm each producer queue has at least one worker with `metrics.maxDataPoints` configured.
+2. Confirm jobs are actually finishing (completed or failed). Metrics are based on finished jobs.
+3. Verify the same Redis connection is selected in Durabull and in your BullMQ worker.
+4. Increase retention (`maxDataPoints`) if your selected chart window is larger than retained data.
+
+## Notes About Compatibility
+
+Some Redis providers restrict client-list style introspection. In those cases, worker/event client details may be partially unavailable, and Durabull will show warnings while keeping the rest of the metrics available.

@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.output/
+out/
+
+# Turbo
+.turbo/
+
+# Local env files
+.env
+.env.keys
+.env.local
+.env.docker
+
+# Editor
+.idea/
+
+# OS
+.DS_Store

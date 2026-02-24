@@ -1,0 +1,68 @@
+---
+title: Connection Management
+description: Configure env-driven or DB-managed Redis connections and understand connection lifecycle operations.
+---
+
+## Connection Sources
+
+Durabull can source connections from two places.
+
+### Env-Driven Connections (`DURABULL_ENV_CONNECTIONS=true`)
+
+Connections are defined through environment variables:
+
+```bash
+DURABULL_REDIS_URL_MAIN=redis://localhost:6379
+DURABULL_REDIS_URL_MAIN_ENVIRONMENT=development
+DURABULL_REDIS_URL_WORKERS=redis://localhost:6380
+DURABULL_REDIS_URL_WORKERS_ENVIRONMENT=staging
+DURABULL_REDIS_URL_DEFAULT=MAIN
+```
+
+Behavior:
+
+- Connections are synchronized into org scope.
+- Connection create/edit/delete endpoints return `403`.
+- Deterministic and infrastructure-driven.
+
+### DB-Managed Connections (`DURABULL_ENV_CONNECTIONS=false`)
+
+Connections are managed in UI/API:
+
+- Create connection
+- Test connection
+- Edit name/url/environment/default
+- Delete with guardrails
+
+## Connection Validation and Safety
+
+When creating/testing a connection URL:
+
+- URL is validated to reduce SSRF risk.
+- Connection test endpoint is rate-limited.
+- Production error messages are sanitized.
+
+## Default Connection Rules
+
+- Exactly one default connection is used for org-level routing fallback.
+- Deleting the default promotes another remaining connection.
+- Deleting the last connection is blocked.
+
+## UI Behavior
+
+Connections are grouped and shown by environment:
+
+- Development
+- Staging
+- Production
+
+From connection selector:
+
+- Switching connection updates route context to `/$orgSlug/c/$connectionId`.
+
+Need help adding a connection or resolving test failures? See
+[Connection Troubleshooting](/documentation/getting-started/connection-troubleshooting).
+
+Screenshot placeholder: connection list with create/edit/delete/test flow.
+
+Video placeholder: switching between staging and production connections.

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Durabull - BullMQ Admin Dashboard</title>
+    <meta name="description" content="The modern, powerful dashboard for BullMQ. Monitor jobs, debug failures, and scale your background processing with confidence." />
+    <!-- Theme color for browser chrome -->
+    <meta name="theme-color" content="#10b981" />
+    <!-- Open Graph meta tags -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Durabull" />
+    <meta property="og:title" content="Durabull - BullMQ Admin Dashboard" />
+    <meta property="og:description" content="The modern, powerful dashboard for BullMQ. Monitor jobs, debug failures, and scale your background processing with confidence." />
+    <meta property="og:url" content="https://durabull.io" />
+    <meta property="og:image" content="https://durabull.io/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <!-- Twitter Card meta tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Durabull - BullMQ Admin Dashboard" />
+    <meta name="twitter:description" content="The modern, powerful dashboard for BullMQ. Monitor jobs, debug failures, and scale your background processing with confidence." />
+    <meta name="twitter:image" content="https://durabull.io/og-image.png" />
+    <!-- PWA meta tags -->
+    <meta name="application-name" content="Durabull" />
+    <meta name="apple-mobile-web-app-title" content="Durabull" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Favicons -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-96x96.png" type="image/png" sizes="96x96" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="canonical" href="https://durabull.io" />
+    <!-- Theme initialization script to prevent flash of wrong theme -->
+    <script>
+      try {
+        const theme = localStorage.getItem('durabull-theme') || 'dark';
+        const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        const resolvedTheme = theme === 'system' ? systemTheme : theme;
+        document.documentElement.classList.add(resolvedTheme);
+      } catch (e) {}
+    </script>
+  </head>
+  <body class="min-h-screen bg-background font-sans antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

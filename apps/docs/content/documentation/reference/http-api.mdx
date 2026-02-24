@@ -1,0 +1,266 @@
+---
+title: HTTP API Reference
+description: Endpoint-level overview of Durabull API resources, capabilities, and key limits.
+---
+
+## Base URL
+
+All endpoints are mounted under:
+
+- `/api`
+
+Bootstrap and health:
+
+- `GET /api/health`
+- `GET /api/app/config`
+- `GET /api/mode`
+
+## Authentication and Session
+
+- Better Auth endpoints under `/api/auth/*`
+- Session snapshot: `GET /api/session`
+
+In authless mode, auth endpoints return authless-safe behavior for session/signout and reject unsupported auth actions.
+
+## Remote App Config
+
+`GET /api/app/config` is the client bootstrap endpoint used by the web app to load runtime mode and analytics settings.
+
+Behavior:
+
+- Always returns `200` with JSON config.
+- Works for both authenticated and unauthenticated requests.
+- In authless mode, returns authless/runtime flags from server env and mode.
+- If a valid signed-in user is present (non-authless mode), the API attempts to update that user's `lastSignInAt` timestamp before returning config.
+
+Response shape:
+
+```json
+{
+  "authless": false,
+  "envConnections": false,
+  "persistence": "postgres",
+  "stateless": false,
+  "environment": "production",
+  "posthog": {
+    "enabled": true,
+    "key": "phc_***",
+    "host": "/ingest",
+    "uiHost": "https://us.posthog.com"
+  }
+}
+```
+
+Field notes:
+
+- `authless`: whether `DURABULL_AUTHLESS` mode is active.
+- `envConnections`: whether env-driven connection mode is active.
+- `persistence`: server persistence mode (`postgres` or `pglite`).
+- `stateless`: `true` when running in `pglite` mode.
+- `environment`: `NODE_ENV` (`development`, `test`, or `production`; defaults to `development`).
+- `posthog.enabled`: `true` when `POSTHOG_KEY` is set.
+- `posthog.key`: PostHog project key (or `null` when disabled).
+- `posthog.host`: always `/ingest` (Durabull's reverse-proxied analytics endpoint).
+- `posthog.uiHost`: PostHog UI host used by the frontend.
+
+## Connection Management
+
+- `GET /api/connections`
+- `GET /api/connections/:id`
+- `POST /api/connections`
+- `PATCH /api/connections/:id`
+- `DELETE /api/connections/:id`
+- `POST /api/connections/test`
+
+When `DURABULL_ENV_CONNECTIONS=true`, create/update/delete routes return `403`.
+
+## Connection-Scoped Resources
+
+All routes below are under:
+
+- `/api/c/:connectionId/...`
+
+### Queues
+
+- `GET /queues`
+- `GET /queues/:queueName`
+- `GET /queues/:queueName/metrics`
+- `POST /queues/:queueName/pause`
+- `POST /queues/:queueName/resume`
+- `POST /queues/:queueName/clean`
+- `POST /queues/:queueName/purge`
+- `POST /queues/:queueName/obliterate`
+- `DELETE /queues/:queueName`
+- `GET /queues/:queueName/can-delete`
+
+### Jobs
+
+- `GET /queues/:queueName/jobs`
+- `GET /queues/:queueName/jobs/:jobId`
+- `GET /queues/:queueName/jobs/:jobId/logs`
+- `DELETE /queues/:queueName/jobs/:jobId/logs`
+- `GET /queues/:queueName/jobs/:jobId/stacktraces`
+- `POST /queues/:queueName/jobs`
+- `POST /queues/:queueName/jobs/retry`
+- `POST /queues/:queueName/jobs/remove`
+- `POST /queues/:queueName/jobs/invoke`
+
+### Scheduled Jobs
+
+- `GET /scheduled-jobs`
+- `GET /scheduled-jobs/queue/:queueName`
+- `DELETE /scheduled-jobs/queue/:queueName/:schedulerId`
+
+### Workers
+
+- `GET /workers`
+
+### Metrics
+
+- `GET /metrics`
+
+### Native Queue Metrics
+
+Route:
+
+- `GET /queues/:queueName/metrics`
+
+Query parameters:
+
+- `windowMinutes` (optional): convenience range in minutes
+- `start` (optional): BullMQ metrics start index (`0` is newest point)
+- `end` (optional): BullMQ metrics end index (`-1` means oldest available)
+- `priorities` (optional): comma-separated buckets for `getCountsPerPriority` (for example `1,2,5,10,20,50`)
+- `includePrometheus` (optional): `1` or `true` to include native `exportPrometheusMetrics()` output
+
+Response includes BullMQ-native telemetry only:
+
+- raw completed/failed metrics buckets + metadata
+- queue state (`isPaused`, `isMaxed`, workers/schedulers)
+- native job counts by status
+- queue meta fields (`concurrency`, `max`, `duration`, `maxLenEvents`, `paused`, `version`)
+- native rate-limit + global limiter info
+- sampled counts per priority bucket
+- provider-compat warnings if some introspection calls are unavailable
+
+### Connection Metrics API
+
+Route:
+
+- `GET /metrics`
+
+Optional query parameters:
+
+- `detailed`: `1` or `true` to return full native payload per queue
+- `windowMinutes`
+- `priorities`
+- `includePrometheus`
+
+### Redis Keys
+
+- `GET /redis-keys/search`
+- `GET /redis-keys/value/:key`
+- `DELETE /redis-keys/:key`
+
+## Rate Limits and Payload Constraints
+
+- General API and auth endpoints have in-memory rate limiting in production.
+- Connection test route uses stricter limits.
+- Request body limit is `1MB`.
+- Bulk job actions cap `jobIds` at `100` per request.
+- Pagination page sizes are typically capped at `100`.
+
+## Error Semantics
+
+Common status patterns:
+
+- `400`: validation/input mismatch
+- `401`: unauthenticated
+- `403`: forbidden (org scope, env connection mode restrictions)
+- `404`: missing connection/resource
+- `429`: rate limited
+- `500`: internal error
+
+Screenshot placeholder: API explorer or cURL snippets with representative responses.
+
+## Queue Purge API (Destructive)
+
+Use this endpoint to remove jobs from a queue by selected statuses, or purge all statuses in one operation.
+
+Route:
+
+- `POST /api/c/:connectionId/queues/:queueName/purge`
+
+### Required Safety Confirmation
+
+This route is intentionally destructive and always requires exact queue-name confirmation:
+
+- request body `confirmName` must exactly equal `:queueName`
+- mismatch returns `400`
+
+### Request Body
+
+```json
+{
+  "confirmName": "send-welcome-email",
+  "statuses": ["active", "failed", "waiting"]
+}
+```
+
+For full purge across all statuses:
+
+```json
+{
+  "confirmName": "send-welcome-email",
+  "statuses": ["all"]
+}
+```
+
+Allowed `statuses` values:
+
+- `all`
+- `waiting`
+- `active`
+- `delayed`
+- `completed`
+- `failed`
+- `paused`
+- `prioritized`
+
+### Operational Behavior
+
+- The API deduplicates requested statuses.
+- If `statuses` contains `all`, it expands to all purgeable statuses.
+- For each status, the API repeatedly calls BullMQ cleanup in batches of `1000` until the status is empty.
+- A safety cap of `500` batches per status is enforced to avoid unbounded loops.
+  - If reached, route returns `409` and indicates which status hit the cap.
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "queueName": "send-welcome-email",
+  "statusesPurged": ["waiting", "active", "failed"],
+  "totalRemoved": 18,
+  "removedByStatus": {
+    "waiting": 3,
+    "active": 10,
+    "failed": 5
+  },
+  "removedJobIdsSample": ["1", "2", "3"]
+}
+```
+
+Notes:
+
+- `removedJobIdsSample` is intentionally capped (sample only), not an exhaustive list.
+- `removedByStatus` contains counts for statuses actually purged in that request.
+
+### Error Responses
+
+- `400`:
+  - queue name confirmation mismatch
+  - empty/invalid `statuses` payload
+- `409`:
+  - purge safety cap reached for a specific status

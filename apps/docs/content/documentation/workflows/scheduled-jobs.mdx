@@ -1,0 +1,52 @@
+---
+title: Scheduled Jobs
+description: Monitor and manage cron-based scheduled jobs across queues and remove schedulers safely.
+---
+
+## Global Scheduled Jobs View
+
+Route:
+
+- `/$orgSlug/c/$connectionId/scheduled-jobs`
+
+This page aggregates scheduled jobs across discovered queues for the active connection.
+
+## Queue-Level Scheduled Jobs
+
+Route tab under queue detail:
+
+- `/$orgSlug/c/$connectionId/queues/$queueName?tab=scheduled`
+
+Useful for queue-specific cleanup and scheduler ownership review.
+
+## Data Included Per Scheduled Job
+
+- Scheduler ID
+- Cron pattern
+- Queue name
+- Job name
+- Next run time (if available)
+- Recent failed count
+- Last failed timestamp
+
+## API Endpoints
+
+- List across queues:
+  - `GET /api/c/:connectionId/scheduled-jobs`
+- List by queue:
+  - `GET /api/c/:connectionId/scheduled-jobs/queue/:queueName`
+- Remove scheduler:
+  - `DELETE /api/c/:connectionId/scheduled-jobs/queue/:queueName/:schedulerId`
+
+## Failure Analysis Pattern
+
+When a scheduled job has recent failures:
+
+1. Jump to queue detail.
+2. Inspect failed jobs by matching job name.
+3. Review logs and stacktraces.
+4. Decide whether to keep scheduler, fix worker logic, or remove scheduler.
+
+Screenshot placeholder: grouped scheduled jobs page with failure indicators.
+
+Video placeholder: remove scheduler workflow and failure triage.

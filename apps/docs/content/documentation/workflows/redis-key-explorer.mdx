@@ -1,0 +1,62 @@
+---
+title: Redis Key Explorer
+description: Search, inspect, and safely manage non-BullMQ Redis keys in the selected connection.
+---
+
+## Route Scope
+
+Redis explorer route:
+
+- `/$orgSlug/c/$connectionId/redis-keys`
+
+## Search Behavior
+
+Key search endpoint:
+
+- `GET /api/c/:connectionId/redis-keys/search`
+
+Features:
+
+- pattern search (`*` by default)
+- cursor-based pagination (SCAN)
+- optional `excludeBull=true`
+- key type, TTL, and best-effort memory usage
+
+## Key Value Inspection
+
+Value endpoint:
+
+- `GET /api/c/:connectionId/redis-keys/value/:key`
+
+Type-aware parsing:
+
+- string (attempt JSON parse)
+- hash
+- list
+- set
+- zset
+- stream
+
+## Deletion Safety Rule
+
+Delete endpoint:
+
+- `DELETE /api/c/:connectionId/redis-keys/:key`
+
+Durabull blocks deletion of BullMQ-managed keys:
+
+- keys starting with `bull:` or `bullmq:`
+
+Reason:
+
+- Bull queue internals should be managed via queue/job operations, not raw key deletion.
+
+## Good Practices
+
+- Use key explorer for app-level cache/session/config keys.
+- Keep BullMQ internal cleanup within queue/job workflows.
+- Prefer pattern filtering to reduce broad scans in large keyspaces.
+
+Screenshot placeholder: key explorer with type panel and delete confirmation.
+
+Video placeholder: inspect string/hash/zset keys and safe delete example.

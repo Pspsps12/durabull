@@ -1,0 +1,77 @@
+---
+title: Durabull Documentation
+description: Welcome to the Durabull docs - setup, self-hosting, workflows, and operational best practices in one clear path.
+---
+
+Durabull is an open-source BullMQ management platform for teams that need fast, safe queue operations.
+
+You can use it to monitor queue health, inspect and retry jobs, manage scheduled jobs, visualize workers, and debug with structured logs.
+
+## Start Here
+
+If you are new, follow this order:
+
+1. [How to Use Durabull](/documentation/getting-started/how-to-use-durabull)
+2. [Self Hosting Setup](/documentation/self-hosting/setup)
+3. [Installation](/documentation/self-hosting/installation)
+4. [Docker Image and Compose](/documentation/deployment/docker)
+
+## Documentation Map
+
+### Start Here
+
+- Product orientation:
+  [How to Use Durabull](/documentation/getting-started/how-to-use-durabull)
+- Runtime behavior and mode selection:
+  [Architecture and Modes](/documentation/getting-started/architecture-and-modes)
+- Auth and org model:
+  [Authentication and Organizations](/documentation/getting-started/authentication-and-organizations)
+- Redis connection lifecycle:
+  [Connection Management](/documentation/getting-started/connection-management)
+- Connection setup failures and fixes:
+  [Connection Troubleshooting](/documentation/getting-started/connection-troubleshooting)
+
+### Self Hosting
+
+- Setup decisions:
+  [Self Hosting Setup](/documentation/self-hosting/setup)
+- Step-by-step install:
+  [Installation](/documentation/self-hosting/installation)
+- Container deployment:
+  [Docker Image and Compose](/documentation/deployment/docker)
+- Runtime configuration:
+  [Environment Variables](/documentation/getting-started/environment-variables)
+- Security baseline:
+  [Security and Hardening](/documentation/operations/security-and-hardening)
+
+### Using Durabull
+
+- Queue health and control:
+  [Queues Dashboard](/documentation/workflows/queues-dashboard),
+  [BullMQ Native Metrics](/documentation/workflows/bullmq-native-metrics),
+  [Queue Operations](/documentation/workflows/queue-operations)
+- Job-level triage:
+  [Job Lifecycle and Debugging](/documentation/workflows/job-lifecycle-and-debugging)
+- Schedulers and workers:
+  [Scheduled Jobs](/documentation/workflows/scheduled-jobs),
+  [Workers Topology](/documentation/workflows/workers-topology)
+- Standards:
+  [Queue and Scheduled Job Naming Best Practices](/documentation/workflows/naming-best-practices),
+  [Log Formatting and Highlighting](/documentation/workflows/log-formatting-and-highlighting)
+
+### Operations and Reference
+
+- Incident playbook:
+  [Troubleshooting](/documentation/operations/troubleshooting)
+- API endpoint catalog:
+  [HTTP API Reference](/documentation/reference/http-api)
+
+## Friendly Rule of Thumb
+
+During incidents, follow this sequence:
+
+1. Verify mode and active connection.
+2. Check queue health.
+3. Drill into job logs and stacktraces.
+4. Confirm scheduler and worker state.
+5. Use destructive queue actions only with explicit confirmation.

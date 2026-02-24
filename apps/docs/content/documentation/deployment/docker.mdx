@@ -1,0 +1,91 @@
+---
+title: Docker Image and Compose
+description: Run Durabull with the official Docker image, then scale to a production-friendly Compose deployment.
+---
+
+Docker is the fastest way to get a self-hosted Durabull instance running.
+
+## 1) Choose an Image Tag
+
+Use the published image from GHCR:
+
+- `ghcr.io/durabullhq/durabull:<version>`
+
+For local evaluation, `latest` is fine. For production, pin an explicit version tag.
+
+## 2) Quick Run with `docker run`
+
+This starts Redis and Durabull on a shared Docker network:
+
+```bash
+docker network create durabull
+
+docker run -d --name durabull-redis --network durabull redis:8-alpine
+
+docker run --rm -p 3000:3000 --network durabull \
+  -e DURABULL_AUTHLESS=true \
+  -e DURABULL_ENV_CONNECTIONS=true \
+  -e DURABULL_REDIS_URL_MAIN=redis://durabull-redis:6379 \
+  -e DURABULL_REDIS_URL_MAIN_ENVIRONMENT=development \
+  -e DURABULL_REDIS_URL_DEFAULT=MAIN \
+  -e APP_BASE_URL=http://localhost:3000 \
+  -e VITE_PUBLIC_APP_URL=http://localhost:3000 \
+  ghcr.io/durabullhq/durabull:latest
+```
+
+Open `http://localhost:3000`, then confirm:
+
+- `GET /api/health` returns `status: ok`
+- the queue dashboard loads for your default connection
+
+## 3) Docker Compose (Durabull + Redis)
+
+Use Compose for repeatable team setup:
+
+```yaml
+services:
+  durabull:
+    image: ghcr.io/durabullhq/durabull:latest
+    ports:
+      - "3000:3000"
+    environment:
+      DURABULL_AUTHLESS: "true"
+      DURABULL_ENV_CONNECTIONS: "true"
+      DURABULL_REDIS_URL_MAIN: redis://redis:6379
+      DURABULL_REDIS_URL_MAIN_ENVIRONMENT: development
+      DURABULL_REDIS_URL_DEFAULT: MAIN
+      APP_BASE_URL: http://localhost:3000
+      VITE_PUBLIC_APP_URL: http://localhost:3000
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "6379:6379"
+```
+
+## 4) Persistence Notes
+
+When `DATABASE_URL` is unset, PGlite data is file-backed inside the container.
+
+- Default location: `/app/data/pglite`
+- For persistence, mount `/app/data` or set `DURABULL_PGLITE_DIR` to a mounted path.
+
+## 5) Production Notes
+
+For internet-facing deployments:
+
+- set `DURABULL_AUTHLESS=false`
+- configure `BETTER_AUTH_SECRET`
+- set correct `APP_BASE_URL` and `VITE_PUBLIC_APP_URL`
+- review [Security and Hardening](/documentation/operations/security-and-hardening)
+- use PostgreSQL (`DATABASE_URL`) for stateful team environments
+
+## 6) Build Image from Source
+
+Source Dockerfile path:
+
+- `tooling/docker/Dockerfile`
+
+It uses `turbo prune` and multi-stage builds for optimized production images.

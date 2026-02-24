@@ -1,0 +1,60 @@
+---
+title: Architecture and Modes
+description: Understand Durabull architecture, persistence behavior, and the two deployment toggles.
+---
+
+## Runtime Architecture
+
+Durabull is a monorepo with three runtime surfaces:
+
+- `apps/api`: Hono API server, auth/session middleware, BullMQ-backed operations
+- `apps/web`: TanStack Router SPA for operational queue management
+- `apps/docs`: Next.js documentation and marketing site
+
+In production container mode, the API server can also serve the built web assets.
+
+## The Two Core Toggles
+
+Durabull uses two independent environment toggles:
+
+1. `DURABULL_AUTHLESS`
+2. `DURABULL_ENV_CONNECTIONS`
+
+These toggles can be mixed to get different operational behavior.
+
+### `DURABULL_AUTHLESS`
+
+- `true`: bypasses login and auto-creates an owner context for a local authless organization
+- `false` or unset: Better Auth is active and users authenticate normally
+
+### `DURABULL_ENV_CONNECTIONS`
+
+- `true`: Redis connections are sourced from `DURABULL_REDIS_URL_*` env vars and connection CRUD is read-only
+- `false` or unset: connections are managed in the database and editable in the UI/API
+
+## Persistence Mode
+
+Persistence mode is determined by `DATABASE_URL`:
+
+- `DATABASE_URL` set: PostgreSQL mode
+- `DATABASE_URL` unset: local PGlite mode (`./data/pglite` by default)
+
+## Common Combinations
+
+| Use Case | Authless | Connections | Persistence |
+| --- | --- | --- | --- |
+| Fast local admin | `true` | Env | PGlite |
+| Authenticated without Postgres | `false` | Env | PGlite |
+| Full team deployment | `false` | DB | PostgreSQL |
+| Stateful with env-only connections | `false` | Env | PostgreSQL |
+
+## How This Affects Product Behavior
+
+- Team and invitation workflows require authenticated mode.
+- Connection create/edit/delete requires DB-managed connections.
+- Authless mode should only be used in trusted/private networks.
+- Env-driven connections are deterministic and reproducible across deploys.
+
+Screenshot placeholder: architecture diagram (API, Web, Redis, DB, auth components).
+
+Video placeholder: mode matrix walkthrough and recommended selection flow.

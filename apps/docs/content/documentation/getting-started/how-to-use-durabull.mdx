@@ -1,0 +1,49 @@
+---
+title: How to Use Durabull
+description: A friendly map of the product so you can go from first login to confident day-to-day operations.
+---
+
+Durabull is designed for operators who need clear visibility into BullMQ queues and fast actions during incidents.
+
+If you are brand new, read this page first, then move into the deeper workflow pages.
+
+## The Main Areas of the App
+
+| App Area | What it helps with | Read next |
+| --- | --- | --- |
+| Queues Dashboard | See queue health and spot bottlenecks quickly | [Queues Dashboard](/documentation/workflows/queues-dashboard) |
+| Queue Detail | Pause/resume, purge, clean, and delete safely | [Queue Operations](/documentation/workflows/queue-operations) |
+| Jobs | Inspect payloads, logs, stacktraces, and retries | [Job Lifecycle and Debugging](/documentation/workflows/job-lifecycle-and-debugging) |
+| Scheduled Jobs | Find cron schedulers and remove stale schedules | [Scheduled Jobs](/documentation/workflows/scheduled-jobs) |
+| Workers | Confirm workers are connected and active | [Workers Topology](/documentation/workflows/workers-topology) |
+| Redis Key Explorer | Inspect non-BullMQ keys safely | [Redis Key Explorer](/documentation/workflows/redis-key-explorer) |
+
+## A Simple Daily Workflow
+
+1. Choose the correct connection for the environment you want to inspect.
+2. Open **Queues Dashboard** and check waiting/active/failed trends.
+3. Drill into the queue that looks unhealthy.
+4. Review failed jobs, logs, and stacktraces.
+5. Confirm scheduler and worker state if delays continue.
+6. Use destructive actions only after queue-name confirmation and safety checks.
+
+## First 15-Minute Onboarding Path
+
+If you want a quick success path:
+
+1. Open [Self Hosting Setup](/documentation/self-hosting/setup).
+2. Run [Installation](/documentation/self-hosting/installation) or [Docker Image and Compose](/documentation/deployment/docker).
+3. Read [Connection Management](/documentation/getting-started/connection-management).
+4. Run one queue incident drill using:
+   - [Queue Operations](/documentation/workflows/queue-operations)
+   - [Job Lifecycle and Debugging](/documentation/workflows/job-lifecycle-and-debugging)
+   - [Troubleshooting](/documentation/operations/troubleshooting)
+
+## Naming and Logging Standards
+
+Two practices dramatically improve triage speed:
+
+- Consistent queue and scheduler naming:
+  [Queue and Scheduled Job Naming Best Practices](/documentation/workflows/naming-best-practices)
+- Structured logs that Durabull can parse and highlight:
+  [Log Formatting and Highlighting](/documentation/workflows/log-formatting-and-highlighting)

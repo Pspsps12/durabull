@@ -1,0 +1,60 @@
+---
+title: Self Hosting Setup
+description: Choose your deployment shape, runtime mode, and connection strategy before installation.
+---
+
+Self hosting gives you full control over where Durabull runs, how it connects to Redis, and how your team authenticates.
+
+This page helps you choose the right setup before you install.
+
+## Prerequisites
+
+- Redis instance(s) you want to manage
+- Bun `1.3+` (for source-based install and local development)
+- Optional: Docker (recommended for fastest first run)
+- Optional: PostgreSQL (recommended for team deployments)
+
+## Choose Your Runtime Mode
+
+Durabull behavior is controlled by two toggles:
+
+- `DURABULL_AUTHLESS`
+- `DURABULL_ENV_CONNECTIONS`
+
+And one persistence setting:
+
+- `DATABASE_URL` (set = PostgreSQL, unset = PGlite)
+
+### Recommended Defaults
+
+| Scenario | Auth | Connections | Persistence |
+| --- | --- | --- | --- |
+| Local admin in trusted network | Authless | Env-driven | PGlite |
+| Team deployment | Authenticated | DB-managed or Env-driven | PostgreSQL |
+| Internet-facing production | Authenticated | Env-driven (most deterministic) | PostgreSQL |
+
+## Choose Your Installation Path
+
+### Path A: Docker Image (fastest)
+
+Use this if you want a quick, reproducible self-hosted setup.
+
+Continue to:
+
+- [Installation](/documentation/self-hosting/installation)
+- [Docker Image and Compose](/documentation/deployment/docker)
+
+### Path B: Source-based setup
+
+Use this if you need contributor workflows, custom builds, or advanced integration.
+
+Continue to:
+
+- [Installation](/documentation/self-hosting/installation)
+- [Local Development](/documentation/getting-started/local-development)
+
+## Before You Go Live
+
+- Review [Environment Variables](/documentation/getting-started/environment-variables)
+- Apply [Security and Hardening](/documentation/operations/security-and-hardening)
+- Keep [Troubleshooting](/documentation/operations/troubleshooting) bookmarked

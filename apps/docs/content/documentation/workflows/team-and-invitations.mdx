@@ -1,0 +1,57 @@
+---
+title: Team and Invitations
+description: Manage organization members, roles, and invitation lifecycle in authenticated deployments.
+---
+
+## Route Scope
+
+Team management route:
+
+- `/$orgSlug/team`
+
+This page is organization-scoped and intended for authenticated mode.
+
+## Role Model
+
+Typical roles surfaced in the UI:
+
+- Owner
+- Admin
+- Member
+
+Use least privilege by default and reserve owner/admin for operational and governance responsibilities.
+
+## Invitation Lifecycle
+
+Core operations:
+
+- send invite to email with selected role
+- resend pending invite
+- cancel/revoke invite
+- invited user accepts through invite route
+
+Invite acceptance route:
+
+- `/invite/$invitationId`
+
+Backend public invite read endpoint:
+
+- `GET /api/invitations/:id`
+
+## Member Management
+
+Available actions include:
+
+- list active members
+- remove member from org
+- inspect pending invitation counts
+
+## Operational Guidance
+
+- Keep at least two admins/owners for continuity.
+- Periodically clean stale pending invites.
+- Rotate roles when personnel changes happen.
+
+Screenshot placeholder: team page with member list and pending invitations.
+
+Video placeholder: owner invites admin, admin signs in, role validation walkthrough.

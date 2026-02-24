@@ -1,0 +1,307 @@
+import { redisConnectionRepository, shouldUseEnvConnections } from '@durabull/dal'
+import { env } from '@durabull/env'
+import { zValidator } from '@hono/zod-validator'
+import { Hono } from 'hono'
+import { Redis } from 'ioredis'
+import { z } from 'zod'
+import { requireOrganization } from '../middleware/auth'
+import { connectionTestRateLimiter } from '../middleware/rate-limit'
+import { validateRedisUrlForEnvironment } from '../lib/url-validation'
+
+const app = new Hono()
+  // Apply organization middleware to all routes
+  .use('*', requireOrganization)
+
+  // List all available Redis connections for the organization
+  .get('/', async (c) => {
+    const organizationId = c.get('organizationId')!
+    const dbConnections = await redisConnectionRepository.findAll(organizationId)
+
+    // Map database connections to API response format
+    const connections = dbConnections.map((conn) => ({
+      id: conn.id,
+      name: conn.name,
+      isDefault: conn.isDefault,
+      environment: conn.environment,
+    }))
+
+    return c.json({ connections })
+  })
+
+  // Get a single connection by ID (includes sensitive URL)
+  .get('/:id', async (c) => {
+    const { id } = c.req.param()
+    const organizationId = c.get('organizationId')!
+
+    const conn = await redisConnectionRepository.findById(id, organizationId)
+    if (!conn) {
+      return c.json({ error: 'Connection not found' }, 404)
+    }
+
+    return c.json({
+      connection: {
+        id: conn.id,
+        name: conn.name,
+        url: conn.url,
+        isDefault: conn.isDefault,
+        environment: conn.environment,
+        createdAt: conn.createdAt.toISOString(),
+        updatedAt: conn.updatedAt.toISOString(),
+      },
+    })
+  })
+
+  // Create a new connection for the organization
+  .post(
+    '/',
+    zValidator(
+      'json',
+      z.object({
+        name: z.string().min(1).max(100),
+        url: z.string().min(1),
+        environment: z.enum(['development', 'staging', 'production']).optional(),
+        isDefault: z.boolean().optional(),
+      })
+    ),
+    async (c) => {
+      if (shouldUseEnvConnections()) {
+        return c.json(
+          {
+            error:
+              'Connection management is disabled when DURABULL_ENV_CONNECTIONS=true. Configure connections via DURABULL_REDIS_URL_* environment variables.',
+          },
+          403
+        )
+      }
+
+      const body = c.req.valid('json')
+      const organizationId = c.get('organizationId')!
+
+      // Validate Redis URL to prevent SSRF attacks
+      const validation = validateRedisUrlForEnvironment(body.url)
+      if (!validation.valid) {
+        return c.json({ error: validation.error ?? 'Invalid Redis URL' }, 400)
+      }
+
+      // Check if name already exists within the organization
+      const existsByName = await redisConnectionRepository.existsByName(body.name, organizationId)
+      if (existsByName) {
+        return c.json({ error: 'A connection with this name already exists' }, 400)
+      }
+
+      // If this is set as default, we need to clear other defaults first
+      if (body.isDefault) {
+        const currentDefault = await redisConnectionRepository.findDefault(organizationId)
+        if (currentDefault) {
+          await redisConnectionRepository.update(currentDefault.id, organizationId, {
+            isDefault: false,
+          })
+        }
+      }
+
+      const conn = await redisConnectionRepository.create({
+        name: body.name,
+        url: body.url,
+        environment: body.environment ?? 'development',
+        isDefault: body.isDefault ?? false,
+        organizationId,
+      })
+
+      return c.json(
+        {
+          connection: {
+            id: conn.id,
+            name: conn.name,
+            isDefault: conn.isDefault,
+            environment: conn.environment,
+          },
+        },
+        201
+      )
+    }
+  )
+
+  // Update an existing connection
+  .patch(
+    '/:id',
+    zValidator(
+      'json',
+      z.object({
+        name: z.string().min(1).max(100).optional(),
+        url: z.string().min(1).optional(),
+        environment: z.enum(['development', 'staging', 'production']).optional(),
+        isDefault: z.boolean().optional(),
+      })
+    ),
+    async (c) => {
+      if (shouldUseEnvConnections()) {
+        return c.json(
+          {
+            error:
+              'Connection management is disabled when DURABULL_ENV_CONNECTIONS=true. Configure connections via DURABULL_REDIS_URL_* environment variables.',
+          },
+          403
+        )
+      }
+
+      const { id } = c.req.param()
+      const body = c.req.valid('json')
+      const organizationId = c.get('organizationId')!
+
+      const existing = await redisConnectionRepository.findById(id, organizationId)
+      if (!existing) {
+        return c.json({ error: 'Connection not found' }, 404)
+      }
+
+      // Validate Redis URL if being updated
+      if (body.url) {
+        const validation = validateRedisUrlForEnvironment(body.url)
+        if (!validation.valid) {
+          return c.json({ error: validation.error ?? 'Invalid Redis URL' }, 400)
+        }
+      }
+
+      // Check if name is being changed to an existing name
+      if (body.name && body.name !== existing.name) {
+        const existsByName = await redisConnectionRepository.existsByName(body.name, organizationId)
+        if (existsByName) {
+          return c.json({ error: 'A connection with this name already exists' }, 400)
+        }
+      }
+
+      // If setting as default, use the setDefault method
+      if (body.isDefault === true) {
+        await redisConnectionRepository.setDefault(id, organizationId)
+      }
+
+      // Update other fields
+      const updateData: Parameters<typeof redisConnectionRepository.update>[2] = {}
+      if (body.name !== undefined) updateData.name = body.name
+      if (body.url !== undefined) updateData.url = body.url
+      if (body.environment !== undefined) updateData.environment = body.environment
+      if (body.isDefault === false) updateData.isDefault = false
+
+      const conn = await redisConnectionRepository.update(id, organizationId, updateData)
+      if (!conn) {
+        return c.json({ error: 'Failed to update connection' }, 500)
+      }
+
+      return c.json({
+        connection: {
+          id: conn.id,
+          name: conn.name,
+          isDefault: conn.isDefault,
+          environment: conn.environment,
+        },
+      })
+    }
+  )
+
+  // Delete a connection
+  .delete('/:id', async (c) => {
+    if (shouldUseEnvConnections()) {
+      return c.json(
+        {
+          error:
+            'Connection management is disabled when DURABULL_ENV_CONNECTIONS=true. Configure connections via DURABULL_REDIS_URL_* environment variables.',
+        },
+        403
+      )
+    }
+
+    const { id } = c.req.param()
+    const organizationId = c.get('organizationId')!
+
+    const existing = await redisConnectionRepository.findById(id, organizationId)
+    if (!existing) {
+      return c.json({ error: 'Connection not found' }, 404)
+    }
+
+    // If deleting the default connection, make the first remaining one default
+    if (existing.isDefault) {
+      const allConnections = await redisConnectionRepository.findAll(organizationId)
+      const nextDefault = allConnections.find((conn) => conn.id !== id)
+      if (nextDefault) {
+        await redisConnectionRepository.setDefault(nextDefault.id, organizationId)
+      }
+    }
+
+    const deleted = await redisConnectionRepository.delete(id, organizationId)
+    if (!deleted) {
+      return c.json({ error: 'Failed to delete connection' }, 500)
+    }
+
+    return c.json({ success: true, deleted: id })
+  })
+
+  // Test a connection URL
+  // Rate limited to prevent SSRF scanning attacks
+  .post(
+    '/test',
+    connectionTestRateLimiter,
+    zValidator(
+      'json',
+      z.object({
+        url: z.string().min(1),
+      })
+    ),
+    async (c) => {
+      const { url } = c.req.valid('json')
+
+      // Validate URL to prevent SSRF attacks
+      const validation = validateRedisUrlForEnvironment(url)
+      if (!validation.valid) {
+        return c.json(
+          {
+            success: false,
+            message: validation.error ?? 'Invalid Redis URL',
+          },
+          400
+        )
+      }
+
+      const startTime = Date.now()
+      let redis: Redis | null = null
+
+      try {
+        redis = new Redis(url, {
+          connectTimeout: 5000,
+          maxRetriesPerRequest: 1,
+          lazyConnect: true,
+        })
+
+        await redis.connect()
+        await redis.ping()
+
+        const latencyMs = Date.now() - startTime
+
+        return c.json({
+          success: true,
+          message: 'Connection successful',
+          latencyMs,
+        })
+      } catch (error) {
+        // Sanitize error messages in production to avoid information leakage
+        const errorMessage =
+          env.NODE_ENV === 'production'
+            ? 'Connection failed. Please verify your Redis URL and credentials.'
+            : error instanceof Error
+              ? error.message
+              : 'Connection failed'
+
+        return c.json(
+          {
+            success: false,
+            message: errorMessage,
+          },
+          400
+        )
+      } finally {
+        if (redis) {
+          await redis.quit().catch(() => {})
+        }
+      }
+    }
+  )
+
+export default app
