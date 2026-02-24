@@ -1,4 +1,10 @@
-import { getDatabaseMode, getDb, shouldUseEnvConnections, user } from '@durabull/dal'
+import {
+  assertRedisConnectionUrlEncryptionReady,
+  getDatabaseMode,
+  getDb,
+  shouldUseEnvConnections,
+  user,
+} from '@durabull/dal'
 import { env } from '@durabull/env'
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
@@ -182,6 +188,9 @@ const getDefaultCorsOrigins = () => {
 
 export async function createApiApp(options: CreateApiAppOptions = {}) {
   const { enableLogging = true, corsOrigins = getDefaultCorsOrigins() } = options
+
+  const db = await getDb()
+  await assertRedisConnectionUrlEncryptionReady(db)
 
   const app = new Hono()
 

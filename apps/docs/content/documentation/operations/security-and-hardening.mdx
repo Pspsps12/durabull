@@ -30,6 +30,7 @@ Operational guidance:
 - grant connection management permissions sparingly
 - separate staging and production Redis credentials
 - for existing plaintext rows, run `bun tooling/scripts/encrypt-redis-connection-urls.ts`
+- production startup enforces encrypted-at-rest rows by default and fails fast when plaintext rows remain
 
 ## API Protection
 

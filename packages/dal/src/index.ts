@@ -49,7 +49,19 @@ export {
   getEnvRedisConnectionIdsForOrganization,
   shouldUseEnvConnections,
 } from './db/env-redis-connections'
-export { decryptRedisUrl, encryptRedisUrl, isRedisUrlEncrypted } from './db/redis-url-encryption'
+export {
+  assertRedisUrlEncryptionKeyConfigured,
+  decryptRedisUrl,
+  encryptRedisUrl,
+  isRedisUrlEncrypted,
+  isRedisUrlEncryptionKeyConfigured,
+} from './db/redis-url-encryption'
+export {
+  assertRedisConnectionUrlEncryptionReady,
+  auditRedisConnectionUrlEncryption,
+  resetRedisUrlEncryptionAuditWarningsForTests,
+  shouldEnforceRedisUrlEncryption,
+} from './db/redis-url-encryption-audit'
 export {
   allowsInternalConnections,
   validateRedisUrl,

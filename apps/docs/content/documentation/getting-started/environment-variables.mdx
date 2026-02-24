@@ -31,6 +31,7 @@ description: Complete runtime environment variable reference for local and produ
 | `DATABASE_URL` | Optional | Enables PostgreSQL mode when set |
 | `REDIS_URL` | Optional | Generic Redis URL used by scripts/defaults |
 | `DURABULL_REDIS_URL_ENCRYPTION_KEY` | Required when persisting connections | 32-byte key (hex/base64) used to encrypt Redis connection URLs at rest |
+| `DURABULL_ENFORCE_REDIS_URL_ENCRYPTION` | Optional | Override strict plaintext enforcement (`true`/`false`). Defaults to `true` in production |
 | `DURABULL_PGLITE_DIR` | Optional | Override PGlite data directory |
 
 ## Connection Mode
