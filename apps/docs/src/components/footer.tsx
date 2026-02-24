@@ -57,12 +57,16 @@ export function Footer() {
               who demand reliability.
             </p>
             <div className="flex items-center gap-4">
-              <span
-                title="GitHub repository coming soon"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/80 bg-secondary/70 text-muted-foreground/70"
+              <a
+                href="https://github.com/durabullhq/durabull"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Durabull on GitHub"
+                title="Durabull GitHub repository"
+                className="rounded-lg bg-secondary p-2 transition-colors duration-200 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
-                <Github className="h-5 w-5" aria-hidden="true" />
-              </span>
+                <Github className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+              </a>
               <a
                 href="https://x.com/durabullhq"
                 target="_blank"
