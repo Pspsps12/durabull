@@ -117,9 +117,9 @@ export default function PricingPage() {
                 },
                 {
                   icon: Sparkles,
-                  title: 'Open Source Intent',
+                  title: 'Open Source',
                   description:
-                    'We fully intend to open source Durabull. You can run authless mode and choose stateful (Postgres) or stateless (PGlite) persistence based on your needs.',
+                    'Durabull is fully open source and available on GitHub. You can run authless mode and choose stateful (Postgres) or stateless (PGlite) persistence based on your needs.',
                 },
               ].map((item) => (
                 <div

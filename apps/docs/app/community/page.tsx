@@ -19,7 +19,7 @@ export default function CommunityPage() {
         title="Community"
         subtitle="Join the developers improving BullMQ operations and sharing best practices."
         primaryCta={{ label: 'Follow on X', to: 'https://x.com/durabullhq' }}
-        secondaryCta={{ label: 'Contact the Team', to: '/contact' }}
+        secondaryCta={{ label: 'View on GitHub', to: 'https://github.com/durabullhq/durabull' }}
         sections={[
           {
             title: 'Office Hours',
@@ -27,7 +27,8 @@ export default function CommunityPage() {
           },
           {
             title: 'Open Source',
-            description: 'We plan to open source Durabull as the platform matures.',
+            description:
+              'Durabull is fully open source. Explore the codebase, self-host, and contribute on GitHub.',
           },
           {
             title: 'Community Stories',
