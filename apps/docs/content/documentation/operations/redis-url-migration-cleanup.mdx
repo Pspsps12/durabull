@@ -1,0 +1,60 @@
+---
+title: Redis URL Migration Cleanup
+description: Post-migration checklist for removing temporary Redis URL startup migration code after all environments are migrated.
+---
+
+## Purpose
+
+Durabull currently includes temporary startup migration logic that encrypts legacy plaintext Redis connection URLs on boot.
+
+After all deployed environments are migrated and verified, this temporary logic should be removed from the repository.
+
+## Exit Criteria Before Cleanup
+
+Run these checks in every environment (prod, staging, any long-lived preview stacks):
+
+1. `bun tooling/scripts/encrypt-redis-connection-urls.ts --dry-run`
+2. Confirm output:
+   - `migrated from plaintext: 0`
+   - `invalid encrypted rows: 0`
+3. Restart API and confirm startup is clean.
+
+Do not remove migration code until all environments pass.
+
+## Remove Temporary Startup Migration Code
+
+Delete or revert the following temporary code paths:
+
+1. Startup migration toggle and branching logic:
+   - [redis-url-encryption-audit.ts](/Users/gregg/dev/durabull/packages/dal/src/db/redis-url-encryption-audit.ts)
+   - Remove `shouldRunRedisUrlStartupMigration()`
+   - Remove `migratePlaintext` usage inside `assertRedisConnectionUrlEncryptionReady()`
+   - Keep decrypt/key validation and strict encrypted-at-rest checks.
+2. Temporary env variable from runtime schema:
+   - [index.ts](/Users/gregg/dev/durabull/tooling/env/src/index.ts)
+   - Remove `DURABULL_REDIS_URL_STARTUP_MIGRATION`
+3. Startup migration env examples/docs:
+   - [.env.example](/Users/gregg/dev/durabull/.env.example)
+   - [environment-variables.mdx](/Users/gregg/dev/durabull/apps/docs/content/documentation/getting-started/environment-variables.mdx)
+   - [security-and-hardening.mdx](/Users/gregg/dev/durabull/apps/docs/content/documentation/operations/security-and-hardening.mdx)
+   - This cleanup page itself: [redis-url-migration-cleanup.mdx](/Users/gregg/dev/durabull/apps/docs/content/documentation/operations/redis-url-migration-cleanup.mdx)
+
+## Optional: Remove Manual Migration Script
+
+If you do not want to keep the manual backfill command after cleanup, remove:
+
+1. Script file:
+   - [encrypt-redis-connection-urls.ts](/Users/gregg/dev/durabull/tooling/scripts/encrypt-redis-connection-urls.ts)
+2. Script registrations:
+   - [package.json](/Users/gregg/dev/durabull/package.json)
+   - [package.json](/Users/gregg/dev/durabull/tooling/scripts/package.json)
+3. Script-specific tests/docs that only exist for one-time migration.
+
+## Validation After Cleanup
+
+Run:
+
+1. `bun run format`
+2. `bun run lint`
+3. `bun run typecheck`
+4. API boot test in production-like config with encrypted rows only.

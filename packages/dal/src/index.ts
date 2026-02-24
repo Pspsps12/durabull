@@ -61,6 +61,7 @@ export {
   auditRedisConnectionUrlEncryption,
   resetRedisUrlEncryptionAuditWarningsForTests,
   shouldEnforceRedisUrlEncryption,
+  shouldRunRedisUrlStartupMigration,
 } from './db/redis-url-encryption-audit'
 export {
   allowsInternalConnections,

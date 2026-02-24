@@ -25,6 +25,7 @@ export interface RedisUrlEncryptionAuditResult {
 }
 
 let hasWarnedAboutPlaintextRows = false
+let hasLoggedStartupMigration = false
 
 export function shouldEnforceRedisUrlEncryption(): boolean {
   if (env.DURABULL_ENFORCE_REDIS_URL_ENCRYPTION !== undefined) {
@@ -32,6 +33,14 @@ export function shouldEnforceRedisUrlEncryption(): boolean {
   }
 
   return env.NODE_ENV === 'production'
+}
+
+export function shouldRunRedisUrlStartupMigration(): boolean {
+  if (env.DURABULL_REDIS_URL_STARTUP_MIGRATION !== undefined) {
+    return env.DURABULL_REDIS_URL_STARTUP_MIGRATION
+  }
+
+  return true
 }
 
 export async function auditRedisConnectionUrlEncryption(
@@ -112,9 +121,11 @@ export async function assertRedisConnectionUrlEncryptionReady(
   options: Pick<RedisUrlEncryptionAuditOptions, 'organizationId'> = {}
 ): Promise<void> {
   assertRedisUrlEncryptionKeyConfigured()
+  const startupMigrationEnabled = shouldRunRedisUrlStartupMigration()
 
   const result = await auditRedisConnectionUrlEncryption(db, {
     organizationId: options.organizationId,
+    migratePlaintext: startupMigrationEnabled,
   })
 
   if (result.invalidEncryptedRows > 0) {
@@ -124,7 +135,14 @@ export async function assertRedisConnectionUrlEncryptionReady(
     )
   }
 
-  if (result.plaintextRows > 0) {
+  if (result.migratedRows > 0 && !hasLoggedStartupMigration) {
+    console.warn(
+      `[durabull] Startup migration encrypted ${result.migratedRows} plaintext Redis connection URL(s).`
+    )
+    hasLoggedStartupMigration = true
+  }
+
+  if (result.plaintextRows > 0 && !startupMigrationEnabled) {
     const command = options.organizationId
       ? `bun tooling/scripts/encrypt-redis-connection-urls.ts --organization ${options.organizationId}`
       : 'bun tooling/scripts/encrypt-redis-connection-urls.ts'
@@ -144,4 +162,5 @@ export async function assertRedisConnectionUrlEncryptionReady(
 
 export function resetRedisUrlEncryptionAuditWarningsForTests(): void {
   hasWarnedAboutPlaintextRows = false
+  hasLoggedStartupMigration = false
 }

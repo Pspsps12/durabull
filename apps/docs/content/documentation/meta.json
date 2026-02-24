@@ -31,6 +31,7 @@
     "---Reference---",
     "reference/http-api",
     "---Operations---",
+    "operations/redis-url-migration-cleanup",
     "operations/troubleshooting",
     "deployment/render-and-demo"
   ]

@@ -19,12 +19,14 @@ const mutableEnv = env as {
   NODE_ENV?: 'development' | 'test' | 'production'
   DURABULL_REDIS_URL_ENCRYPTION_KEY?: string
   DURABULL_ENFORCE_REDIS_URL_ENCRYPTION?: boolean
+  DURABULL_REDIS_URL_STARTUP_MIGRATION?: boolean
 }
 
 const originalDatabaseUrl = mutableEnv.DATABASE_URL
 const originalNodeEnv = mutableEnv.NODE_ENV
 const originalEncryptionKey = mutableEnv.DURABULL_REDIS_URL_ENCRYPTION_KEY
 const originalEnforceFlag = mutableEnv.DURABULL_ENFORCE_REDIS_URL_ENCRYPTION
+const originalStartupMigrationFlag = mutableEnv.DURABULL_REDIS_URL_STARTUP_MIGRATION
 const originalPgliteDir = process.env.DURABULL_PGLITE_DIR
 
 const TEST_ORG_ID = 'org-encryption-audit'
@@ -53,6 +55,7 @@ describe('redis-url-encryption-audit', () => {
     mutableEnv.NODE_ENV = 'development'
     mutableEnv.DURABULL_REDIS_URL_ENCRYPTION_KEY = TEST_ENCRYPTION_KEY
     mutableEnv.DURABULL_ENFORCE_REDIS_URL_ENCRYPTION = undefined
+    mutableEnv.DURABULL_REDIS_URL_STARTUP_MIGRATION = undefined
     resetRedisUrlEncryptionAuditWarningsForTests()
     await closeDb()
   })
@@ -63,6 +66,7 @@ describe('redis-url-encryption-audit', () => {
     mutableEnv.NODE_ENV = originalNodeEnv
     mutableEnv.DURABULL_REDIS_URL_ENCRYPTION_KEY = originalEncryptionKey
     mutableEnv.DURABULL_ENFORCE_REDIS_URL_ENCRYPTION = originalEnforceFlag
+    mutableEnv.DURABULL_REDIS_URL_STARTUP_MIGRATION = originalStartupMigrationFlag
 
     if (originalPgliteDir) {
       process.env.DURABULL_PGLITE_DIR = originalPgliteDir
@@ -159,16 +163,47 @@ describe('redis-url-encryption-audit', () => {
     expect(result.invalidEncryptedConnectionIds).toEqual(['22222222-2222-4222-8222-222222222222'])
   })
 
-  it('fails readiness checks in production when plaintext rows remain', async () => {
+  it('migrates plaintext rows during readiness checks when startup migration is enabled', async () => {
     const db = await setupBaseOrganization()
     const now = new Date()
     mutableEnv.NODE_ENV = 'production'
     mutableEnv.DURABULL_ENFORCE_REDIS_URL_ENCRYPTION = undefined
+    mutableEnv.DURABULL_REDIS_URL_STARTUP_MIGRATION = true
 
     await db.insert(redisConnection).values({
       id: '33333333-3333-4333-8333-333333333333',
       name: 'Plaintext In Production',
       url: 'redis://prod:secret@localhost:6379/1',
+      environment: 'production',
+      isDefault: true,
+      organizationId: TEST_ORG_ID,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await expect(assertRedisConnectionUrlEncryptionReady(db)).resolves.toBeUndefined()
+
+    const row = await db
+      .select({ url: redisConnection.url })
+      .from(redisConnection)
+      .where(eq(redisConnection.id, '33333333-3333-4333-8333-333333333333'))
+      .limit(1)
+
+    expect(row[0]).toBeDefined()
+    expect(isRedisUrlEncrypted(row[0]!.url)).toBe(true)
+  })
+
+  it('fails readiness checks when startup migration is disabled and plaintext rows remain', async () => {
+    const db = await setupBaseOrganization()
+    const now = new Date()
+    mutableEnv.NODE_ENV = 'production'
+    mutableEnv.DURABULL_ENFORCE_REDIS_URL_ENCRYPTION = true
+    mutableEnv.DURABULL_REDIS_URL_STARTUP_MIGRATION = false
+
+    await db.insert(redisConnection).values({
+      id: '77777777-7777-4777-8777-777777777777',
+      name: 'Plaintext With Migration Disabled',
+      url: 'redis://prod:secret@localhost:6379/7',
       environment: 'production',
       isDefault: true,
       organizationId: TEST_ORG_ID,

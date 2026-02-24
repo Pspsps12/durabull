@@ -29,8 +29,10 @@ Operational guidance:
 
 - grant connection management permissions sparingly
 - separate staging and production Redis credentials
-- for existing plaintext rows, run `bun tooling/scripts/encrypt-redis-connection-urls.ts`
-- production startup enforces encrypted-at-rest rows by default and fails fast when plaintext rows remain
+- startup runs a one-time migration by default to encrypt existing plaintext `redis_connection.url` rows
+- for controlled/manual migration, run `bun tooling/scripts/encrypt-redis-connection-urls.ts`
+- startup fails fast if encrypted rows cannot be decrypted with the configured key
+- after rollout is complete, follow the cleanup checklist in [Redis URL Migration Cleanup](/documentation/operations/redis-url-migration-cleanup)
 
 ## API Protection
 
