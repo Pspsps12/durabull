@@ -16,10 +16,16 @@ if (!fs.existsSync(authDir)) {
 }
 
 const authStatePath = path.join(__dirname, '.auth/admin.json')
+const DEFAULT_E2E_REDIS_URL_ENCRYPTION_KEY =
+  '9e6ef92b4f3f1e0e067b0a1c3e928f77c14f357205f143e1e152b95f2d1f7a4c'
 
 function isAuthlessE2EMode(): boolean {
   const value = process.env.DURABULL_AUTHLESS?.trim().toLowerCase()
   return value === 'true' || value === '1' || value === 'yes' || value === 'on'
+}
+
+function getE2ERedisUrlEncryptionKey(): string {
+  return process.env.DURABULL_REDIS_URL_ENCRYPTION_KEY ?? DEFAULT_E2E_REDIS_URL_ENCRYPTION_KEY
 }
 
 /**
@@ -32,6 +38,7 @@ function isAuthlessE2EMode(): boolean {
 async function globalSetup(config: FullConfig) {
   const baseURL = config.projects[0]?.use?.baseURL || 'http://localhost:5173'
   const authlessMode = isAuthlessE2EMode()
+  process.env.DURABULL_REDIS_URL_ENCRYPTION_KEY = getE2ERedisUrlEncryptionKey()
 
   console.log(`\n🌱 Running global setup (${authlessMode ? 'authless' : 'stateful'})...\n`)
 
@@ -99,6 +106,7 @@ async function seedDatabase() {
       process.env.DATABASE_URL ||
       `postgresql://postgres:postgres@localhost:${postgresPort}/durabull`,
     REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
+    DURABULL_REDIS_URL_ENCRYPTION_KEY: getE2ERedisUrlEncryptionKey(),
   }
 
   if (isCI) {

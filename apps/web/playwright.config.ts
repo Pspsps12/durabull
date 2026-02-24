@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const defaultE2ERedisUrlEncryptionKey =
+  "9e6ef92b4f3f1e0e067b0a1c3e928f77c14f357205f143e1e152b95f2d1f7a4c";
 
 function isAuthlessE2EMode(): boolean {
   const value = process.env.DURABULL_AUTHLESS?.trim().toLowerCase();
@@ -101,6 +103,8 @@ export default defineConfig({
       return {
         ...process.env,
         SKIP_CLEAR_PORT_3001: "1",
+        DURABULL_REDIS_URL_ENCRYPTION_KEY:
+          process.env.DURABULL_REDIS_URL_ENCRYPTION_KEY ?? defaultE2ERedisUrlEncryptionKey,
         PATH: `${prepend}${process.env.PATH ?? ""}`,
       };
     })(),

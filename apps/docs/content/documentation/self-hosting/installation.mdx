@@ -23,6 +23,7 @@ docker run -d --name durabull-redis --network durabull redis:8-alpine
 docker run --rm -p 3000:3000 --network durabull \
   -e DURABULL_AUTHLESS=true \
   -e DURABULL_ENV_CONNECTIONS=true \
+  -e DURABULL_REDIS_URL_ENCRYPTION_KEY=$(openssl rand -hex 32) \
   -e DURABULL_REDIS_URL_MAIN=redis://durabull-redis:6379 \
   -e DURABULL_REDIS_URL_MAIN_ENVIRONMENT=development \
   -e DURABULL_REDIS_URL_DEFAULT=MAIN \
@@ -49,6 +50,7 @@ bun install
 ```bash
 DURABULL_AUTHLESS=true
 DURABULL_ENV_CONNECTIONS=true
+DURABULL_REDIS_URL_ENCRYPTION_KEY=<openssl-rand-hex-32>
 DURABULL_REDIS_URL_MAIN=redis://localhost:6379
 DURABULL_REDIS_URL_MAIN_ENVIRONMENT=development
 DURABULL_REDIS_URL_DEFAULT=MAIN

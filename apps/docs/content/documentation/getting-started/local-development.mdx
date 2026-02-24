@@ -52,6 +52,12 @@ If another local Postgres container already uses Durabull's default host port, s
 `DURABULL_POSTGRES_PORT` in your `.env` (for example `55433`) and keep
 `DATABASE_URL` on the same port.
 
+Set a Redis URL encryption key in `.env` before seeding:
+
+```bash
+DURABULL_REDIS_URL_ENCRYPTION_KEY=$(openssl rand -hex 32)
+```
+
 2. Seed realistic development data:
 
 ```bash

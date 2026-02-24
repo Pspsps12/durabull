@@ -25,6 +25,7 @@ docker run -d --name durabull-redis --network durabull redis:8-alpine
 docker run --rm -p 3000:3000 --network durabull \
   -e DURABULL_AUTHLESS=true \
   -e DURABULL_ENV_CONNECTIONS=true \
+  -e DURABULL_REDIS_URL_ENCRYPTION_KEY=$(openssl rand -hex 32) \
   -e DURABULL_REDIS_URL_MAIN=redis://durabull-redis:6379 \
   -e DURABULL_REDIS_URL_MAIN_ENVIRONMENT=development \
   -e DURABULL_REDIS_URL_DEFAULT=MAIN \
@@ -51,6 +52,7 @@ services:
     environment:
       DURABULL_AUTHLESS: "true"
       DURABULL_ENV_CONNECTIONS: "true"
+      DURABULL_REDIS_URL_ENCRYPTION_KEY: "${DURABULL_REDIS_URL_ENCRYPTION_KEY}"
       DURABULL_REDIS_URL_MAIN: redis://redis:6379
       DURABULL_REDIS_URL_MAIN_ENVIRONMENT: development
       DURABULL_REDIS_URL_DEFAULT: MAIN
@@ -78,6 +80,7 @@ For internet-facing deployments:
 
 - set `DURABULL_AUTHLESS=false`
 - configure `BETTER_AUTH_SECRET`
+- configure `DURABULL_REDIS_URL_ENCRYPTION_KEY`
 - set correct `APP_BASE_URL` and `VITE_PUBLIC_APP_URL`
 - review [Security and Hardening](/documentation/operations/security-and-hardening)
 - use PostgreSQL (`DATABASE_URL`) for stateful team environments

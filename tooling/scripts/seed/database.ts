@@ -7,6 +7,7 @@
 
 import {
   authSchema,
+  encryptRedisUrl,
   eq,
   getDb,
   invitation,
@@ -221,7 +222,7 @@ async function seedConnections(db: Awaited<ReturnType<typeof getDb>>): Promise<v
       logItem(`Updating connection: ${conn.name}...`)
       await db
         .update(redisConnection)
-        .set({ url: REDIS_URL, updatedAt: now })
+        .set({ url: encryptRedisUrl(REDIS_URL), updatedAt: now })
         .where(eq(redisConnection.id, conn.id))
       logSuccess(`Updated connection: ${conn.name}`)
     } else {
@@ -241,7 +242,7 @@ async function seedConnections(db: Awaited<ReturnType<typeof getDb>>): Promise<v
       await db.insert(redisConnection).values({
         id: conn.id,
         name: conn.name,
-        url: REDIS_URL,
+        url: encryptRedisUrl(REDIS_URL),
         isDefault: conn.isDefault,
         environment: conn.environment,
         organizationId: actualOrgId,

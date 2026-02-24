@@ -8,6 +8,7 @@
     "seed:demo": "bun run seed-demo-account.ts",
     "check:demo": "bun run check-demo-health.ts",
     "wipe": "bun run wipe.ts",
+    "encrypt:redis-urls": "bun run encrypt-redis-connection-urls.ts",
     "generate-favicons": "bun run generate-favicons.ts"
   },
   "dependencies": {

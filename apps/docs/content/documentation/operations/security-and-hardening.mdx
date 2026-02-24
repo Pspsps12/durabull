@@ -7,6 +7,7 @@ description: Security checklist and operational hardening guidance for productio
 
 - Run authenticated mode for internet-facing deployments.
 - Use strong `BETTER_AUTH_SECRET`.
+- Set `DURABULL_REDIS_URL_ENCRYPTION_KEY` to a 32-byte random value (`openssl rand -hex 32`).
 - Enforce HTTPS at edge/load balancer.
 - Keep `APP_BASE_URL` and `VITE_PUBLIC_APP_URL` accurate and consistent.
 
@@ -28,6 +29,7 @@ Operational guidance:
 
 - grant connection management permissions sparingly
 - separate staging and production Redis credentials
+- for existing plaintext rows, run `bun tooling/scripts/encrypt-redis-connection-urls.ts`
 
 ## API Protection
 
