@@ -14,7 +14,7 @@ WORKDIR /app
 FROM base AS prune
 RUN bun add -g turbo
 COPY . .
-RUN turbo prune @durabull/api @durabull/web --docker
+RUN turbo prune @durabull/api @durabull/web @durabull/scripts --docker
 
 # -----------------------------------------------------------------------------
 # Deps: Install all dependencies (for building)
