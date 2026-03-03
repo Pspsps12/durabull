@@ -6,6 +6,7 @@
  */
 
 import {
+  and,
   authSchema,
   encryptRedisUrl,
   eq,
@@ -230,11 +231,26 @@ async function seedConnections(db: Awaited<ReturnType<typeof getDb>>): Promise<v
       const existingByName = await db
         .select({ id: redisConnection.id })
         .from(redisConnection)
-        .where(eq(redisConnection.name, conn.name))
+        .where(
+          and(
+            eq(redisConnection.name, conn.name),
+            eq(redisConnection.organizationId, actualOrgId)
+          )
+        )
         .limit(1)
 
       if (existingByName.length > 0) {
-        logWarning(`Connection ${conn.name} already exists`)
+        logItem(`Updating connection by name: ${conn.name}...`)
+        await db
+          .update(redisConnection)
+          .set({
+            url: encryptRedisUrl(REDIS_URL),
+            environment: conn.environment,
+            isDefault: conn.isDefault,
+            updatedAt: now,
+          })
+          .where(eq(redisConnection.id, existingByName[0].id))
+        logSuccess(`Updated existing connection: ${conn.name}`)
         continue
       }
 

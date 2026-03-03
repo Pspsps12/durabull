@@ -14,6 +14,13 @@ type Connection = {
   environment: string
 }
 
+type CreateConnectionInput = {
+  name: string
+  url: string
+  environment?: 'development' | 'staging' | 'production'
+  isDefault?: boolean
+}
+
 type QueueSummary = {
   name: string
 }
@@ -79,6 +86,28 @@ export async function getConnections(page: Page): Promise<Connection[]> {
     throw new Error('No connections found. Ensure the seed script ran successfully.')
   }
   return data.connections
+}
+
+export async function createConnection(
+  page: Page,
+  input: CreateConnectionInput
+): Promise<Connection> {
+  const response = await page.request.post('/api/connections', {
+    data: {
+      name: input.name,
+      url: input.url,
+      environment: input.environment ?? 'development',
+      isDefault: input.isDefault ?? false,
+    },
+  })
+
+  const data = await apiJson<{ connection: Connection }>(response, 'POST /api/connections')
+  return data.connection
+}
+
+export async function deleteConnection(page: Page, connectionId: string): Promise<void> {
+  const response = await page.request.delete(`/api/connections/${connectionId}`)
+  await apiJson<{ success: boolean }>(response, `DELETE /api/connections/${connectionId}`)
 }
 
 export async function getDefaultConnectionId(page: Page): Promise<string> {

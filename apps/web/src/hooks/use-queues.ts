@@ -5,6 +5,7 @@
 
 import { AnalyticsEvents, trackEvent } from '@durabull/analytics'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useParams } from '@tanstack/react-router'
 import { useConnection } from '@/components/connection-provider'
 import { ApiError, api, fetchApi, handleRes, type InferResponseType } from '@/lib/api'
 import { PAGINATION } from '@/lib/constants'
@@ -216,10 +217,15 @@ export const queryKeys = {
   allWorkers: (connectionId: string) => ['workers', connectionId] as const,
 }
 
+function useConnectionIdFromContextOrRoute(): string | undefined {
+  const { currentConnection } = useConnection()
+  const { connectionId } = useParams({ strict: false }) as { connectionId?: string }
+  return currentConnection?.id ?? connectionId
+}
+
 // Queue Queries
 export function useQueues() {
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useQuery({
     queryKey: queryKeys.queues(connectionId ?? ''),
@@ -234,8 +240,7 @@ export function useQueues() {
 }
 
 export function useQueue(queueName: string) {
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useQuery({
     queryKey: queryKeys.queue(connectionId ?? '', queueName),
@@ -250,8 +255,7 @@ export function useQueue(queueName: string) {
 }
 
 export function useQueueMetrics(queueName: string, options?: QueueMetricsOptions) {
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useQuery({
     queryKey: queryKeys.queueMetrics(connectionId ?? '', queueName, options),
@@ -293,8 +297,7 @@ export function useJobs(
   queueName: string,
   filters?: { status?: string; name?: string; jobId?: string; page?: number; pageSize?: number }
 ) {
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useQuery({
     queryKey: queryKeys.jobs(connectionId ?? '', queueName, filters),
@@ -335,8 +338,7 @@ export function useJobs(
 }
 
 export function useJob(queueName: string, jobId: string) {
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useQuery({
     queryKey: queryKeys.job(connectionId ?? '', queueName, jobId),
@@ -351,8 +353,7 @@ export function useJob(queueName: string, jobId: string) {
 }
 
 export function useJobLogs(queueName: string, jobId: string) {
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useInfiniteQuery({
     queryKey: queryKeys.jobLogs(connectionId ?? '', queueName, jobId),
@@ -378,8 +379,7 @@ export function useJobLogs(queueName: string, jobId: string) {
 }
 
 export function useJobStacktraces(queueName: string, jobId: string, enabled = true) {
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useInfiniteQuery({
     queryKey: queryKeys.jobStacktraces(connectionId ?? '', queueName, jobId),
@@ -406,8 +406,7 @@ export function useJobStacktraces(queueName: string, jobId: string, enabled = tr
 
 // Scheduled Jobs Queries
 export function useScheduledJobs() {
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useQuery({
     queryKey: queryKeys.scheduledJobs(connectionId ?? ''),
@@ -422,8 +421,7 @@ export function useScheduledJobs() {
 }
 
 export function useQueueScheduledJobs(queueName: string) {
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useQuery({
     queryKey: queryKeys.queueScheduledJobs(connectionId ?? '', queueName),
@@ -439,8 +437,7 @@ export function useQueueScheduledJobs(queueName: string) {
 
 // Metrics Query
 export function useAllMetrics() {
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useQuery({
     queryKey: queryKeys.allMetrics(connectionId ?? ''),
@@ -457,8 +454,7 @@ export function useAllMetrics() {
 
 // Workers Query
 export function useAllWorkers() {
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useQuery({
     queryKey: queryKeys.allWorkers(connectionId ?? ''),
@@ -475,8 +471,7 @@ export function useAllWorkers() {
 // Queue Mutations
 export function usePauseQueue() {
   const queryClient = useQueryClient()
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useMutation({
     mutationFn: async (queueName: string) => {
@@ -504,8 +499,7 @@ export function usePauseQueue() {
 
 export function useResumeQueue() {
   const queryClient = useQueryClient()
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useMutation({
     mutationFn: async (queueName: string) => {
@@ -533,8 +527,7 @@ export function useResumeQueue() {
 
 export function useCleanQueue() {
   const queryClient = useQueryClient()
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useMutation({
     mutationFn: async ({
@@ -577,8 +570,7 @@ export function useCleanQueue() {
 
 export function usePurgeQueue() {
   const queryClient = useQueryClient()
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useMutation({
     mutationFn: async ({
@@ -620,8 +612,7 @@ export function usePurgeQueue() {
 
 export function useObliterateQueue() {
   const queryClient = useQueryClient()
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useMutation({
     mutationFn: async (queueName: string) => {
@@ -651,8 +642,7 @@ export function useObliterateQueue() {
 // Job Mutations
 export function useRetryJobs() {
   const queryClient = useQueryClient()
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useMutation({
     mutationFn: async (
@@ -702,8 +692,7 @@ export function useRetryJobs() {
 
 export function useRemoveJobs() {
   const queryClient = useQueryClient()
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useMutation({
     mutationFn: async ({
@@ -755,8 +744,7 @@ export function useRemoveJobs() {
 
 export function useClearJobLogs() {
   const queryClient = useQueryClient()
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useMutation({
     mutationFn: async ({
@@ -800,8 +788,7 @@ export function useClearJobLogs() {
 
 export function useClearJobStacktraces() {
   const queryClient = useQueryClient()
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useMutation({
     mutationFn: async ({
@@ -834,8 +821,7 @@ export function useClearJobStacktraces() {
 
 export function useInvokeJobs() {
   const queryClient = useQueryClient()
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useMutation({
     mutationFn: async ({
@@ -880,8 +866,7 @@ export function useInvokeJobs() {
 
 export function useAddJob() {
   const queryClient = useQueryClient()
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useMutation({
     mutationFn: async ({
@@ -923,8 +908,7 @@ export function useAddJob() {
 // Scheduled Job Mutations
 export function useRemoveScheduledJob() {
   const queryClient = useQueryClient()
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useMutation({
     mutationFn: async ({ queueName, schedulerId }: { queueName: string; schedulerId: string }) => {
@@ -959,8 +943,7 @@ export function useRemoveScheduledJob() {
 
 // Check if queue can be deleted
 export function useCanDeleteQueue(queueName: string) {
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useQuery({
     queryKey: ['canDeleteQueue', connectionId, queueName],
@@ -977,8 +960,7 @@ export function useCanDeleteQueue(queueName: string) {
 // Delete queue mutation
 export function useDeleteQueue() {
   const queryClient = useQueryClient()
-  const { currentConnection } = useConnection()
-  const connectionId = currentConnection?.id
+  const connectionId = useConnectionIdFromContextOrRoute()
 
   return useMutation({
     mutationFn: async ({ queueName, confirmName }: { queueName: string; confirmName: string }) => {

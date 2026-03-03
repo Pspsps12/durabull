@@ -1,4 +1,6 @@
 import {
+  createConnection,
+  deleteConnection,
   expect,
   ensureActiveOrg,
   findJobByStatus,
@@ -36,6 +38,34 @@ test.describe("Pages", () => {
     await expect(
       page.getByRole("heading", { name: queueName, exact: true, level: 1 })
     ).toBeVisible();
+  });
+
+  test("shows a clear Redis connection failure message for unreachable connections", async ({
+    page,
+  }) => {
+    await ensureActiveOrg(page);
+
+    const connection = await createConnection(page, {
+      name: `Broken Redis ${Date.now()}`,
+      url: "redis://does-not-exist.invalid:6379",
+      environment: "development",
+    });
+
+    try {
+      await page.goto(`/${TEST_ORG_SLUG}/c/${connection.id}`);
+
+      await expect(
+        page.getByRole("heading", { name: "Failed to load queues", exact: true, level: 2 })
+      ).toBeVisible({ timeout: 25000 });
+
+      await expect(
+        page.getByText(
+          "Unable to connect to Redis for this connection. Verify Redis URL, credentials, TLS settings, and IP allowlist, then retry."
+        )
+      ).toBeVisible();
+    } finally {
+      await deleteConnection(page, connection.id);
+    }
   });
 
   test("queues page buttons and links", async ({ page }) => {

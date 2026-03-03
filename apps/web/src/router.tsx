@@ -7,6 +7,26 @@ function isUnauthorizedError(error: unknown): boolean {
   return error instanceof Error && 'status' in error && (error as { status: number }).status === 401
 }
 
+function isRedisConnectivityError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+
+  const message = error.message.toLowerCase()
+  const status =
+    'status' in error && typeof (error as { status?: unknown }).status === 'number'
+      ? (error as { status: number }).status
+      : null
+
+  return (
+    status === 503 ||
+    status === 504 ||
+    message.includes('unable to connect to redis') ||
+    message.includes('redis connection unavailable') ||
+    message.includes('failed to connect to redis') ||
+    message.includes('allowlist') ||
+    message.includes('request timed out')
+  )
+}
+
 // Global handler for 401 responses
 function handleUnauthorized() {
   // Clear any cached auth state and redirect to login
@@ -27,6 +47,12 @@ export function getRouter() {
             handleUnauthorized()
             return false
           }
+
+          // Surface Redis connectivity issues immediately so the UI shows clear feedback quickly.
+          if (isRedisConnectivityError(error)) {
+            return false
+          }
+
           // Default retry behavior for other errors
           return failureCount < 3
         },

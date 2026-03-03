@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { cors } from 'hono/cors'
+import { HTTPException } from 'hono/http-exception'
 import { logger } from 'hono/logger'
 import { secureHeaders } from 'hono/secure-headers'
 
@@ -26,6 +27,8 @@ import workersRoutes from './routes/workers'
 
 const DEFAULT_POSTHOG_API_HOST = 'https://us.i.posthog.com'
 const DEFAULT_POSTHOG_UI_HOST = 'https://us.posthog.com'
+const REDIS_CONNECTION_ERROR_MESSAGE =
+  'Unable to connect to Redis for this connection. Verify Redis URL, credentials, TLS settings, and IP allowlist, then retry.'
 
 function getPosthogApiHost(): string {
   const rawHost = env.POSTHOG_HOST?.trim()
@@ -61,6 +64,39 @@ function getPosthogApiHost(): string {
     )
     return DEFAULT_POSTHOG_API_HOST
   }
+}
+
+function normalizeErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === 'string') return error
+  return String(error)
+}
+
+function redactSensitiveErrorData(message: string): string {
+  return message
+    .replace(/(redis(?:s)?:\/\/)([^@/\s]+)@/gi, '$1[REDACTED]@')
+    .replace(/(args:\s*\[[^\]]*?"[^"]*?",\s*")[^"]*(")/gi, '$1[REDACTED]$2')
+}
+
+function isRedisConnectionError(error: unknown): boolean {
+  const message = normalizeErrorMessage(error).toLowerCase()
+  if (message.includes('failed to decrypt redis connection url')) {
+    return false
+  }
+
+  return [
+    'failed to connect to redis',
+    'unable to connect to redis',
+    'redis connection failed recently',
+    'client ip address is not in the allowlist',
+    'invalid username-password pair',
+    'authentication failed',
+    'wrongpass',
+    'noauth',
+    'econnrefused',
+    'enotfound',
+    'etimedout',
+  ].some((indicator) => message.includes(indicator))
 }
 
 /**
@@ -184,6 +220,34 @@ export async function createApiApp(options: CreateApiAppOptions = {}) {
   const { enableLogging = true, corsOrigins = getDefaultCorsOrigins() } = options
 
   const app = new Hono()
+
+  app.onError((error, c) => {
+    if (error instanceof HTTPException) {
+      return error.getResponse()
+    }
+
+    if (isRedisConnectionError(error)) {
+      const detail = redactSensitiveErrorData(normalizeErrorMessage(error))
+      console.error(`[redis] ${detail}`)
+      return c.json(
+        {
+          error: 'Redis connection unavailable',
+          message: REDIS_CONNECTION_ERROR_MESSAGE,
+          detail: env.NODE_ENV === 'production' ? undefined : detail,
+        },
+        503
+      )
+    }
+
+    console.error('[api] Unhandled error:', error)
+    return c.json(
+      {
+        error: 'Internal server error',
+        message: 'An unexpected error occurred while processing this request.',
+      },
+      500
+    )
+  })
 
   // Middleware
   if (enableLogging) {
