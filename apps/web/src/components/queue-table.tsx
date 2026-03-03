@@ -1,7 +1,7 @@
 import { AnalyticsEvents, trackEvent } from '@durabull/analytics'
-import { Link, useParams } from '@tanstack/react-router'
+import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { AlertCircle, ExternalLink, Eye, EyeOff, MoreHorizontal, Pause, Play } from 'lucide-react'
-import { memo, useCallback, useMemo, useState } from 'react'
+import { type KeyboardEvent, memo, type MouseEvent, useCallback, useMemo, useState } from 'react'
 import { useConnection } from '@/components/connection-provider'
 import { QueueNameTag } from '@/components/queue-name-tag'
 import { StatusIndicator } from '@/components/status-badge'
@@ -139,6 +139,18 @@ interface QueueTableRowProps {
   queue: QueueSummary
 }
 
+function shouldSkipRowNavigation(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return Boolean(
+    target.closest(
+      'a,button,input,select,textarea,[role="menuitem"],[role="checkbox"],[data-row-nav-ignore="true"]'
+    )
+  )
+}
+
 /**
  * Memoized table row for a single queue
  * Prevents unnecessary re-renders when other queues change
@@ -146,6 +158,7 @@ interface QueueTableRowProps {
 const QueueTableRow = memo(function QueueTableRow({ queue }: QueueTableRowProps) {
   const { currentConnection } = useConnection()
   const connectionId = currentConnection?.id ?? ''
+  const navigate = useNavigate()
   // Get orgSlug from route params for org-scoped navigation
   const params = useParams({ strict: false })
   const orgSlug = (params as { orgSlug?: string }).orgSlug ?? ''
@@ -161,10 +174,49 @@ const QueueTableRow = memo(function QueueTableRow({ queue }: QueueTableRowProps)
     }
   }, [queue.isPaused, queue.name, pauseMutation, resumeMutation])
 
+  const navigateToQueue = useCallback(() => {
+    void navigate({
+      to: '/$orgSlug/c/$connectionId/queues/$queueName',
+      params: { orgSlug, connectionId, queueName: queue.name },
+      search: {},
+    })
+  }, [connectionId, navigate, orgSlug, queue.name])
+
+  const handleRowClick = useCallback(
+    (event: MouseEvent<HTMLTableRowElement>) => {
+      if (shouldSkipRowNavigation(event.target)) {
+        return
+      }
+
+      navigateToQueue()
+    },
+    [navigateToQueue]
+  )
+
+  const handleRowKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTableRowElement>) => {
+      if (event.key !== 'Enter' || shouldSkipRowNavigation(event.target)) {
+        return
+      }
+
+      event.preventDefault()
+      navigateToQueue()
+    },
+    [navigateToQueue]
+  )
+
   const status = queue.isPaused ? QUEUE_STATUS.PAUSED : QUEUE_STATUS.ACTIVE
 
   return (
-    <TableRow className="group" data-testid={`queue-row-${queue.name}`}>
+    <TableRow
+      className="group cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-none"
+      aria-label={`Open queue ${queue.name}`}
+      data-testid={`queue-row-${queue.name}`}
+      onClick={handleRowClick}
+      onKeyDown={handleRowKeyDown}
+      role="link"
+      tabIndex={0}
+    >
       {/* Queue Name */}
       <TableCell>
         <Tooltip>
