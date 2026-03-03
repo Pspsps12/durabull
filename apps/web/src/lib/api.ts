@@ -11,6 +11,10 @@ import { toast } from 'sonner'
 export type { ApiType, InferRequestType, InferResponseType } from '@durabull/api-client'
 export { api } from '@durabull/api-client'
 
+const API_REQUEST_TIMEOUT_MS = 15_000
+const REDIS_CONNECTION_ERROR_MESSAGE =
+  'Unable to connect to Redis for this connection. Verify Redis URL, credentials, TLS settings, and IP allowlist, then retry.'
+
 /**
  * Custom error class for API errors with status code
  * Provides better error handling and type safety
@@ -71,6 +75,53 @@ export async function handleResponse<T>(res: Response): Promise<T> {
  */
 export const handleRes = handleResponse
 
+function isConnectionScopedPath(path: string): boolean {
+  return path.includes('/api/c/')
+}
+
+async function fetchWithTimeout(path: string, options: RequestInit): Promise<Response> {
+  const timeoutController = new AbortController()
+  const timeout = setTimeout(() => timeoutController.abort(), API_REQUEST_TIMEOUT_MS)
+
+  const callerSignal = options.signal
+  const abortFromCaller = () => timeoutController.abort()
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      clearTimeout(timeout)
+      throw new ApiError('Request was aborted before it started.', 0)
+    }
+    callerSignal.addEventListener('abort', abortFromCaller, { once: true })
+  }
+
+  try {
+    return await fetch(path, {
+      ...options,
+      signal: timeoutController.signal,
+    })
+  } catch (error) {
+    if (timeoutController.signal.aborted && !callerSignal?.aborted) {
+      const seconds = Math.floor(API_REQUEST_TIMEOUT_MS / 1000)
+      const message = isConnectionScopedPath(path)
+        ? `Request timed out after ${seconds}s. ${REDIS_CONNECTION_ERROR_MESSAGE}`
+        : `Request timed out after ${seconds}s. The server did not respond in time.`
+      throw new ApiError(message, 504)
+    }
+
+    if (error instanceof ApiError) {
+      throw error
+    }
+
+    if (error instanceof Error) {
+      throw new ApiError(error.message, 0)
+    }
+
+    throw new ApiError('Network request failed', 0)
+  } finally {
+    clearTimeout(timeout)
+    callerSignal?.removeEventListener('abort', abortFromCaller)
+  }
+}
+
 /**
  * Generic fetch function for API requests
  * Used for routes that don't have full RPC type support
@@ -81,7 +132,7 @@ export async function fetchApi<T>(path: string, options?: RequestInit): Promise<
     headers.set('Content-Type', 'application/json')
   }
 
-  const res = await fetch(path, {
+  const res = await fetchWithTimeout(path, {
     ...options,
     headers,
     credentials: 'include',

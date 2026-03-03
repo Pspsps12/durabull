@@ -3,8 +3,23 @@ import { Redis } from 'ioredis'
 
 // Cache for Redis connections keyed by connection ID
 const redisConnections = new Map<string, Redis>()
+// Cache in-flight connection attempts to prevent creating duplicate clients concurrently
+const redisConnectionPromises = new Map<string, Promise<Redis>>()
+// Cache recent failures to avoid hot-looping permanent connection/auth issues
+const recentRedisConnectionFailures = new Map<
+  string,
+  { message: string; at: number; permanent: boolean }
+>()
+// Cache recent log lines to dedupe noisy repeated errors
+const recentRedisErrorLogs = new Map<string, { message: string; at: number }>()
 // Cache for queues keyed by "connectionId:queueName"
 const queues = new Map<string, Queue>()
+
+const REDIS_RECONNECT_BASE_DELAY_MS = 200
+const REDIS_RECONNECT_MAX_DELAY_MS = 2000
+const REDIS_MAX_RECONNECT_ATTEMPTS = 3
+const REDIS_FAILURE_COOLDOWN_MS = 30_000
+const REDIS_ERROR_LOG_DEDUPE_WINDOW_MS = 10_000
 
 function extractQueueNameFromMetaKey(key: string): string | null {
   // BullMQ meta keys end with ":meta". Queue names cannot contain ":".
@@ -19,6 +34,92 @@ function extractQueueNameFromMetaKey(key: string): string | null {
   return queueName
 }
 
+function normalizeRedisErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === 'string') return error
+  if (error === null || error === undefined) return 'Unknown Redis error'
+  return String(error)
+}
+
+function redactRedisSensitiveData(message: string): string {
+  return message
+    .replace(/(redis(?:s)?:\/\/)([^@/\s]+)@/gi, '$1[REDACTED]@')
+    .replace(/(args:\s*\[[^\]]*?"[^"]*?",\s*")[^"]*(")/gi, '$1[REDACTED]$2')
+}
+
+function getSafeRedisErrorMessage(error: unknown): string {
+  return redactRedisSensitiveData(normalizeRedisErrorMessage(error))
+}
+
+function isPermanentRedisConnectionError(message: string): boolean {
+  const normalized = message.toLowerCase()
+
+  return (
+    normalized.includes('allowlist') ||
+    normalized.includes('invalid username-password pair') ||
+    normalized.includes('wrongpass') ||
+    normalized.includes('authentication failed') ||
+    normalized.includes('noauth') ||
+    normalized.includes('acl')
+  )
+}
+
+function shouldLogRedisError(connectionId: string, message: string): boolean {
+  const now = Date.now()
+  const existing = recentRedisErrorLogs.get(connectionId)
+
+  if (
+    existing &&
+    existing.message === message &&
+    now - existing.at < REDIS_ERROR_LOG_DEDUPE_WINDOW_MS
+  ) {
+    return false
+  }
+
+  recentRedisErrorLogs.set(connectionId, { message, at: now })
+  return true
+}
+
+function buildRedisClient(
+  connectionId: string,
+  connectionUrl: string,
+  connectionName?: string
+): Redis {
+  const redis = new Redis(connectionUrl, {
+    maxRetriesPerRequest: null,
+    lazyConnect: true,
+    retryStrategy: (attempts) => {
+      if (attempts > REDIS_MAX_RECONNECT_ATTEMPTS) return null
+      return Math.min(attempts * REDIS_RECONNECT_BASE_DELAY_MS, REDIS_RECONNECT_MAX_DELAY_MS)
+    },
+  })
+
+  const label = connectionName ?? connectionId
+
+  redis.on('error', (error) => {
+    const message = getSafeRedisErrorMessage(error)
+
+    if (shouldLogRedisError(connectionId, message)) {
+      console.error(`❌ Redis error (${label}): ${message}`)
+    }
+
+    if (isPermanentRedisConnectionError(message)) {
+      recentRedisConnectionFailures.set(connectionId, {
+        message,
+        at: Date.now(),
+        permanent: true,
+      })
+      redis.disconnect(false)
+    }
+  })
+
+  redis.on('end', () => {
+    redisConnections.delete(connectionId)
+  })
+
+  return redis
+}
+
 /**
  * Get or create a Redis connection for the given connection ID and URL.
  * The connection ID is used for caching, the URL is the actual Redis connection string.
@@ -28,23 +129,54 @@ export async function getRedis(
   connectionUrl: string,
   connectionName?: string
 ): Promise<Redis> {
-  if (!redisConnections.has(connectionId)) {
-    const redis = new Redis(connectionUrl, {
-      maxRetriesPerRequest: null,
-      lazyConnect: true,
-    })
-
-    redis.on('error', (err) =>
-      console.error(`❌ Redis error (${connectionName ?? connectionId}):`, err)
-    )
-
-    await redis.connect()
-    console.log(`✅ Connected to Redis: ${connectionName ?? connectionId}`)
-
-    redisConnections.set(connectionId, redis)
+  const existingConnection = redisConnections.get(connectionId)
+  if (existingConnection) {
+    if (existingConnection.status !== 'end') {
+      return existingConnection
+    }
+    redisConnections.delete(connectionId)
   }
 
-  return redisConnections.get(connectionId)!
+  const recentFailure = recentRedisConnectionFailures.get(connectionId)
+  if (recentFailure) {
+    const elapsed = Date.now() - recentFailure.at
+    if (recentFailure.permanent && elapsed < REDIS_FAILURE_COOLDOWN_MS) {
+      throw new Error(`Redis connection failed recently: ${recentFailure.message}`)
+    }
+    recentRedisConnectionFailures.delete(connectionId)
+  }
+
+  const inFlightConnection = redisConnectionPromises.get(connectionId)
+  if (inFlightConnection) {
+    return inFlightConnection
+  }
+
+  const connectPromise = (async () => {
+    const redis = buildRedisClient(connectionId, connectionUrl, connectionName)
+
+    try {
+      await redis.connect()
+      redisConnections.set(connectionId, redis)
+      recentRedisConnectionFailures.delete(connectionId)
+      console.log(`✅ Connected to Redis: ${connectionName ?? connectionId}`)
+      return redis
+    } catch (error) {
+      const message = getSafeRedisErrorMessage(error)
+      const existingFailure = recentRedisConnectionFailures.get(connectionId)
+      const permanent = existingFailure?.permanent ?? isPermanentRedisConnectionError(message)
+      const failureMessage = existingFailure?.permanent ? existingFailure.message : message
+      recentRedisConnectionFailures.set(connectionId, { message: failureMessage, at: Date.now(), permanent })
+      redis.disconnect(false)
+      throw new Error(
+        `Failed to connect to Redis (${connectionName ?? connectionId}): ${failureMessage}`
+      )
+    } finally {
+      redisConnectionPromises.delete(connectionId)
+    }
+  })()
+
+  redisConnectionPromises.set(connectionId, connectPromise)
+  return connectPromise
 }
 
 /**
