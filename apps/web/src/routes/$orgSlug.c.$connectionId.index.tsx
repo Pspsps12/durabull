@@ -25,6 +25,8 @@ import {
 } from '@/hooks/use-queues'
 import { cn, formatNumber } from '@/lib/utils'
 
+const AUTO_DISCOVERY_MIN_INTERVAL_MS = 5 * 60 * 1000
+
 export const Route = createFileRoute('/$orgSlug/c/$connectionId/')({
   component: Dashboard,
 })
@@ -50,12 +52,15 @@ function Dashboard() {
     discoveryQuery.data?.completedAt ??
     data?.discovery?.completedAt ??
     null
+  const hasRecentDiscovery =
+    lastDiscoveryAt !== null && Date.now() - lastDiscoveryAt < AUTO_DISCOVERY_MIN_INTERVAL_MS
   const lastDiscoveryLabel = useMemo(() => {
     if (!lastDiscoveryAt) return 'Discovery not run yet'
     return `Last discovery: ${new Date(lastDiscoveryAt).toLocaleString()}`
   }, [lastDiscoveryAt])
 
   useEffect(() => {
+    if (!connectionId) return
     hasAutoTriggeredDiscovery.current = false
   }, [connectionId])
 
@@ -63,12 +68,12 @@ function Dashboard() {
     if (hasAutoTriggeredDiscovery.current) return
     if (isLoading) return
     if (!data) return
-    if (data.total > 0) return
     if (discoveryRunning) return
+    if (hasRecentDiscovery) return
 
     hasAutoTriggeredDiscovery.current = true
     discoverMutation.mutate()
-  }, [data, discoverMutation, discoveryRunning, isLoading])
+  }, [data, discoverMutation, discoveryRunning, hasRecentDiscovery, isLoading])
 
   const topBarConfig = useMemo(
     () => ({
