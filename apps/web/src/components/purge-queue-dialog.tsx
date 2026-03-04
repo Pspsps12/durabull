@@ -1,5 +1,5 @@
 import { AnalyticsEvents, DialogType, trackEvent } from '@durabull/analytics'
-import { Check, Loader2, Trash2 } from 'lucide-react'
+import { Loader2, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -133,7 +133,6 @@ export function PurgeQueueDialog({
   const estimatedPurgedJobs = hasStatusSelection
     ? Math.max(selectedJobsEstimate - keepMostRecentValue, 0)
     : 0
-  const willPurgeJobs = estimatedPurgedJobs > 0
   const canSubmit =
     hasStatusSelection &&
     isConfirmed &&
@@ -377,7 +376,7 @@ export function PurgeQueueDialog({
             Cancel
           </Button>
           <Button
-            variant={willPurgeJobs ? 'destructive' : 'default'}
+            variant="destructive"
             onClick={handlePurge}
             disabled={!canSubmit}
             data-testid="purge-queue-confirm-button"
@@ -385,16 +384,12 @@ export function PurgeQueueDialog({
             {isPurging ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {willPurgeJobs ? 'Purging...' : 'Applying...'}
+                Purging...
               </>
             ) : (
               <>
-                {willPurgeJobs ? (
-                  <Trash2 className="mr-2 h-4 w-4" />
-                ) : (
-                  <Check className="mr-2 h-4 w-4" />
-                )}
-                {willPurgeJobs ? 'Purge Jobs' : 'Keep Selected Jobs'}
+                <Trash2 className="mr-2 h-4 w-4" />
+                Purge Jobs
               </>
             )}
           </Button>
