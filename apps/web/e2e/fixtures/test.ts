@@ -133,6 +133,13 @@ export async function getQueues(page: Page, connectionId: string): Promise<Queue
   return data.queues ?? []
 }
 
+async function runQueueDiscovery(page: Page, connectionId: string): Promise<void> {
+  const response = await page.request.post(
+    `/api/c/${connectionId}/queues/discovery?wait=1&scanCount=2000`
+  )
+  await apiJson(response, `POST /api/c/${connectionId}/queues/discovery`)
+}
+
 export async function getScheduledJobs(
   page: Page,
   connectionId: string
@@ -180,7 +187,13 @@ export async function findJobByStatus(
 }
 
 export async function getTestQueueName(page: Page, connectionId: string): Promise<string> {
-  const queues = await getQueues(page, connectionId)
+  let queues = await getQueues(page, connectionId)
+
+  if (queues.length === 0) {
+    await runQueueDiscovery(page, connectionId)
+    queues = await getQueues(page, connectionId)
+  }
+
   if (queues.length === 0) {
     throw new Error('No queues found. Ensure Redis seed data exists.')
   }

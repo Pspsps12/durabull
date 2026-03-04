@@ -1,3 +1,4 @@
+import { redisDiscoveredQueueRepository } from '@durabull/dal'
 import { env } from '@durabull/env'
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
@@ -8,7 +9,12 @@ import {
   DEFAULT_PRIORITY_BUCKETS,
   MAX_METRICS_WINDOW_MINUTES,
 } from '../lib/bullmq-metrics'
-import { debugGetBullKeys, discoverQueues, getQueue } from '../lib/redis'
+import {
+  getQueueDiscoveryStatus,
+  startQueueDiscovery,
+  waitForQueueDiscovery,
+} from '../lib/queue-discovery'
+import { debugGetBullKeys, getQueue } from '../lib/redis'
 
 // Default and max page sizes for pagination
 const DEFAULT_PAGE_SIZE = 50
@@ -107,6 +113,34 @@ const app = new Hono()
       sampleKeys: keys.slice(0, 50),
     })
   })
+  // Queue discovery status
+  .get('/discovery', async (c) => {
+    const connectionId = c.get('connectionId')
+    const status = await getQueueDiscoveryStatus(connectionId)
+    return c.json(status)
+  })
+  // Trigger queue discovery scan
+  .post('/discovery', async (c) => {
+    const connectionId = c.get('connectionId')
+    const connectionUrl = c.get('connectionUrl')
+
+    const scanCountParam = c.req.query('scanCount')
+    const waitParam = c.req.query('wait')
+    const requestedScanCount = scanCountParam ? Number.parseInt(scanCountParam, 10) : undefined
+    const waitForCompletion = waitParam === '1' || waitParam === 'true'
+
+    const status = await startQueueDiscovery(connectionId, connectionUrl, {
+      scanCount:
+        requestedScanCount && Number.isFinite(requestedScanCount) ? requestedScanCount : undefined,
+    })
+
+    if (waitForCompletion) {
+      await waitForQueueDiscovery(connectionId)
+      return c.json(await getQueueDiscoveryStatus(connectionId))
+    }
+
+    return c.json(status, 202)
+  })
   // List all queues (paginated)
   .get('/', async (c) => {
     const connectionId = c.get('connectionId')
@@ -120,23 +154,37 @@ const app = new Hono()
       MAX_PAGE_SIZE
     )
 
-    const allQueueNames = await discoverQueues(connectionId, connectionUrl)
-    const total = allQueueNames.length
-
     // Paginate the queue names BEFORE fetching details
-    // This prevents loading thousands of queue details at once
     const start = (page - 1) * pageSize
     const end = start + pageSize
-    const paginatedQueueNames = allQueueNames.slice(start, end)
+
+    let discovery = await getQueueDiscoveryStatus(connectionId)
+    let total = discovery.indexed.total
+    const hasDiscoveryAttempt =
+      discovery.running ||
+      discovery.startedAt !== null ||
+      discovery.completedAt !== null ||
+      discovery.lastError !== null
+
+    if (total === 0 && !hasDiscoveryAttempt) {
+      await startQueueDiscovery(connectionId, connectionUrl)
+      discovery = await getQueueDiscoveryStatus(connectionId)
+      total = discovery.indexed.total
+    }
+
+    const indexedQueues = await redisDiscoveredQueueRepository.listByConnection(connectionId, {
+      offset: start,
+      limit: pageSize,
+    })
 
     const queuesData = await Promise.all(
-      paginatedQueueNames.map(async (name) => {
-        const queue = await getQueue(connectionId, connectionUrl, name)
+      indexedQueues.map(async (indexedQueue) => {
+        const queue = await getQueue(connectionId, connectionUrl, indexedQueue.name)
         const [counts, isPaused] = await Promise.all([queue.getJobCounts(), queue.isPaused()])
 
         const status: 'paused' | 'active' = isPaused ? 'paused' : 'active'
         return {
-          name,
+          name: indexedQueue.name,
           status,
           jobCounts: {
             waiting: counts.waiting ?? 0,
@@ -148,6 +196,7 @@ const app = new Hono()
             prioritized: counts.prioritized ?? 0,
           },
           isPaused,
+          discoveryState: indexedQueue.state,
         }
       })
     )
@@ -159,6 +208,7 @@ const app = new Hono()
       pageSize,
       totalPages: Math.ceil(total / pageSize),
       hasMore: end < total,
+      discovery,
     })
   })
   // Get queue detail

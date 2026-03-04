@@ -16,6 +16,7 @@ export { ApiError }
 // Type aliases for cleaner type inference
 type QueuesEndpoint = (typeof api.c)[':connectionId']['queues']
 type QueueEndpoint = (typeof api.c)[':connectionId']['queues'][':queueName']
+type QueueDiscoveryEndpoint = (typeof api.c)[':connectionId']['queues']['discovery']
 type JobEndpoint = (typeof api.c)[':connectionId']['queues'][':queueName']['jobs'][':jobId']
 type ScheduledJobsEndpoint = (typeof api.c)[':connectionId']['scheduled-jobs']
 type MetricsEndpoint = (typeof api.c)[':connectionId']['metrics']
@@ -26,6 +27,7 @@ type PurgeQueueEndpoint = (typeof api.c)[':connectionId']['queues'][':queueName'
 // Type helpers using Hono's InferResponseType
 type ListQueuesResponse = InferResponseType<QueuesEndpoint['$get'], 200>
 type GetQueueResponse = InferResponseType<QueueEndpoint['$get'], 200>
+type QueueDiscoveryStatusResponse = InferResponseType<QueueDiscoveryEndpoint['$get'], 200>
 type GetJobResponse = InferResponseType<JobEndpoint['$get'], 200>
 type ListScheduledJobsResponse = InferResponseType<ScheduledJobsEndpoint['$get'], 200>
 type ListMetricsResponse = InferResponseType<MetricsEndpoint['$get'], 200>
@@ -185,6 +187,7 @@ export type RetryQueueStatusOption = RetryQueueStatus | 'all'
 export type {
   ListQueuesResponse,
   GetQueueResponse,
+  QueueDiscoveryStatusResponse,
   GetJobResponse,
   ListScheduledJobsResponse,
   ListWorkersResponse,
@@ -196,6 +199,7 @@ export type {
  */
 export const queryKeys = {
   queues: (connectionId: string) => ['queues', connectionId] as const,
+  queueDiscovery: (connectionId: string) => ['queues', connectionId, 'discovery'] as const,
   queue: (connectionId: string, name: string) => ['queue', connectionId, name] as const,
   queueMetrics: (connectionId: string, name: string, options?: QueueMetricsOptions) =>
     ['queue', connectionId, name, 'metrics', options] as const,
@@ -235,7 +239,30 @@ export function useQueues() {
       })
       return handleRes<ListQueuesResponse>(res)
     },
+    refetchInterval: (query) => {
+      const hasPendingDiscoveryRows = (query.state.data?.discovery?.indexed.pending ?? 0) > 0
+      return query.state.data?.discovery?.running || hasPendingDiscoveryRows ? 2000 : 10_000
+    },
     enabled: !!connectionId,
+  })
+}
+
+export function useQueueDiscoveryStatus() {
+  const connectionId = useConnectionIdFromContextOrRoute()
+
+  return useQuery({
+    queryKey: queryKeys.queueDiscovery(connectionId ?? ''),
+    queryFn: async () => {
+      const res = await api.c[':connectionId'].queues.discovery.$get({
+        param: { connectionId: connectionId! },
+      })
+      return handleRes<QueueDiscoveryStatusResponse>(res)
+    },
+    enabled: !!connectionId,
+    refetchInterval: (query) => {
+      const hasPendingDiscoveryRows = (query.state.data?.indexed.pending ?? 0) > 0
+      return query.state.data?.running || hasPendingDiscoveryRows ? 2000 : false
+    },
   })
 }
 
@@ -251,6 +278,24 @@ export function useQueue(queueName: string) {
       return handleRes<GetQueueResponse>(res)
     },
     enabled: !!queueName && !!connectionId,
+  })
+}
+
+export function useDiscoverQueues() {
+  const queryClient = useQueryClient()
+  const connectionId = useConnectionIdFromContextOrRoute()
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.c[':connectionId'].queues.discovery.$post({
+        param: { connectionId: connectionId! },
+      })
+      return handleRes<QueueDiscoveryStatusResponse>(res)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.queueDiscovery(connectionId ?? '') })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues(connectionId ?? '') })
+    },
   })
 }
 

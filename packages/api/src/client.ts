@@ -6,7 +6,7 @@
 import type { ApiType as ServerApiType } from '@durabull/api/app'
 import { hc } from 'hono/client'
 
-const API_REQUEST_TIMEOUT_MS = 15_000
+const API_REQUEST_TIMEOUT_MS = 30_000
 
 /**
  * Re-export the API type for consumers who need it

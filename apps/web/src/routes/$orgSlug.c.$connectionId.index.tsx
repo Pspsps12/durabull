@@ -1,20 +1,99 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { Activity, AlertCircle, CheckCircle2, Clock, Layers, Timer, Zap } from 'lucide-react'
-import { useMemo } from 'react'
+import { createFileRoute, useParams } from '@tanstack/react-router'
+import {
+  Activity,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Layers,
+  Loader2,
+  Search,
+  Timer,
+  Zap,
+} from 'lucide-react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useAppTopBar } from '@/components/app-top-bar'
 import { QueueTable } from '@/components/queue-table'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { type ListQueuesResponse, useQueues } from '@/hooks/use-queues'
+import {
+  type ListQueuesResponse,
+  useDiscoverQueues,
+  useQueueDiscoveryStatus,
+  useQueues,
+} from '@/hooks/use-queues'
+import { REDIS_CONNECTION_ERROR_MESSAGE } from '@/lib/api'
 import { cn, formatNumber } from '@/lib/utils'
+
+const AUTO_DISCOVERY_MIN_INTERVAL_MS = 5 * 60 * 1000
+
+function isRedisConnectionFailure(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return [
+    'failed to connect to redis',
+    'unable to connect to redis',
+    'redis connection failed recently',
+    'invalid username-password pair',
+    'authentication failed',
+    'wrongpass',
+    'noauth',
+    'allowlist',
+    'econnrefused',
+    'enotfound',
+    'etimedout',
+  ].some((indicator) => normalized.includes(indicator))
+}
 
 export const Route = createFileRoute('/$orgSlug/c/$connectionId/')({
   component: Dashboard,
 })
 
 function Dashboard() {
+  const routeParams = useParams({ strict: false }) as { connectionId?: string }
+  const connectionId = routeParams.connectionId ?? ''
   const { data, isLoading, error } = useQueues()
+  const discoveryQuery = useQueueDiscoveryStatus()
+  const discoverMutation = useDiscoverQueues()
+  const hasAutoTriggeredDiscovery = useRef(false)
+  const discoveryPendingCount = Math.max(
+    discoveryQuery.data?.indexed.pending ?? 0,
+    data?.discovery?.indexed.pending ?? 0
+  )
+  const backendDiscoveryRunning =
+    (discoveryQuery.data?.running ?? false) || (data?.discovery?.running ?? false)
+  const discoveryRunning =
+    discoverMutation.isPending || backendDiscoveryRunning || discoveryPendingCount > 0
+  const discoveryErrorMessage = discoveryQuery.data?.lastError ?? data?.discovery?.lastError ?? null
+  const lastDiscoveryAt =
+    discoveryQuery.data?.indexed.lastDiscoveredAt ??
+    data?.discovery?.indexed.lastDiscoveredAt ??
+    discoveryQuery.data?.completedAt ??
+    data?.discovery?.completedAt ??
+    null
+  const hasRecentDiscovery =
+    lastDiscoveryAt !== null && Date.now() - lastDiscoveryAt < AUTO_DISCOVERY_MIN_INTERVAL_MS
+  const lastDiscoveryLabel = useMemo(() => {
+    if (!lastDiscoveryAt) return 'Discovery not run yet'
+    return `Last discovery: ${new Date(lastDiscoveryAt).toLocaleString()}`
+  }, [lastDiscoveryAt])
+
+  useEffect(() => {
+    if (!connectionId) return
+    hasAutoTriggeredDiscovery.current = false
+  }, [connectionId])
+
+  useEffect(() => {
+    if (hasAutoTriggeredDiscovery.current) return
+    if (isLoading) return
+    if (!data) return
+    if (discoveryRunning) return
+    if (hasRecentDiscovery) return
+
+    hasAutoTriggeredDiscovery.current = true
+    discoverMutation.mutate()
+  }, [data, discoverMutation, discoveryRunning, hasRecentDiscovery, isLoading])
+
   const topBarConfig = useMemo(
     () => ({
       left: (
@@ -28,20 +107,50 @@ function Dashboard() {
           </span>
         </div>
       ),
+      actions: (
+        <div className="flex items-center gap-3">
+          <span className="hidden text-xs text-muted-foreground xl:inline">
+            {lastDiscoveryLabel}
+          </span>
+          <Button
+            type="button"
+            size="xs"
+            onClick={() => discoverMutation.mutate()}
+            disabled={discoveryRunning}
+            className="gap-2"
+          >
+            {discoveryRunning ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="h-4 w-4" />
+            )}
+            Discover Queues
+          </Button>
+        </div>
+      ),
     }),
-    []
+    [discoverMutation, discoveryRunning, lastDiscoveryLabel]
   )
 
   useAppTopBar(topBarConfig)
 
-  if (error) {
+  const shouldShowConnectionFailure =
+    !error &&
+    !isLoading &&
+    (data?.total ?? 0) === 0 &&
+    !discoveryRunning &&
+    !!discoveryErrorMessage &&
+    isRedisConnectionFailure(discoveryErrorMessage)
+
+  if (error || shouldShowConnectionFailure) {
+    const message = error?.message ?? REDIS_CONNECTION_ERROR_MESSAGE
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <div className="rounded-full bg-red-100 dark:bg-red-900/20 p-4 mb-4">
           <AlertCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
         </div>
         <h2 className="text-xl font-semibold mb-2">Failed to load queues</h2>
-        <p className="text-muted-foreground text-center max-w-md">{error.message}</p>
+        <p className="text-muted-foreground text-center max-w-md">{message}</p>
       </div>
     )
   }
@@ -69,6 +178,20 @@ function Dashboard() {
   return (
     <TooltipProvider>
       <div className="space-y-8">
+        {discoveryRunning && (
+          <div className="flex items-center gap-2 rounded-lg border border-muted-foreground/20 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Discovering queues in Redis. Pending queues will appear dimmed until confirmed.
+          </div>
+        )}
+
+        {!discoveryRunning && discoveryErrorMessage && (
+          <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+            <AlertCircle className="h-4 w-4" />
+            Discovery failed: {discoveryErrorMessage}
+          </div>
+        )}
+
         {/* Summary stats */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <StatCard

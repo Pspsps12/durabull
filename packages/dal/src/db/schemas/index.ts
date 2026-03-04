@@ -27,6 +27,15 @@ export {
   redisConnection,
 } from './redis-connection/schema'
 export type { NewRedisConnection, RedisConnection } from './redis-connection/types'
+export {
+  type QueueDiscoveryState,
+  queueDiscoveryStates,
+  redisDiscoveredQueue,
+} from './redis-discovered-queue/schema'
+export type {
+  NewRedisDiscoveredQueue,
+  RedisDiscoveredQueue,
+} from './redis-discovered-queue/types'
 // Relations v2 - single consolidated relations object
 export { relations } from './relations'
 // User schema exports

@@ -1,6 +1,15 @@
 import { AnalyticsEvents, trackEvent } from '@durabull/analytics'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { AlertCircle, ExternalLink, Eye, EyeOff, MoreHorizontal, Pause, Play } from 'lucide-react'
+import {
+  AlertCircle,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Loader2,
+  MoreHorizontal,
+  Pause,
+  Play,
+} from 'lucide-react'
 import { type KeyboardEvent, memo, type MouseEvent, useCallback, useMemo, useState } from 'react'
 import { useConnection } from '@/components/connection-provider'
 import { QueueNameTag } from '@/components/queue-name-tag'
@@ -30,6 +39,7 @@ import { cn, formatNumber } from '@/lib/utils'
 interface QueueSummary {
   name: string
   status: 'active' | 'paused'
+  discoveryState?: 'pending' | 'confirmed'
   jobCounts: {
     waiting: number
     active: number
@@ -206,10 +216,14 @@ const QueueTableRow = memo(function QueueTableRow({ queue }: QueueTableRowProps)
   )
 
   const status = queue.isPaused ? QUEUE_STATUS.PAUSED : QUEUE_STATUS.ACTIVE
+  const isPendingDiscovery = queue.discoveryState === 'pending'
 
   return (
     <TableRow
-      className="group cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-none"
+      className={cn(
+        'group cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-none',
+        isPendingDiscovery && 'opacity-60'
+      )}
       aria-label={`Open queue ${queue.name}`}
       data-testid={`queue-row-${queue.name}`}
       onClick={handleRowClick}
@@ -233,7 +247,15 @@ const QueueTableRow = memo(function QueueTableRow({ queue }: QueueTableRowProps)
 
       {/* Status */}
       <TableCell>
-        <StatusIndicator status={status} />
+        <div className="flex items-center gap-2">
+          <StatusIndicator status={status} />
+          {isPendingDiscovery && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Discovering
+            </span>
+          )}
+        </div>
       </TableCell>
 
       {/* Waiting */}
