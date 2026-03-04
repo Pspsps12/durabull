@@ -24,7 +24,10 @@ function isRedisScopedApiRequest(input: string | URL | Request): boolean {
   return path.includes('/api/c/')
 }
 
-async function fetchWithTimeout(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+async function fetchWithTimeout(
+  input: string | URL | Request,
+  init?: RequestInit
+): Promise<Response> {
   const timeoutController = new AbortController()
   const timeout = setTimeout(() => timeoutController.abort(), API_REQUEST_TIMEOUT_MS)
 
