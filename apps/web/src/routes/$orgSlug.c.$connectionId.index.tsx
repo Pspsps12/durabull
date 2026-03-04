@@ -34,9 +34,20 @@ function Dashboard() {
   const discoveryQuery = useQueueDiscoveryStatus()
   const discoverMutation = useDiscoverQueues()
   const hasAutoTriggeredDiscovery = useRef(false)
-  const discoveryRunning = discoveryQuery.data?.running || discoverMutation.isPending
+  const discoveryPendingCount = Math.max(
+    discoveryQuery.data?.indexed.pending ?? 0,
+    data?.discovery?.indexed.pending ?? 0
+  )
+  const discoveryRunning =
+    discoverMutation.isPending ||
+    (discoveryQuery.data?.running ?? false) ||
+    discoveryPendingCount > 0
   const lastDiscoveryAt =
-    discoveryQuery.data?.indexed.lastDiscoveredAt ?? discoveryQuery.data?.completedAt
+    discoveryQuery.data?.indexed.lastDiscoveredAt ??
+    data?.discovery?.indexed.lastDiscoveredAt ??
+    discoveryQuery.data?.completedAt ??
+    data?.discovery?.completedAt ??
+    null
   const lastDiscoveryLabel = useMemo(() => {
     if (!lastDiscoveryAt) return 'Discovery not run yet'
     return `Last discovery: ${new Date(lastDiscoveryAt).toLocaleString()}`
@@ -47,11 +58,11 @@ function Dashboard() {
     if (isLoading) return
     if (!data) return
     if (data.total > 0) return
-    if (discoveryQuery.data?.running) return
+    if (discoveryRunning) return
 
     hasAutoTriggeredDiscovery.current = true
     discoverMutation.mutate()
-  }, [data, discoverMutation, discoveryQuery.data?.running, isLoading])
+  }, [data, discoverMutation, discoveryRunning, isLoading])
 
   const topBarConfig = useMemo(
     () => ({

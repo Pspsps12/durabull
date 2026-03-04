@@ -239,7 +239,10 @@ export function useQueues() {
       })
       return handleRes<ListQueuesResponse>(res)
     },
-    refetchInterval: 10_000,
+    refetchInterval: (query) => {
+      const hasPendingDiscoveryRows = (query.state.data?.discovery?.indexed.pending ?? 0) > 0
+      return query.state.data?.discovery?.running || hasPendingDiscoveryRows ? 2000 : 10_000
+    },
     enabled: !!connectionId,
   })
 }
@@ -256,7 +259,10 @@ export function useQueueDiscoveryStatus() {
       return handleRes<QueueDiscoveryStatusResponse>(res)
     },
     enabled: !!connectionId,
-    refetchInterval: (query) => (query.state.data?.running ? 2000 : false),
+    refetchInterval: (query) => {
+      const hasPendingDiscoveryRows = (query.state.data?.indexed.pending ?? 0) > 0
+      return query.state.data?.running || hasPendingDiscoveryRows ? 2000 : false
+    },
   })
 }
 
