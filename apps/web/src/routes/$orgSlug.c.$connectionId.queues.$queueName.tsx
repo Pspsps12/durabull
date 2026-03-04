@@ -26,7 +26,7 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { type KeyboardEvent, type MouseEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { z } from 'zod'
 import { useAppTopBar } from '@/components/app-top-bar'
@@ -1775,6 +1775,18 @@ function MetricRow({ label, value }: { label: string; value: string | number }) 
 
 type JobStatus = 'waiting' | 'active' | 'delayed' | 'completed' | 'failed'
 
+function shouldSkipRowNavigation(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return Boolean(
+    target.closest(
+      'a,button,input,select,textarea,[role="menuitem"],[role="checkbox"],[data-row-nav-ignore="true"]'
+    )
+  )
+}
+
 // Job summary type - matches API response
 interface JobSummary {
   id: string
@@ -1808,6 +1820,7 @@ function JobRow({
   onToggleSelect: () => void
 }) {
   const [copied, setCopied] = useState(false)
+  const navigate = useNavigate()
   const statusMap: Record<string, JobStatus> = {
     waiting: 'waiting',
     active: 'active',
@@ -1821,7 +1834,7 @@ function JobRow({
   const status = statusMap[job.status] || 'waiting'
   const isTruncated = job.id.length > 16
 
-  const handleCopy = async (e: React.MouseEvent) => {
+  const handleCopy = async (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault()
     e.stopPropagation()
     try {
@@ -1833,8 +1846,47 @@ function JobRow({
     }
   }
 
+  const navigateToJob = useCallback(() => {
+    void navigate({
+      to: '/$orgSlug/c/$connectionId/queues/$queueName/jobs/$jobId',
+      params: { orgSlug, connectionId, queueName, jobId: job.id },
+      search: {},
+    })
+  }, [connectionId, job.id, navigate, orgSlug, queueName])
+
+  const handleRowClick = useCallback(
+    (event: MouseEvent<HTMLTableRowElement>) => {
+      if (shouldSkipRowNavigation(event.target)) {
+        return
+      }
+
+      navigateToJob()
+    },
+    [navigateToJob]
+  )
+
+  const handleRowKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTableRowElement>) => {
+      if (event.key !== 'Enter' || shouldSkipRowNavigation(event.target)) {
+        return
+      }
+
+      event.preventDefault()
+      navigateToJob()
+    },
+    [navigateToJob]
+  )
+
   return (
-    <TableRow>
+    <TableRow
+      className="group cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-none"
+      aria-label={`Open job ${job.id}`}
+      data-testid={`job-row-${job.id}`}
+      onClick={handleRowClick}
+      onKeyDown={handleRowKeyDown}
+      role="link"
+      tabIndex={0}
+    >
       <TableCell>
         <input
           type="checkbox"

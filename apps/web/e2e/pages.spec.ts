@@ -6,6 +6,7 @@ import {
   findJobByStatus,
   getDefaultConnectionId,
   getJob,
+  getJobs,
   getTestQueueName,
   getScheduledJobs,
   TEST_ORG_SLUG,
@@ -30,7 +31,7 @@ test.describe("Pages", () => {
 
     const queueRow = page.getByTestId(`queue-row-${queueName}`);
     await expect(queueRow).toBeVisible();
-    await queueRow.getByRole("link").first().click();
+    await queueRow.locator("td").nth(1).click();
 
     await page.waitForURL(
       new RegExp(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}`)
@@ -83,7 +84,7 @@ test.describe("Pages", () => {
     const queueRow = page.getByTestId(`queue-row-${queueName}`);
     await expect(queueRow).toBeVisible();
 
-    await queueRow.getByRole("link").first().click();
+    await queueRow.locator("td").nth(1).click();
     await page.waitForURL(
       new RegExp(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}`)
     );
@@ -172,9 +173,22 @@ test.describe("Pages", () => {
 
   test("queue jobs tab status filter and scheduled tab", async ({ page }) => {
     const { connectionId, queueName } = await getConnectionAndQueue(page);
+    const jobs = await getJobs(page, connectionId, queueName, { page: 1, pageSize: 1 });
+    const firstJobId = jobs.jobs.length > 0 ? String(jobs.jobs[0].id) : null;
 
     await page.goto(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}`);
     await expect(page.getByRole("button", { name: "Jobs", exact: true })).toBeVisible();
+    if (firstJobId) {
+      const jobRow = page.getByTestId(`job-row-${firstJobId}`);
+      await expect(jobRow).toBeVisible();
+      await jobRow.locator("td").nth(2).click();
+      await page.waitForURL(
+        new RegExp(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}/jobs/${firstJobId}`)
+      );
+      await page.goBack();
+      await expect(jobRow).toBeVisible();
+    }
+
     const hideScheduledJobs = page.getByLabel("Hide scheduled jobs");
     await expect(hideScheduledJobs).toBeVisible();
     await expect(hideScheduledJobs).not.toBeChecked();
