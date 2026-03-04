@@ -14,6 +14,10 @@ type CreateConnectionResponse = InferResponseType<(typeof api.connections)['$pos
 type UpdateConnectionResponse = InferResponseType<(typeof api.connections)[':id']['$patch'], 200>
 type DeleteConnectionResponse = InferResponseType<(typeof api.connections)[':id']['$delete'], 200>
 type TestConnectionResponse = InferResponseType<(typeof api.connections.test)['$post'], 200>
+type QueueDiscoveryResponse = InferResponseType<
+  (typeof api.c)[':connectionId']['queues']['discovery']['$get'],
+  200
+>
 
 /**
  * Query key factory for connection queries
@@ -21,6 +25,7 @@ type TestConnectionResponse = InferResponseType<(typeof api.connections.test)['$
 export const connectionKeys = {
   all: ['connections'] as const,
   detail: (id: string) => ['connections', id] as const,
+  queueDiscovery: (id: string) => ['connections', id, 'queue-discovery'] as const,
 }
 
 // Get a single connection with full details
@@ -204,5 +209,36 @@ export function useSetDefaultConnection() {
         success: false,
       })
     },
+  })
+}
+
+export function useRunConnectionQueueDiscovery() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (connectionId: string) => {
+      const res = await api.c[':connectionId'].queues.discovery.$post({
+        param: { connectionId },
+      })
+      return handleRes<QueueDiscoveryResponse>(res)
+    },
+    onSuccess: (_, connectionId) => {
+      queryClient.invalidateQueries({ queryKey: connectionKeys.queueDiscovery(connectionId) })
+      queryClient.invalidateQueries({ queryKey: ['queues', connectionId] })
+    },
+  })
+}
+
+export function useConnectionQueueDiscoveryStatus(connectionId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: connectionKeys.queueDiscovery(connectionId ?? ''),
+    queryFn: async () => {
+      const res = await api.c[':connectionId'].queues.discovery.$get({
+        param: { connectionId: connectionId! },
+      })
+      return handleRes<QueueDiscoveryResponse>(res)
+    },
+    enabled: !!connectionId && enabled,
+    refetchInterval: (query) => (query.state.data?.running ? 2000 : false),
   })
 }

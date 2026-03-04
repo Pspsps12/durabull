@@ -40,7 +40,6 @@ export function getRouter() {
     defaultOptions: {
       queries: {
         staleTime: 5000,
-        refetchInterval: 10000,
         retry: (failureCount, error) => {
           // Don't retry on 401 errors
           if (isUnauthorizedError(error)) {

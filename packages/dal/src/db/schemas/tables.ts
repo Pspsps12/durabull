@@ -11,6 +11,7 @@ export { invitation, member, organization } from './organization/schema'
 
 // Redis Connection schema tables
 export { connectionEnvironments, redisConnection } from './redis-connection/schema'
+export { redisDiscoveredQueue } from './redis-discovered-queue/schema'
 
 // User schema tables
 export { user } from './user/schema'

@@ -20,6 +20,7 @@ const REDIS_RECONNECT_MAX_DELAY_MS = 2000
 const REDIS_MAX_RECONNECT_ATTEMPTS = 3
 const REDIS_FAILURE_COOLDOWN_MS = 30_000
 const REDIS_ERROR_LOG_DEDUPE_WINDOW_MS = 10_000
+const DEFAULT_QUEUE_SCAN_COUNT = 1000
 
 function extractQueueNameFromMetaKey(key: string): string | null {
   // BullMQ meta keys end with ":meta". Queue names cannot contain ":".
@@ -190,25 +191,53 @@ export async function discoverQueues(
   connectionId: string,
   connectionUrl: string
 ): Promise<Array<string>> {
-  const redisClient = await getRedis(connectionId, connectionUrl)
-
-  // Auto-discover BullMQ queues by scanning Redis keys
   const queueNames = new Set<string>()
   let cursor = '0'
 
   do {
-    const [nextCursor, keys] = await redisClient.scan(cursor, 'MATCH', 'bull:*:meta', 'COUNT', 100)
-    cursor = nextCursor
-
-    for (const key of keys) {
-      const queueName = extractQueueNameFromMetaKey(key)
-      if (queueName) {
-        queueNames.add(queueName)
-      }
+    const page = await scanQueuesPage(connectionId, connectionUrl, cursor, DEFAULT_QUEUE_SCAN_COUNT)
+    cursor = page.cursor
+    for (const queueName of page.queueNames) {
+      queueNames.add(queueName)
     }
   } while (cursor !== '0')
 
   return Array.from(queueNames)
+}
+
+export interface QueueScanPage {
+  cursor: string
+  queueNames: string[]
+}
+
+export async function scanQueuesPage(
+  connectionId: string,
+  connectionUrl: string,
+  cursor = '0',
+  count = DEFAULT_QUEUE_SCAN_COUNT
+): Promise<QueueScanPage> {
+  const redisClient = await getRedis(connectionId, connectionUrl)
+  const scanCount = Math.max(100, count)
+  const [nextCursor, keys] = await redisClient.scan(
+    cursor,
+    'MATCH',
+    'bull:*:meta',
+    'COUNT',
+    scanCount
+  )
+
+  const queueNames = new Set<string>()
+  for (const key of keys) {
+    const queueName = extractQueueNameFromMetaKey(key)
+    if (queueName) {
+      queueNames.add(queueName)
+    }
+  }
+
+  return {
+    cursor: nextCursor,
+    queueNames: Array.from(queueNames),
+  }
 }
 
 /**

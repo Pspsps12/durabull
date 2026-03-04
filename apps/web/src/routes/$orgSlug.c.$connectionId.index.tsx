@@ -1,12 +1,28 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Activity, AlertCircle, CheckCircle2, Clock, Layers, Timer, Zap } from 'lucide-react'
-import { useMemo } from 'react'
+import {
+  Activity,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Layers,
+  Loader2,
+  Search,
+  Timer,
+  Zap,
+} from 'lucide-react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useAppTopBar } from '@/components/app-top-bar'
 import { QueueTable } from '@/components/queue-table'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { type ListQueuesResponse, useQueues } from '@/hooks/use-queues'
+import {
+  type ListQueuesResponse,
+  useDiscoverQueues,
+  useQueueDiscoveryStatus,
+  useQueues,
+} from '@/hooks/use-queues'
 import { cn, formatNumber } from '@/lib/utils'
 
 export const Route = createFileRoute('/$orgSlug/c/$connectionId/')({
@@ -15,6 +31,28 @@ export const Route = createFileRoute('/$orgSlug/c/$connectionId/')({
 
 function Dashboard() {
   const { data, isLoading, error } = useQueues()
+  const discoveryQuery = useQueueDiscoveryStatus()
+  const discoverMutation = useDiscoverQueues()
+  const hasAutoTriggeredDiscovery = useRef(false)
+  const discoveryRunning = discoveryQuery.data?.running || discoverMutation.isPending
+  const lastDiscoveryAt =
+    discoveryQuery.data?.indexed.lastDiscoveredAt ?? discoveryQuery.data?.completedAt
+  const lastDiscoveryLabel = useMemo(() => {
+    if (!lastDiscoveryAt) return 'Discovery not run yet'
+    return `Last discovery: ${new Date(lastDiscoveryAt).toLocaleString()}`
+  }, [lastDiscoveryAt])
+
+  useEffect(() => {
+    if (hasAutoTriggeredDiscovery.current) return
+    if (isLoading) return
+    if (!data) return
+    if (data.total > 0) return
+    if (discoveryQuery.data?.running) return
+
+    hasAutoTriggeredDiscovery.current = true
+    discoverMutation.mutate()
+  }, [data, discoverMutation, discoveryQuery.data?.running, isLoading])
+
   const topBarConfig = useMemo(
     () => ({
       left: (
@@ -28,8 +66,29 @@ function Dashboard() {
           </span>
         </div>
       ),
+      actions: (
+        <div className="flex items-center gap-3">
+          <span className="hidden text-xs text-muted-foreground xl:inline">
+            {lastDiscoveryLabel}
+          </span>
+          <Button
+            type="button"
+            size="xs"
+            onClick={() => discoverMutation.mutate()}
+            disabled={discoveryRunning}
+            className="gap-2"
+          >
+            {discoveryRunning ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="h-4 w-4" />
+            )}
+            Discover Queues
+          </Button>
+        </div>
+      ),
     }),
-    []
+    [discoverMutation, discoveryRunning, lastDiscoveryLabel]
   )
 
   useAppTopBar(topBarConfig)
@@ -69,6 +128,20 @@ function Dashboard() {
   return (
     <TooltipProvider>
       <div className="space-y-8">
+        {discoveryRunning && (
+          <div className="flex items-center gap-2 rounded-lg border border-muted-foreground/20 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Discovering queues in Redis. Pending queues will appear dimmed until confirmed.
+          </div>
+        )}
+
+        {!discoveryRunning && discoveryQuery.data?.lastError && (
+          <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+            <AlertCircle className="h-4 w-4" />
+            Discovery failed: {discoveryQuery.data.lastError}
+          </div>
+        )}
+
         {/* Summary stats */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <StatCard

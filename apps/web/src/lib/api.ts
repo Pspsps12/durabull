@@ -11,7 +11,7 @@ import { toast } from 'sonner'
 export type { ApiType, InferRequestType, InferResponseType } from '@durabull/api-client'
 export { api } from '@durabull/api-client'
 
-const API_REQUEST_TIMEOUT_MS = 15_000
+const API_REQUEST_TIMEOUT_MS = 30_000
 const REDIS_CONNECTION_ERROR_MESSAGE =
   'Unable to connect to Redis for this connection. Verify Redis URL, credentials, TLS settings, and IP allowlist, then retry.'
 

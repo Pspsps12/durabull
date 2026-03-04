@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 
 // Connection types - matches API response
 type ConnectionEnvironment = 'development' | 'staging' | 'production'
@@ -55,9 +55,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAppMode } from '@/hooks/use-app-mode'
 import {
+  useConnectionQueueDiscoveryStatus,
   useConnectionDetail,
   useCreateConnection,
   useDeleteConnection,
+  useRunConnectionQueueDiscovery,
   useSetDefaultConnection,
   useTestConnection,
   useUpdateConnection,
@@ -519,12 +521,15 @@ function ConnectionFormDialog({
   mode: 'create' | 'edit'
   connectionId?: string
 }) {
+  const navigate = useNavigate()
+  const { orgSlug } = useParams({ strict: false }) as { orgSlug?: string }
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [showUrl, setShowUrl] = useState(false)
   const [environment, setEnvironment] = useState<ConnectionEnvironment>('development')
   const [isDefault, setIsDefault] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [discoveryConnectionId, setDiscoveryConnectionId] = useState<string | null>(null)
 
   const { data: existingConnection, isLoading: loadingConnection } = useConnectionDetail(
     mode === 'edit' && open ? (connectionId ?? null) : null
@@ -532,9 +537,21 @@ function ConnectionFormDialog({
   const createMutation = useCreateConnection()
   const updateMutation = useUpdateConnection()
   const testMutation = useTestConnection()
+  const runQueueDiscoveryMutation = useRunConnectionQueueDiscovery()
+  const queueDiscoveryQuery = useConnectionQueueDiscoveryStatus(
+    mode === 'create' && open ? discoveryConnectionId : null,
+    mode === 'create' && open && !!discoveryConnectionId
+  )
 
   const isLoading = createMutation.isPending || updateMutation.isPending
   const isTesting = testMutation.isPending
+  const isDiscovering =
+    mode === 'create' &&
+    !!discoveryConnectionId &&
+    (runQueueDiscoveryMutation.isPending ||
+      queueDiscoveryQuery.data?.running ||
+      !queueDiscoveryQuery.data)
+  const discoveryResult = queueDiscoveryQuery.data
 
   // Populate form when editing
   useEffect(() => {
@@ -548,6 +565,7 @@ function ConnectionFormDialog({
       setUrl('')
       setEnvironment('development')
       setIsDefault(false)
+      setDiscoveryConnectionId(null)
     }
     setTestResult(null)
   }, [mode, existingConnection, open])
@@ -557,12 +575,14 @@ function ConnectionFormDialog({
 
     try {
       if (mode === 'create') {
-        await createMutation.mutateAsync({
+        const created = await createMutation.mutateAsync({
           name,
           url,
           environment,
           isDefault,
         })
+        setDiscoveryConnectionId(created.connection.id)
+        await runQueueDiscoveryMutation.mutateAsync(created.connection.id)
       } else if (connectionId) {
         await updateMutation.mutateAsync({
           id: connectionId,
@@ -573,8 +593,8 @@ function ConnectionFormDialog({
             isDefault,
           },
         })
+        onOpenChange(false)
       }
-      onOpenChange(false)
     } catch {
       // Error is handled by mutation
     }
@@ -594,6 +614,16 @@ function ConnectionFormDialog({
   }
 
   const envConfig = getEnvironmentConfig(environment)
+  const queueCountDiscovered = discoveryResult?.indexed.total ?? 0
+  const hasDiscoveryCompleted =
+    mode === 'create' &&
+    !!discoveryConnectionId &&
+    !!discoveryResult &&
+    !discoveryResult.running &&
+    !isDiscovering
+  const discoveryError = runQueueDiscoveryMutation.error ?? queueDiscoveryQuery.error
+  const discoveryErrorMessage =
+    discoveryError instanceof Error ? discoveryError.message : 'Queue discovery failed'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -613,6 +643,76 @@ function ConnectionFormDialog({
         {loadingConnection && mode === 'edit' ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : mode === 'create' && discoveryConnectionId ? (
+          <div className="space-y-4 py-3">
+            {isDiscovering ? (
+              <div className="flex flex-col items-center gap-3 py-8 text-center">
+                <Loader2 className="h-7 w-7 animate-spin text-primary" />
+                <div className="space-y-1">
+                  <p className="font-medium">Discovering queues...</p>
+                  <p className="text-sm text-muted-foreground">
+                    We are scanning Redis and indexing queue names for fast loading.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              hasDiscoveryCompleted && (
+                <div className="space-y-4">
+                  <div className="rounded-lg border bg-muted/30 p-4">
+                    <h4 className="font-medium">Initial discovery complete</h4>
+                    {queueCountDiscovered > 0 ? (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Found {queueCountDiscovered} queue{queueCountDiscovered === 1 ? '' : 's'}.
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        No queues were discovered yet for this connection.
+                      </p>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                      Close
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (!orgSlug || !discoveryConnectionId) return
+                        void navigate({
+                          to: '/$orgSlug/c/$connectionId',
+                          params: { orgSlug, connectionId: discoveryConnectionId },
+                        })
+                        onOpenChange(false)
+                      }}
+                    >
+                      View Queues
+                    </Button>
+                  </DialogFooter>
+                </div>
+              )
+            )}
+
+            {!isDiscovering && !hasDiscoveryCompleted && discoveryConnectionId && (
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                  Close
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => runQueueDiscoveryMutation.mutate(discoveryConnectionId)}
+                >
+                  Retry Discovery
+                </Button>
+              </DialogFooter>
+            )}
+
+            {discoveryError && (
+              <div className="flex items-center gap-2 text-sm rounded-md bg-destructive/10 px-3 py-2 text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{discoveryErrorMessage}</span>
+              </div>
+            )}
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
