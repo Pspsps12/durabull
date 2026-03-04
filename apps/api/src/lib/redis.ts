@@ -165,7 +165,11 @@ export async function getRedis(
       const existingFailure = recentRedisConnectionFailures.get(connectionId)
       const permanent = existingFailure?.permanent ?? isPermanentRedisConnectionError(message)
       const failureMessage = existingFailure?.permanent ? existingFailure.message : message
-      recentRedisConnectionFailures.set(connectionId, { message: failureMessage, at: Date.now(), permanent })
+      recentRedisConnectionFailures.set(connectionId, {
+        message: failureMessage,
+        at: Date.now(),
+        permanent,
+      })
       redis.disconnect(false)
       throw new Error(
         `Failed to connect to Redis (${connectionName ?? connectionId}): ${failureMessage}`
