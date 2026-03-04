@@ -10,6 +10,7 @@ import { secureHeaders } from 'hono/secure-headers'
 
 import { getAuth } from './lib/auth'
 import { isAuthlessMode } from './lib/authless'
+import { RedisUnavailableError } from './lib/redis'
 import { createSessionMiddleware } from './middleware/auth'
 import { createConnectionMiddleware } from './middleware/connection'
 import { apiRateLimiter, authRateLimiter } from './middleware/rate-limit'
@@ -79,6 +80,10 @@ function redactSensitiveErrorData(message: string): string {
 }
 
 function isRedisConnectionError(error: unknown): boolean {
+  if (error instanceof RedisUnavailableError) {
+    return true
+  }
+
   const message = normalizeErrorMessage(error).toLowerCase()
   if (message.includes('failed to decrypt redis connection url')) {
     return false
