@@ -23,9 +23,27 @@ import {
   useQueueDiscoveryStatus,
   useQueues,
 } from '@/hooks/use-queues'
+import { REDIS_CONNECTION_ERROR_MESSAGE } from '@/lib/api'
 import { cn, formatNumber } from '@/lib/utils'
 
 const AUTO_DISCOVERY_MIN_INTERVAL_MS = 5 * 60 * 1000
+
+function isRedisConnectionFailure(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return [
+    'failed to connect to redis',
+    'unable to connect to redis',
+    'redis connection failed recently',
+    'invalid username-password pair',
+    'authentication failed',
+    'wrongpass',
+    'noauth',
+    'allowlist',
+    'econnrefused',
+    'enotfound',
+    'etimedout',
+  ].some((indicator) => normalized.includes(indicator))
+}
 
 export const Route = createFileRoute('/$orgSlug/c/$connectionId/')({
   component: Dashboard,
@@ -46,6 +64,7 @@ function Dashboard() {
     (discoveryQuery.data?.running ?? false) || (data?.discovery?.running ?? false)
   const discoveryRunning =
     discoverMutation.isPending || backendDiscoveryRunning || discoveryPendingCount > 0
+  const discoveryErrorMessage = discoveryQuery.data?.lastError ?? data?.discovery?.lastError ?? null
   const lastDiscoveryAt =
     discoveryQuery.data?.indexed.lastDiscoveredAt ??
     data?.discovery?.indexed.lastDiscoveredAt ??
@@ -115,14 +134,23 @@ function Dashboard() {
 
   useAppTopBar(topBarConfig)
 
-  if (error) {
+  const shouldShowConnectionFailure =
+    !error &&
+    !isLoading &&
+    (data?.total ?? 0) === 0 &&
+    !discoveryRunning &&
+    !!discoveryErrorMessage &&
+    isRedisConnectionFailure(discoveryErrorMessage)
+
+  if (error || shouldShowConnectionFailure) {
+    const message = error?.message ?? REDIS_CONNECTION_ERROR_MESSAGE
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <div className="rounded-full bg-red-100 dark:bg-red-900/20 p-4 mb-4">
           <AlertCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
         </div>
         <h2 className="text-xl font-semibold mb-2">Failed to load queues</h2>
-        <p className="text-muted-foreground text-center max-w-md">{error.message}</p>
+        <p className="text-muted-foreground text-center max-w-md">{message}</p>
       </div>
     )
   }
@@ -157,10 +185,10 @@ function Dashboard() {
           </div>
         )}
 
-        {!discoveryRunning && discoveryQuery.data?.lastError && (
+        {!discoveryRunning && discoveryErrorMessage && (
           <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
             <AlertCircle className="h-4 w-4" />
-            Discovery failed: {discoveryQuery.data.lastError}
+            Discovery failed: {discoveryErrorMessage}
           </div>
         )}
 
