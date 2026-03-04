@@ -112,4 +112,34 @@ describe('PurgeQueueDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Purge Jobs' }))
     expect(mutateAsyncMock).not.toHaveBeenCalled()
   })
+
+  it('uses a non-destructive confirm action when no jobs would be purged', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <PurgeQueueDialog
+        queueName="emails"
+        queueJobCounts={{
+          waiting: 100,
+          active: 0,
+          delayed: 0,
+          completed: 0,
+          failed: 0,
+          paused: 0,
+          prioritized: 0,
+        }}
+        open
+        onOpenChange={() => {}}
+      />
+    )
+
+    await user.click(screen.getByLabelText(/All jobs/i))
+    await user.clear(screen.getByTestId('purge-queue-keep-most-recent-input'))
+    await user.type(screen.getByTestId('purge-queue-keep-most-recent-input'), '100')
+    await user.type(screen.getByTestId('purge-queue-confirm-input'), 'emails')
+
+    const keepButton = screen.getByRole('button', { name: 'Keep Selected Jobs' })
+    expect(keepButton).toBeEnabled()
+    expect(keepButton.className).not.toContain('bg-destructive')
+  })
 })

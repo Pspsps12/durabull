@@ -388,9 +388,9 @@ function QueueDetailPage() {
               </>
             )}
           </Button>
-          <Button variant="destructive" size="xs" onClick={() => setPurgeDialogOpen(true)}>
+          <Button variant="outline" size="xs" onClick={() => setPurgeDialogOpen(true)}>
             <Trash2 className="mr-2 h-4 w-4" />
-            Purge Jobs
+            Purge / Retain
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -404,12 +404,9 @@ function QueueDetailPage() {
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Retry Jobs
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => setPurgeDialogOpen(true)}
-                className="text-destructive focus:text-destructive focus:bg-destructive/10"
-              >
+              <DropdownMenuItem onClick={() => setPurgeDialogOpen(true)}>
                 <Trash2 className="mr-2 h-4 w-4" />
-                Purge Jobs
+                Purge / Retain Jobs
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -446,12 +443,9 @@ function QueueDetailPage() {
             <RefreshCw className="mr-2 h-4 w-4" />
             Retry Jobs
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setPurgeDialogOpen(true)}
-            className="text-destructive focus:text-destructive focus:bg-destructive/10"
-          >
+          <DropdownMenuItem onClick={() => setPurgeDialogOpen(true)}>
             <Trash2 className="mr-2 h-4 w-4" />
-            Purge Jobs
+            Purge / Retain Jobs
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setDeleteDialogOpen(true)}

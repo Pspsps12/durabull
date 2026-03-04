@@ -1,5 +1,5 @@
 import { AnalyticsEvents, DialogType, trackEvent } from '@durabull/analytics'
-import { AlertTriangle, Loader2, Trash2 } from 'lucide-react'
+import { Check, Loader2, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -133,6 +133,7 @@ export function PurgeQueueDialog({
   const estimatedPurgedJobs = hasStatusSelection
     ? Math.max(selectedJobsEstimate - keepMostRecentValue, 0)
     : 0
+  const willPurgeJobs = estimatedPurgedJobs > 0
   const canSubmit =
     hasStatusSelection &&
     isConfirmed &&
@@ -198,8 +199,7 @@ export function PurgeQueueDialog({
     >
       <DialogContent className="sm:max-w-[620px]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-destructive">
-            <AlertTriangle className="h-5 w-5" />
+          <DialogTitle className="flex items-center gap-2">
             Purge Queue Jobs
           </DialogTitle>
           <DialogDescription>
@@ -209,7 +209,7 @@ export function PurgeQueueDialog({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+          <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
             <p className="text-sm text-muted-foreground mb-2">Queue:</p>
             <p className="font-mono font-semibold break-all">{queueName}</p>
             <p className="text-sm text-muted-foreground mt-2">
@@ -377,7 +377,7 @@ export function PurgeQueueDialog({
             Cancel
           </Button>
           <Button
-            variant="destructive"
+            variant={willPurgeJobs ? 'destructive' : 'default'}
             onClick={handlePurge}
             disabled={!canSubmit}
             data-testid="purge-queue-confirm-button"
@@ -385,12 +385,16 @@ export function PurgeQueueDialog({
             {isPurging ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Purging...
+                {willPurgeJobs ? 'Purging...' : 'Applying...'}
               </>
             ) : (
               <>
-                <Trash2 className="mr-2 h-4 w-4" />
-                Purge Jobs
+                {willPurgeJobs ? (
+                  <Trash2 className="mr-2 h-4 w-4" />
+                ) : (
+                  <Check className="mr-2 h-4 w-4" />
+                )}
+                {willPurgeJobs ? 'Purge Jobs' : 'Keep Selected Jobs'}
               </>
             )}
           </Button>
