@@ -251,7 +251,15 @@ export async function createApiApp(options: CreateApiAppOptions = {}) {
 
   // Middleware
   if (enableLogging) {
-    app.use('*', logger())
+    const requestLogger = logger()
+    app.use('*', async (c, next) => {
+      if (c.req.path === '/api/health') {
+        await next()
+        return
+      }
+
+      await requestLogger(c, next)
+    })
   }
 
   // Security headers
