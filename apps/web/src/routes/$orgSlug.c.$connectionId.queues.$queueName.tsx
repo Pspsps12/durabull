@@ -6,7 +6,6 @@ import {
   ArrowLeft,
   BarChart3,
   Check,
-  ChevronLeft,
   ChevronRight,
   Clock,
   Copy,
@@ -16,9 +15,9 @@ import {
   LineChart,
   Pause,
   Play,
-  Rocket,
   RefreshCw,
   Repeat,
+  Rocket,
   Server,
   Settings,
   SquarePlay,
@@ -26,7 +25,15 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react'
-import { type KeyboardEvent, type MouseEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  type KeyboardEvent,
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { z } from 'zod'
 import { useAppTopBar } from '@/components/app-top-bar'
@@ -37,6 +44,14 @@ import { StatusIndicator } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   DropdownMenu,
@@ -48,14 +63,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from '@/components/ui/chart'
 import {
   Table,
   TableBody,
@@ -163,10 +170,15 @@ function QueueDetailPage() {
   })
 
   const { data: queue, isLoading: queueLoading, error: queueError } = useQueue(queueName)
-  const { data: jobsData, isLoading: jobsLoading } = useJobs(queueName, {
+  const {
+    data: jobsData,
+    isLoading: jobsLoading,
+    isFetchingNextPage: jobsFetchingNextPage,
+    hasNextPage: hasMoreJobs,
+    fetchNextPage: fetchNextJobsPage,
+  } = useJobs(queueName, {
     status: status || undefined,
     jobId: jobId || undefined,
-    page,
     pageSize: 20,
   })
   const {
@@ -189,12 +201,15 @@ function QueueDetailPage() {
   const removeMutation = useRemoveJobs()
   const invokeMutation = useInvokeJobs()
   const hideScheduledJobs = hideScheduled === 1
-  const visibleJobs = useMemo(
-    () =>
-      jobsData?.jobs.filter((job) => (hideScheduledJobs ? !job.id.startsWith('repeat:') : true)) ??
-      [],
-    [jobsData?.jobs, hideScheduledJobs]
+  const allJobs = useMemo(
+    () => jobsData?.pages.flatMap((pageData) => pageData.jobs) ?? [],
+    [jobsData]
   )
+  const visibleJobs = useMemo(
+    () => allJobs.filter((job) => (hideScheduledJobs ? !job.id.startsWith('repeat:') : true)) ?? [],
+    [allJobs, hideScheduledJobs]
+  )
+  const jobsScrollRef = useRef<HTMLDivElement | null>(null)
   const metricsPoints = metrics?.series.points ?? []
   const metricsTotals = metrics?.series.totals
   const selectedWindowLabel = selectedMetricsWindow.label
@@ -288,6 +303,28 @@ function QueueDetailPage() {
 
     return () => clearTimeout(timer)
   }, [jobIdInput, jobId, section, tab, status, hideScheduled, navigate])
+
+  useEffect(() => {
+    const container = jobsScrollRef.current
+    if (!container || section !== 'jobs' || tab !== 'jobs') {
+      return
+    }
+
+    const onScroll = () => {
+      if (!hasMoreJobs || jobsFetchingNextPage) {
+        return
+      }
+
+      const nearBottom =
+        container.scrollTop + container.clientHeight >= container.scrollHeight - 240
+      if (nearBottom) {
+        void fetchNextJobsPage()
+      }
+    }
+
+    container.addEventListener('scroll', onScroll)
+    return () => container.removeEventListener('scroll', onScroll)
+  }, [fetchNextJobsPage, hasMoreJobs, jobsFetchingNextPage, section, tab])
 
   const handleTogglePause = useCallback(() => {
     if (queue?.isPaused) {
@@ -498,7 +535,11 @@ function QueueDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div
+      className={
+        section === 'jobs' ? 'flex h-full min-h-0 flex-col gap-6 overflow-hidden' : 'space-y-6'
+      }
+    >
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span>{queue?.workers.length ?? 0} workers connected</span>
       </div>
@@ -1238,6 +1279,7 @@ function QueueDetailPage() {
       {/* Tabs */}
       {section === 'jobs' && (
         <Tabs
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
           value={tab}
           onValueChange={(newTab) =>
             navigate({
@@ -1315,7 +1357,10 @@ function QueueDetailPage() {
             </TabsList>
           </div>
 
-          <TabsContent value="jobs" className="space-y-4">
+          <TabsContent
+            value="jobs"
+            className="flex min-h-0 flex-1 flex-col space-y-4 overflow-hidden"
+          >
             {/* Selected job actions */}
             {selectedJobs.size > 0 && (
               <div className="flex items-center gap-2">
@@ -1393,123 +1438,95 @@ function QueueDetailPage() {
             )}
 
             {/* Jobs table */}
-            <Card>
+            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <CardHeader className="border-b bg-muted/30 py-3">
                 <CardTitle className="text-base font-medium flex items-center gap-2">
                   <Layers className="h-4 w-4 text-muted-foreground" />
                   Jobs
                 </CardTitle>
               </CardHeader>
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-12">
-                      <input
-                        type="checkbox"
-                        checked={visibleJobs.length > 0 && selectedJobs.size === visibleJobs.length}
-                        onChange={toggleAllJobs}
-                        disabled={visibleJobs.length === 0}
-                        className="rounded border-gray-300"
-                      />
-                    </TableHead>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Attempts</TableHead>
-                    <TableHead>Created ({getTimezoneAbbreviation()})</TableHead>
-                    <TableHead>Finished ({getTimezoneAbbreviation()})</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {jobsLoading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i}>
+              <div ref={jobsScrollRef} className="min-h-0 flex-1 overflow-auto">
+                <table className="w-full caption-bottom border-separate border-spacing-0 text-sm">
+                  <TableHeader className="bg-card [&_th]:border-b [&_th]:border-border/70">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="sticky top-0 z-20 w-12 bg-card shadow-[inset_0_-1px_0_0_hsl(var(--border)),0_8px_12px_-10px_rgba(0,0,0,0.75)]">
+                        <input
+                          type="checkbox"
+                          checked={
+                            visibleJobs.length > 0 && selectedJobs.size === visibleJobs.length
+                          }
+                          onChange={toggleAllJobs}
+                          disabled={visibleJobs.length === 0}
+                          className="rounded border-gray-300"
+                        />
+                      </TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-card shadow-[inset_0_-1px_0_0_hsl(var(--border)),0_8px_12px_-10px_rgba(0,0,0,0.75)]">
+                        ID
+                      </TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-card shadow-[inset_0_-1px_0_0_hsl(var(--border)),0_8px_12px_-10px_rgba(0,0,0,0.75)]">
+                        Name
+                      </TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-card shadow-[inset_0_-1px_0_0_hsl(var(--border)),0_8px_12px_-10px_rgba(0,0,0,0.75)]">
+                        Status
+                      </TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-card shadow-[inset_0_-1px_0_0_hsl(var(--border)),0_8px_12px_-10px_rgba(0,0,0,0.75)]">
+                        Attempts
+                      </TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-card shadow-[inset_0_-1px_0_0_hsl(var(--border)),0_8px_12px_-10px_rgba(0,0,0,0.75)]">
+                        Created ({getTimezoneAbbreviation()})
+                      </TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-card shadow-[inset_0_-1px_0_0_hsl(var(--border)),0_8px_12px_-10px_rgba(0,0,0,0.75)]">
+                        Finished ({getTimezoneAbbreviation()})
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {jobsLoading ? (
+                      Array.from({ length: 8 }).map((_, i) => (
+                        <TableRow key={i}>
+                          <TableCell colSpan={7}>
+                            <Skeleton className="h-8" />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : visibleJobs.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-12">
+                          <Layers className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                          <p className="font-medium">No jobs yet</p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Jobs will appear here after they are enqueued.
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      visibleJobs.map((job) => (
+                        <JobRow
+                          key={job.id}
+                          job={job}
+                          orgSlug={orgSlug}
+                          connectionId={connectionId}
+                          queueName={queueName}
+                          selected={selectedJobs.has(job.id)}
+                          onToggleSelect={() => toggleJobSelection(job.id)}
+                        />
+                      ))
+                    )}
+                    {jobsFetchingNextPage && (
+                      <TableRow>
                         <TableCell colSpan={7}>
                           <Skeleton className="h-8" />
                         </TableCell>
                       </TableRow>
-                    ))
-                  ) : visibleJobs.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-12">
-                        <Layers className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="font-medium">No jobs yet</p>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Jobs will appear here after they are enqueued.
-                        </p>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    visibleJobs.map((job) => (
-                      <JobRow
-                        key={job.id}
-                        job={job}
-                        orgSlug={orgSlug}
-                        connectionId={connectionId}
-                        queueName={queueName}
-                        selected={selectedJobs.has(job.id)}
-                        onToggleSelect={() => toggleJobSelection(job.id)}
-                      />
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </Card>
-
-            {/* Pagination */}
-            {jobsData && jobsData.totalPages > 1 && (
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Page {jobsData.page} of {jobsData.totalPages} ({jobsData.total} total)
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      navigate({
-                        to: '.',
-                        search: {
-                          section,
-                          tab,
-                          status,
-                          jobId,
-                          hideScheduled,
-                          page: Math.max(1, page - 1),
-                        },
-                        replace: true,
-                      })
-                    }
-                    disabled={page === 1}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      navigate({
-                        to: '.',
-                        search: {
-                          section,
-                          tab,
-                          status,
-                          jobId,
-                          hideScheduled,
-                          page: Math.min(jobsData.totalPages, page + 1),
-                        },
-                        replace: true,
-                      })
-                    }
-                    disabled={page === jobsData.totalPages}
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
+                    )}
+                  </TableBody>
+                </table>
               </div>
-            )}
+            </Card>
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>{jobsData?.pages[0]?.total ?? 0} total</span>
+              <span>{hasMoreJobs ? 'Scroll to load more' : 'All jobs loaded'}</span>
+            </div>
           </TabsContent>
 
           <TabsContent value="scheduled">

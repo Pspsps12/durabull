@@ -84,11 +84,14 @@ const app = new Hono()
     const name = c.req.query('name')
     const jobId = c.req.query('jobId')?.trim()
     const pageStr = c.req.query('page')
+    const cursorStr = c.req.query('cursor')
     const pageSizeStr = c.req.query('pageSize')
 
-    const page = pageStr ? parseInt(pageStr, 10) : 1
     const pageSize = Math.min(pageSizeStr ? parseInt(pageSizeStr, 10) : 20, 100)
-    const start = (page - 1) * pageSize
+    const cursor = cursorStr ? parseInt(cursorStr, 10) : null
+    const page = pageStr ? parseInt(pageStr, 10) : 1
+    const start =
+      Number.isInteger(cursor) && cursor !== null ? Math.max(0, cursor) : (page - 1) * pageSize
     const end = start + pageSize - 1
 
     const queue = await getQueue(connectionId, connectionUrl, queueName)
@@ -129,6 +132,9 @@ const app = new Hono()
           ],
           total: 1,
           page: 1,
+          cursor: '0',
+          nextCursor: null,
+          hasMore: false,
           pageSize,
           totalPages: 1,
         })
@@ -191,11 +197,17 @@ const app = new Hono()
     )
 
     const total = jobId ? mappedJobs.length : await queue.getJobCountByTypes(...states)
+    // Always advance by pageSize to avoid repeating the same cursor when this slice maps to 0 rows.
+    const nextStart = start + pageSize
+    const hasMore = nextStart < total
 
     return c.json({
       jobs: mappedJobs,
       total,
       page,
+      cursor: String(start),
+      nextCursor: hasMore ? String(nextStart) : null,
+      hasMore,
       pageSize,
       totalPages: total > 0 ? Math.ceil(total / pageSize) : 0,
     })
