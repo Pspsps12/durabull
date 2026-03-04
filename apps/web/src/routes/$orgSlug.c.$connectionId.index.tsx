@@ -38,10 +38,10 @@ function Dashboard() {
     discoveryQuery.data?.indexed.pending ?? 0,
     data?.discovery?.indexed.pending ?? 0
   )
+  const backendDiscoveryRunning =
+    (discoveryQuery.data?.running ?? false) || (data?.discovery?.running ?? false)
   const discoveryRunning =
-    discoverMutation.isPending ||
-    (discoveryQuery.data?.running ?? false) ||
-    discoveryPendingCount > 0
+    discoverMutation.isPending || backendDiscoveryRunning || discoveryPendingCount > 0
   const lastDiscoveryAt =
     discoveryQuery.data?.indexed.lastDiscoveredAt ??
     data?.discovery?.indexed.lastDiscoveredAt ??
