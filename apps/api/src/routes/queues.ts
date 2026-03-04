@@ -547,11 +547,7 @@ const app = new Hono()
             continue
           }
 
-          for (
-            let end = totalForStatus - 1;
-            end >= 0;
-            end -= CLEAN_BATCH_SIZE
-          ) {
+          for (let end = totalForStatus - 1; end >= 0; end -= CLEAN_BATCH_SIZE) {
             const start = Math.max(0, end - CLEAN_BATCH_SIZE + 1)
             const jobs = (await queue.getJobs([status], start, end, false)).filter(
               (job): job is NonNullable<typeof job> => job != null

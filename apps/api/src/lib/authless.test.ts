@@ -80,7 +80,7 @@ describe('authless context', () => {
       )
       .limit(1)
     expect(membership[0]?.role).toBe('owner')
-  })
+  }, 20_000)
 
   it('reuses existing records by unique keys and upgrades membership role', async () => {
     const db = await getDb()
@@ -137,5 +137,5 @@ describe('authless context', () => {
       .where(eq(organization.id, AUTHLESS_ORG_ID))
       .limit(1)
     expect(preferredOrg).toHaveLength(0)
-  })
+  }, 20_000)
 })

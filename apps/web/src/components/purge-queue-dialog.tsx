@@ -173,9 +173,7 @@ export function PurgeQueueDialog({
           : Math.min(keepMostRecent, selectedJobsEstimate)
       const removedDescription = `Removed ${formatJobCount(result.totalRemoved)}.`
       const retainedDescription =
-        keepMostRecent > 0
-          ? ` Kept ${formatJobCount(keptMostRecent)}.`
-          : ''
+        keepMostRecent > 0 ? ` Kept ${formatJobCount(keptMostRecent)}.` : ''
 
       toast.success('Queue purge completed', {
         description: `${removedDescription}${retainedDescription}`,
@@ -198,9 +196,7 @@ export function PurgeQueueDialog({
     >
       <DialogContent className="sm:max-w-[620px]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            Purge Queue Jobs
-          </DialogTitle>
+          <DialogTitle className="flex items-center gap-2">Purge Queue Jobs</DialogTitle>
           <DialogDescription>
             Permanently remove jobs from selected statuses. Optionally retain the most recent N
             matching jobs.
