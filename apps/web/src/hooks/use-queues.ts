@@ -633,22 +633,25 @@ export function usePurgeQueue() {
       queueName,
       confirmName,
       statuses,
+      keepMostRecent = 0,
     }: {
       queueName: string
       confirmName: string
       statuses: PurgeQueueStatusOption[]
+      keepMostRecent?: number
     }) => {
       const res = await api.c[':connectionId'].queues[':queueName'].purge.$post({
         param: { connectionId: connectionId!, queueName },
-        json: { confirmName, statuses },
+        json: { confirmName, statuses, keepMostRecent },
       })
       return handleRes<PurgeQueueResponse>(res)
     },
-    onSuccess: (data, { queueName, statuses }) => {
+    onSuccess: (data, { queueName, statuses, keepMostRecent = 0 }) => {
       trackEvent(AnalyticsEvents.QUEUE_PURGED, {
         queue_name: queueName,
         queue_status: statuses.includes('all') ? 'all' : statuses.join(','),
         job_count: data.totalRemoved,
+        keep_most_recent: keepMostRecent,
         success: true,
       })
       queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
@@ -656,10 +659,11 @@ export function usePurgeQueue() {
       queryClient.invalidateQueries({ queryKey: ['jobs', connectionId, queueName] })
       queryClient.invalidateQueries({ queryKey: ['canDeleteQueue', connectionId, queueName] })
     },
-    onError: (_, { queueName, statuses }) => {
+    onError: (_, { queueName, statuses, keepMostRecent = 0 }) => {
       trackEvent(AnalyticsEvents.QUEUE_PURGED, {
         queue_name: queueName,
         queue_status: statuses.includes('all') ? 'all' : statuses.join(','),
+        keep_most_recent: keepMostRecent,
         success: false,
       })
     },

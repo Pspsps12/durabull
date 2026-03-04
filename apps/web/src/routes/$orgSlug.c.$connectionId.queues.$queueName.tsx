@@ -388,6 +388,10 @@ function QueueDetailPage() {
               </>
             )}
           </Button>
+          <Button variant="destructive" size="xs" onClick={() => setPurgeDialogOpen(true)}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            Purge Jobs
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="xs" className="px-2.5">

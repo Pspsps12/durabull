@@ -22,6 +22,7 @@ const MAX_PAGE_SIZE = 100
 const CLEAN_BATCH_SIZE = 1000
 const MAX_PURGE_BATCHES_PER_STATUS = 500
 const MAX_REMOVED_JOB_IDS_IN_RESPONSE = 100
+const MAX_PURGE_KEEP_MOST_RECENT = 1_000_000
 
 const PURGEABLE_QUEUE_STATUSES = [
   'waiting',
@@ -81,6 +82,100 @@ function parsePriorities(value: string | undefined): number[] {
   )
 
   return parsed.length > 0 ? parsed.sort((a, b) => a - b) : [...DEFAULT_PRIORITY_BUCKETS]
+}
+
+interface PurgeRecencyCandidate {
+  id: string
+  recency: number
+}
+
+function comparePurgeRecency(a: PurgeRecencyCandidate, b: PurgeRecencyCandidate): number {
+  if (a.recency !== b.recency) {
+    return a.recency - b.recency
+  }
+  return a.id.localeCompare(b.id)
+}
+
+function siftUpPurgeHeap(heap: PurgeRecencyCandidate[], index: number): void {
+  let current = index
+
+  while (current > 0) {
+    const parent = Math.floor((current - 1) / 2)
+    if (comparePurgeRecency(heap[parent], heap[current]) <= 0) {
+      break
+    }
+
+    ;[heap[parent], heap[current]] = [heap[current], heap[parent]]
+    current = parent
+  }
+}
+
+function siftDownPurgeHeap(heap: PurgeRecencyCandidate[], index: number): void {
+  let current = index
+
+  while (true) {
+    const left = current * 2 + 1
+    const right = left + 1
+    let smallest = current
+
+    if (left < heap.length && comparePurgeRecency(heap[left], heap[smallest]) < 0) {
+      smallest = left
+    }
+
+    if (right < heap.length && comparePurgeRecency(heap[right], heap[smallest]) < 0) {
+      smallest = right
+    }
+
+    if (smallest === current) {
+      break
+    }
+
+    ;[heap[current], heap[smallest]] = [heap[smallest], heap[current]]
+    current = smallest
+  }
+}
+
+function addMostRecentCandidate(
+  heap: PurgeRecencyCandidate[],
+  candidate: PurgeRecencyCandidate,
+  keepMostRecent: number
+): void {
+  if (keepMostRecent <= 0 || candidate.id.length === 0) {
+    return
+  }
+
+  if (heap.length < keepMostRecent) {
+    heap.push(candidate)
+    siftUpPurgeHeap(heap, heap.length - 1)
+    return
+  }
+
+  if (heap.length === 0) {
+    return
+  }
+
+  if (comparePurgeRecency(candidate, heap[0]) <= 0) {
+    return
+  }
+
+  heap[0] = candidate
+  siftDownPurgeHeap(heap, 0)
+}
+
+function getJobRecency(job: {
+  timestamp?: number
+  processedOn?: number
+  finishedOn?: number
+}): number {
+  return Math.max(job.timestamp ?? 0, job.processedOn ?? 0, job.finishedOn ?? 0)
+}
+
+function appendRemovedJobIdSample(sample: string[], id: string): void {
+  if (!id || sample.length >= MAX_REMOVED_JOB_IDS_IN_RESPONSE) {
+    return
+  }
+
+  sample.push(id)
 }
 
 const app = new Hono()
@@ -357,13 +452,14 @@ const app = new Hono()
       z.object({
         confirmName: z.string().min(1),
         statuses: z.array(z.enum(PURGE_STATUS_OPTIONS)).min(1),
+        keepMostRecent: z.number().int().min(0).max(MAX_PURGE_KEEP_MOST_RECENT).default(0),
       })
     ),
     async (c) => {
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
       const queueName = c.req.param('queueName')
-      const { confirmName, statuses } = c.req.valid('json')
+      const { confirmName, statuses, keepMostRecent } = c.req.valid('json')
 
       if (confirmName !== queueName) {
         return c.json(
@@ -390,31 +486,89 @@ const app = new Hono()
       ) as Record<PurgeableQueueStatus, number>
       const removedJobIdsSample: string[] = []
       let totalRemoved = 0
+      let keptMostRecent = 0
 
-      for (const status of statusesToPurge) {
-        let removedForStatus = 0
-        let reachedSafetyLimit = true
+      if (keepMostRecent > 0) {
+        const mostRecentHeap: PurgeRecencyCandidate[] = []
+        const scannedByStatus = Object.fromEntries(
+          statusesToPurge.map((status) => [status, 0])
+        ) as Record<PurgeableQueueStatus, number>
 
-        if (status === 'prioritized') {
+        for (const status of statusesToPurge) {
+          let reachedSafetyLimit = true
+
           for (let batch = 0; batch < MAX_PURGE_BATCHES_PER_STATUS; batch++) {
-            const prioritizedJobs = (
-              await queue.getJobs(['prioritized'], 0, CLEAN_BATCH_SIZE - 1)
-            ).filter((job): job is NonNullable<typeof job> => job != null)
+            const start = batch * CLEAN_BATCH_SIZE
+            const end = start + CLEAN_BATCH_SIZE - 1
+            const jobs = (await queue.getJobs([status], start, end, false)).filter(
+              (job): job is NonNullable<typeof job> => job != null
+            )
 
-            if (prioritizedJobs.length === 0) {
+            if (jobs.length === 0) {
               reachedSafetyLimit = false
               break
             }
 
-            for (const job of prioritizedJobs) {
+            scannedByStatus[status] += jobs.length
+
+            for (const job of jobs) {
+              addMostRecentCandidate(
+                mostRecentHeap,
+                {
+                  id: String(job.id ?? ''),
+                  recency: getJobRecency(job),
+                },
+                keepMostRecent
+              )
+            }
+          }
+
+          if (reachedSafetyLimit) {
+            return c.json(
+              {
+                error: `Purge safety limit reached while evaluating status "${status}". Please retry with narrower filters.`,
+                status,
+                canPurge: true,
+              },
+              409
+            )
+          }
+        }
+
+        const keepJobIds = new Set(mostRecentHeap.map((job) => job.id))
+        keptMostRecent = keepJobIds.size
+
+        for (const status of statusesToPurge) {
+          const totalForStatus = scannedByStatus[status]
+          let removedForStatus = 0
+
+          if (totalForStatus === 0) {
+            removedByStatus[status] = 0
+            continue
+          }
+
+          for (
+            let end = totalForStatus - 1;
+            end >= 0;
+            end -= CLEAN_BATCH_SIZE
+          ) {
+            const start = Math.max(0, end - CLEAN_BATCH_SIZE + 1)
+            const jobs = (await queue.getJobs([status], start, end, false)).filter(
+              (job): job is NonNullable<typeof job> => job != null
+            )
+
+            for (const job of jobs) {
+              const jobId = String(job.id ?? '')
+              if (keepJobIds.has(jobId)) {
+                continue
+              }
+
               try {
                 await job.remove()
               } catch (err) {
                 return c.json(
                   {
-                    error: `Failed to remove prioritized job "${String(job.id ?? '')}": ${String(
-                      err
-                    )}`,
+                    error: `Failed to remove ${status} job "${jobId}": ${String(err)}`,
                     status,
                     canPurge: true,
                   },
@@ -424,10 +578,85 @@ const app = new Hono()
 
               removedForStatus += 1
               totalRemoved += 1
+              appendRemovedJobIdSample(removedJobIdsSample, jobId)
+            }
+          }
 
-              if (removedJobIdsSample.length < MAX_REMOVED_JOB_IDS_IN_RESPONSE) {
-                removedJobIdsSample.push(String(job.id ?? ''))
+          removedByStatus[status] = removedForStatus
+        }
+      } else {
+        for (const status of statusesToPurge) {
+          let removedForStatus = 0
+          let reachedSafetyLimit = true
+
+          if (status === 'prioritized') {
+            for (let batch = 0; batch < MAX_PURGE_BATCHES_PER_STATUS; batch++) {
+              const prioritizedJobs = (
+                await queue.getJobs(['prioritized'], 0, CLEAN_BATCH_SIZE - 1)
+              ).filter((job): job is NonNullable<typeof job> => job != null)
+
+              if (prioritizedJobs.length === 0) {
+                reachedSafetyLimit = false
+                break
               }
+
+              for (const job of prioritizedJobs) {
+                try {
+                  await job.remove()
+                } catch (err) {
+                  return c.json(
+                    {
+                      error: `Failed to remove prioritized job "${String(job.id ?? '')}": ${String(
+                        err
+                      )}`,
+                      status,
+                      canPurge: true,
+                    },
+                    409
+                  )
+                }
+
+                removedForStatus += 1
+                totalRemoved += 1
+                appendRemovedJobIdSample(removedJobIdsSample, String(job.id ?? ''))
+              }
+            }
+
+            if (reachedSafetyLimit) {
+              return c.json(
+                {
+                  error: `Purge safety limit reached for status "${status}". Please retry the purge.`,
+                  status,
+                  canPurge: true,
+                },
+                409
+              )
+            }
+
+            removedByStatus[status] = removedForStatus
+            continue
+          }
+
+          const cleanStatus = cleanStatusMap[status]
+
+          for (let batch = 0; batch < MAX_PURGE_BATCHES_PER_STATUS; batch++) {
+            const removedJobIds = await queue.clean(
+              0,
+              CLEAN_BATCH_SIZE,
+              cleanStatus as Parameters<typeof queue.clean>[2]
+            )
+            const removedCount = removedJobIds.length
+
+            if (removedCount === 0) {
+              reachedSafetyLimit = false
+              break
+            }
+
+            removedForStatus += removedCount
+            totalRemoved += removedCount
+
+            for (const jobId of removedJobIds) {
+              appendRemovedJobIdSample(removedJobIdsSample, String(jobId))
             }
           }
 
@@ -443,53 +672,15 @@ const app = new Hono()
           }
 
           removedByStatus[status] = removedForStatus
-          continue
         }
-
-        const cleanStatus = cleanStatusMap[status]
-
-        for (let batch = 0; batch < MAX_PURGE_BATCHES_PER_STATUS; batch++) {
-          const removedJobIds = await queue.clean(
-            0,
-            CLEAN_BATCH_SIZE,
-            cleanStatus as Parameters<typeof queue.clean>[2]
-          )
-          const removedCount = removedJobIds.length
-
-          if (removedCount === 0) {
-            reachedSafetyLimit = false
-            break
-          }
-
-          removedForStatus += removedCount
-          totalRemoved += removedCount
-
-          if (removedJobIdsSample.length < MAX_REMOVED_JOB_IDS_IN_RESPONSE) {
-            const remainingSlots = MAX_REMOVED_JOB_IDS_IN_RESPONSE - removedJobIdsSample.length
-            removedJobIdsSample.push(
-              ...removedJobIds.slice(0, remainingSlots).map((jobId) => String(jobId))
-            )
-          }
-        }
-
-        if (reachedSafetyLimit) {
-          return c.json(
-            {
-              error: `Purge safety limit reached for status "${status}". Please retry the purge.`,
-              status,
-              canPurge: true,
-            },
-            409
-          )
-        }
-
-        removedByStatus[status] = removedForStatus
       }
 
       return c.json({
         success: true,
         queueName,
         statusesPurged: statusesToPurge,
+        keepMostRecent,
+        keptMostRecent,
         totalRemoved,
         removedByStatus,
         removedJobIdsSample,
