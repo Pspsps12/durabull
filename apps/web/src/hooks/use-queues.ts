@@ -202,7 +202,7 @@ export const queryKeys = {
   jobs: (
     connectionId: string,
     queueName: string,
-    filters?: { status?: string; name?: string; jobId?: string; page?: number; pageSize?: number }
+    filters?: { status?: string; name?: string; jobId?: string; pageSize?: number }
   ) => ['jobs', connectionId, queueName, filters] as const,
   job: (connectionId: string, queueName: string, jobId: string) =>
     ['job', connectionId, queueName, jobId] as const,
@@ -295,19 +295,19 @@ export function useQueueMetrics(queueName: string, options?: QueueMetricsOptions
 // Job Queries - uses fetchApi since route doesn't have zValidator for query params
 export function useJobs(
   queueName: string,
-  filters?: { status?: string; name?: string; jobId?: string; page?: number; pageSize?: number }
+  filters?: { status?: string; name?: string; jobId?: string; pageSize?: number }
 ) {
   const connectionId = useConnectionIdFromContextOrRoute()
 
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: queryKeys.jobs(connectionId ?? '', queueName, filters),
-    queryFn: async () => {
+    queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams()
       if (filters?.status) params.set('status', filters.status)
       if (filters?.name) params.set('name', filters.name)
       if (filters?.jobId) params.set('jobId', filters.jobId)
-      if (filters?.page) params.set('page', filters.page.toString())
       if (filters?.pageSize) params.set('pageSize', filters.pageSize.toString())
+      if (pageParam) params.set('cursor', pageParam)
       const query = params.toString()
 
       const url = `/api/c/${connectionId}/queues/${encodeURIComponent(queueName)}/jobs${query ? `?${query}` : ''}`
@@ -329,10 +329,21 @@ export function useJobs(
         }>
         total: number
         page: number
+        cursor: string
+        nextCursor: string | null
+        hasMore: boolean
         pageSize: number
         totalPages: number
       }>(url)
     },
+    getNextPageParam: (lastPage) => {
+      if (!lastPage.nextCursor) {
+        return undefined
+      }
+      // Guard against server bugs that return a non-advancing cursor.
+      return lastPage.nextCursor === lastPage.cursor ? undefined : lastPage.nextCursor
+    },
+    initialPageParam: undefined as string | undefined,
     enabled: !!queueName && !!connectionId,
   })
 }

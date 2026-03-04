@@ -210,7 +210,7 @@ function RootLayout() {
           <main className="min-w-0 flex flex-1 flex-col overflow-hidden">
             <AppTopBar onOpenMobileNav={() => setMobileNavOpen(true)} />
             <div className="min-h-0 flex-1 overflow-auto">
-              <div className="p-4 md:p-6">
+              <div className="h-full p-4 md:p-6">
                 <Outlet />
               </div>
             </div>
