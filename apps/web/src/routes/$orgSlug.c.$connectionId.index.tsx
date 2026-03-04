@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useParams } from '@tanstack/react-router'
 import {
   Activity,
   AlertCircle,
@@ -30,6 +30,8 @@ export const Route = createFileRoute('/$orgSlug/c/$connectionId/')({
 })
 
 function Dashboard() {
+  const routeParams = useParams({ strict: false }) as { connectionId?: string }
+  const connectionId = routeParams.connectionId ?? ''
   const { data, isLoading, error } = useQueues()
   const discoveryQuery = useQueueDiscoveryStatus()
   const discoverMutation = useDiscoverQueues()
@@ -52,6 +54,10 @@ function Dashboard() {
     if (!lastDiscoveryAt) return 'Discovery not run yet'
     return `Last discovery: ${new Date(lastDiscoveryAt).toLocaleString()}`
   }, [lastDiscoveryAt])
+
+  useEffect(() => {
+    hasAutoTriggeredDiscovery.current = false
+  }, [connectionId])
 
   useEffect(() => {
     if (hasAutoTriggeredDiscovery.current) return
