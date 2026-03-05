@@ -1,5 +1,5 @@
 import { AnalyticsEvents, DialogType, trackEvent } from '@durabull/analytics'
-import { AlertTriangle, Loader2, Trash2 } from 'lucide-react'
+import { Loader2, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -37,6 +37,9 @@ interface PurgeQueueDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
+const MAX_KEEP_MOST_RECENT = 1_000_000
+const KEEP_MOST_RECENT_PRESETS = [0, 10, 50, 100] as const
+
 const STATUS_LABELS: Record<PurgeQueueStatus, string> = {
   waiting: 'Waiting',
   active: 'Active',
@@ -45,6 +48,25 @@ const STATUS_LABELS: Record<PurgeQueueStatus, string> = {
   failed: 'Failed',
   paused: 'Paused',
   prioritized: 'Prioritized',
+}
+
+function parseKeepMostRecent(rawValue: string): number | null {
+  const value = rawValue.trim()
+
+  if (value.length === 0 || !/^\d+$/.test(value)) {
+    return null
+  }
+
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isSafeInteger(parsed)) {
+    return null
+  }
+
+  return parsed
+}
+
+function formatJobCount(count: number): string {
+  return `${count.toLocaleString()} job${count === 1 ? '' : 's'}`
 }
 
 export function PurgeQueueDialog({
@@ -56,6 +78,7 @@ export function PurgeQueueDialog({
   const [confirmInput, setConfirmInput] = useState('')
   const [purgeAll, setPurgeAll] = useState(false)
   const [selectedStatuses, setSelectedStatuses] = useState<Set<PurgeQueueStatus>>(new Set())
+  const [keepMostRecentInput, setKeepMostRecentInput] = useState('0')
   const purgeMutation = usePurgeQueue()
 
   useEffect(() => {
@@ -63,6 +86,7 @@ export function PurgeQueueDialog({
       setConfirmInput('')
       setPurgeAll(false)
       setSelectedStatuses(new Set())
+      setKeepMostRecentInput('0')
     }
   }, [open])
 
@@ -83,10 +107,38 @@ export function PurgeQueueDialog({
   const hasStatusSelection = purgeAll || selectedStatuses.size > 0
   const isConfirmed = confirmInput === queueName
   const isPurging = purgeMutation.isPending
+  const parsedKeepMostRecent = useMemo(
+    () => parseKeepMostRecent(keepMostRecentInput),
+    [keepMostRecentInput]
+  )
+  const keepMostRecentError = useMemo(() => {
+    if (parsedKeepMostRecent === null) {
+      return 'Enter a whole number between 0 and 1,000,000.'
+    }
+
+    if (parsedKeepMostRecent > MAX_KEEP_MOST_RECENT) {
+      return `Value must be ${MAX_KEEP_MOST_RECENT.toLocaleString()} or less.`
+    }
+
+    return null
+  }, [parsedKeepMostRecent])
+  const keepMostRecentValue = parsedKeepMostRecent ?? 0
 
   const selectedJobsEstimate = purgeAll
     ? totalJobs
     : Array.from(selectedStatuses).reduce((sum, status) => sum + jobCounts[status], 0)
+  const estimatedRetainedJobs = hasStatusSelection
+    ? Math.min(selectedJobsEstimate, keepMostRecentValue)
+    : 0
+  const estimatedPurgedJobs = hasStatusSelection
+    ? Math.max(selectedJobsEstimate - keepMostRecentValue, 0)
+    : 0
+  const canSubmit =
+    hasStatusSelection &&
+    isConfirmed &&
+    parsedKeepMostRecent !== null &&
+    keepMostRecentError === null &&
+    !isPurging
 
   const toggleStatus = (status: PurgeQueueStatus) => {
     if (purgeAll) return
@@ -103,19 +155,28 @@ export function PurgeQueueDialog({
   }
 
   const handlePurge = async () => {
-    if (!hasStatusSelection || !isConfirmed) return
+    if (!canSubmit) return
 
     const statuses: PurgeQueueStatusOption[] = purgeAll ? ['all'] : Array.from(selectedStatuses)
+    const keepMostRecent = parsedKeepMostRecent ?? 0
 
     try {
       const result = await purgeMutation.mutateAsync({
         queueName,
         confirmName: confirmInput,
         statuses,
+        keepMostRecent,
       })
+      const keptMostRecent =
+        typeof result.keptMostRecent === 'number'
+          ? result.keptMostRecent
+          : Math.min(keepMostRecent, selectedJobsEstimate)
+      const removedDescription = `Removed ${formatJobCount(result.totalRemoved)}.`
+      const retainedDescription =
+        keepMostRecent > 0 ? ` Kept ${formatJobCount(keptMostRecent)}.` : ''
 
       toast.success('Queue purge completed', {
-        description: `Removed ${result.totalRemoved.toLocaleString()} jobs.`,
+        description: `${removedDescription}${retainedDescription}`,
       })
       onOpenChange(false)
     } catch {
@@ -133,20 +194,17 @@ export function PurgeQueueDialog({
         onOpenChange(newOpen)
       }}
     >
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent className="sm:max-w-[620px]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-destructive">
-            <AlertTriangle className="h-5 w-5" />
-            Purge Queue Jobs
-          </DialogTitle>
+          <DialogTitle className="flex items-center gap-2">Purge Queue Jobs</DialogTitle>
           <DialogDescription>
-            Permanently remove jobs from this queue by selected statuses. This action cannot be
-            undone.
+            Permanently remove jobs from selected statuses. Optionally retain the most recent N
+            matching jobs.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+          <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
             <p className="text-sm text-muted-foreground mb-2">Queue:</p>
             <p className="font-mono font-semibold break-all">{queueName}</p>
             <p className="text-sm text-muted-foreground mt-2">
@@ -160,7 +218,7 @@ export function PurgeQueueDialog({
 
             <label
               htmlFor="purge-all-jobs"
-              className="flex items-center justify-between rounded-md border px-3 py-2 cursor-pointer"
+              className="flex items-center justify-between rounded-md border border-border/70 bg-background px-3 py-2 cursor-pointer transition-colors hover:bg-muted/40"
             >
               <span className="text-sm font-medium">All jobs</span>
               <div className="flex items-center gap-3">
@@ -185,7 +243,7 @@ export function PurgeQueueDialog({
                 <label
                   key={status}
                   htmlFor={`purge-status-${status}`}
-                  className={`flex items-center justify-between rounded-md border px-3 py-2 ${
+                  className={`flex items-center justify-between rounded-md border border-border/70 bg-background px-3 py-2 transition-colors ${
                     purgeAll ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
                   }`}
                 >
@@ -206,6 +264,64 @@ export function PurgeQueueDialog({
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-border/70 bg-muted/20 p-4">
+            <div className="space-y-1">
+              <Label htmlFor="purge-queue-keep-most-recent-input" className="text-sm font-medium">
+                Retain most recent N jobs
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Use <span className="font-mono">0</span> to remove all matched jobs.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {KEEP_MOST_RECENT_PRESETS.map((value) => (
+                <Button
+                  key={value}
+                  type="button"
+                  variant={
+                    keepMostRecentError === null && keepMostRecentValue === value
+                      ? 'secondary'
+                      : 'outline'
+                  }
+                  size="xs"
+                  onClick={() => setKeepMostRecentInput(String(value))}
+                >
+                  {value === 0 ? 'Keep 0' : `Keep ${value.toLocaleString()}`}
+                </Button>
+              ))}
+            </div>
+
+            <Input
+              id="purge-queue-keep-most-recent-input"
+              data-testid="purge-queue-keep-most-recent-input"
+              value={keepMostRecentInput}
+              onChange={(event) => setKeepMostRecentInput(event.target.value)}
+              inputMode="numeric"
+              placeholder="0"
+              min={0}
+              max={MAX_KEEP_MOST_RECENT}
+              className={
+                keepMostRecentError
+                  ? 'border-destructive focus-visible:ring-destructive'
+                  : undefined
+              }
+            />
+
+            {keepMostRecentError ? (
+              <p className="text-sm text-destructive">{keepMostRecentError}</p>
+            ) : hasStatusSelection ? (
+              <p className="text-xs text-muted-foreground">
+                Estimated outcome: purge {formatJobCount(estimatedPurgedJobs)} and retain{' '}
+                {formatJobCount(estimatedRetainedJobs)}.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Select statuses to preview what will be purged.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -240,9 +356,9 @@ export function PurgeQueueDialog({
                 Select one or more statuses (or All jobs) to enable confirmation.
               </p>
             )}
-            {hasStatusSelection && selectedJobsEstimate > 0 && (
+            {hasStatusSelection && keepMostRecentError === null && selectedJobsEstimate > 0 && (
               <p className="text-xs text-muted-foreground">
-                Estimated jobs to purge: {selectedJobsEstimate.toLocaleString()}
+                Matching jobs before retention: {selectedJobsEstimate.toLocaleString()}
               </p>
             )}
             {confirmInput && !isConfirmed && (
@@ -258,7 +374,7 @@ export function PurgeQueueDialog({
           <Button
             variant="destructive"
             onClick={handlePurge}
-            disabled={!hasStatusSelection || !isConfirmed || isPurging}
+            disabled={!canSubmit}
             data-testid="purge-queue-confirm-button"
           >
             {isPurging ? (
