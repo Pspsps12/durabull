@@ -1,6 +1,19 @@
 import { Queue } from 'bullmq'
 import { Redis } from 'ioredis'
 
+export class RedisUnavailableError extends Error {
+  readonly code = 'REDIS_UNAVAILABLE'
+  readonly connectionId: string
+  readonly connectionName?: string
+
+  constructor(connectionId: string, message: string, connectionName?: string) {
+    super(message)
+    this.name = 'RedisUnavailableError'
+    this.connectionId = connectionId
+    this.connectionName = connectionName
+  }
+}
+
 // Cache for Redis connections keyed by connection ID
 const redisConnections = new Map<string, Redis>()
 // Cache in-flight connection attempts to prevent creating duplicate clients concurrently
@@ -65,6 +78,26 @@ function isPermanentRedisConnectionError(message: string): boolean {
   )
 }
 
+function toRedisUnavailableError(
+  connectionId: string,
+  connectionName: string | undefined,
+  message: string
+): RedisUnavailableError {
+  return new RedisUnavailableError(
+    connectionId,
+    `Failed to connect to Redis (${connectionName ?? connectionId}): ${message}`,
+    connectionName
+  )
+}
+
+function disconnectRedisClient(redis: Redis) {
+  try {
+    redis.disconnect(false)
+  } catch {
+    // Ignore cleanup failures; connection is already unhealthy.
+  }
+}
+
 function shouldLogRedisError(connectionId: string, message: string): boolean {
   const now = Date.now()
   const existing = recentRedisErrorLogs.get(connectionId)
@@ -110,7 +143,7 @@ function buildRedisClient(
         at: Date.now(),
         permanent: true,
       })
-      redis.disconnect(false)
+      disconnectRedisClient(redis)
     }
   })
 
@@ -142,7 +175,7 @@ export async function getRedis(
   if (recentFailure) {
     const elapsed = Date.now() - recentFailure.at
     if (recentFailure.permanent && elapsed < REDIS_FAILURE_COOLDOWN_MS) {
-      throw new Error(`Redis connection failed recently: ${recentFailure.message}`)
+      throw toRedisUnavailableError(connectionId, connectionName, recentFailure.message)
     }
     recentRedisConnectionFailures.delete(connectionId)
   }
@@ -171,10 +204,8 @@ export async function getRedis(
         at: Date.now(),
         permanent,
       })
-      redis.disconnect(false)
-      throw new Error(
-        `Failed to connect to Redis (${connectionName ?? connectionId}): ${failureMessage}`
-      )
+      disconnectRedisClient(redis)
+      throw toRedisUnavailableError(connectionId, connectionName, failureMessage)
     } finally {
       redisConnectionPromises.delete(connectionId)
     }

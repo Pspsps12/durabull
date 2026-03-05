@@ -8,6 +8,14 @@ import { serveStatic } from 'hono/bun'
 import { createApiApp } from './app'
 import { isAuthlessMode } from './lib/authless'
 
+process.on('unhandledRejection', (reason) => {
+  console.error('[process] Unhandled promise rejection:', reason)
+})
+
+process.on('uncaughtException', (error) => {
+  console.error('[process] Uncaught exception:', error)
+})
+
 // Create the API app
 const { app } = await createApiApp()
 
