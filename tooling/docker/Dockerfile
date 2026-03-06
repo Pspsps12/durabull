@@ -21,14 +21,14 @@ RUN turbo prune @durabull/api @durabull/web @durabull/scripts --docker
 # -----------------------------------------------------------------------------
 FROM base AS deps
 COPY --from=prune /app/out/json/ .
-RUN rm -f bun.lock bun.lockb && bun install || true
+RUN bun install --no-save --ignore-scripts
 
 # -----------------------------------------------------------------------------
 # Prod-deps: Production dependencies only (for release)
 # -----------------------------------------------------------------------------
 FROM base AS prod-deps
 COPY --from=prune /app/out/json/ .
-RUN rm -f bun.lock bun.lockb && bun install --production || true
+RUN bun install --omit=dev --no-save --ignore-scripts
 
 # -----------------------------------------------------------------------------
 # Build: Build the web app
