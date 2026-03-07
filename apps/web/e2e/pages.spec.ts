@@ -125,7 +125,7 @@ test.describe("Pages", () => {
       page.getByRole("heading", { name: "Scheduled Jobs", exact: true, level: 1 })
     ).toBeVisible();
 
-    await page.getByRole("link", { name: "Redis Explorer" }).click();
+    await page.getByRole("link", { name: "KV Explorer" }).click();
     await page.waitForURL(new RegExp(`/${TEST_ORG_SLUG}/c/${connectionId}/redis-keys`));
     await expect(
       page.getByRole("heading", { name: "Redis Explorer", exact: true, level: 1 })
