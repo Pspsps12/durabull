@@ -1,67 +1,121 @@
-import { useQuery } from '@tanstack/react-query'
-import { createFileRoute, Navigate } from '@tanstack/react-router'
-import { Loader2 } from 'lucide-react'
-import { connectionsQueryKey } from '@/components/connection-provider'
-import { ApiError, api, type InferResponseType } from '@/lib/api'
+import { createFileRoute, Navigate, useNavigate } from '@tanstack/react-router'
+import { zodValidator } from '@tanstack/zod-adapter'
+import { AlertCircle, Layers, Loader2 } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { z } from 'zod'
+import { useConnection } from '@/components/connection-provider'
+import { NoConnectionConfigured } from '@/components/no-connection-configured'
+import { OrganizationOnboarding } from '@/components/organization-onboarding'
+import { useOrganizations } from '@/hooks/use-organization'
+
+const onboardingSearchSchema = z.object({
+  onboarding: z
+    .union([z.literal(true), z.literal('true'), z.literal(1), z.literal('1')])
+    .transform(() => true)
+    .optional(),
+})
+
+const ONBOARDING_STORAGE_PREFIX = 'durabull:onboarding:'
 
 export const Route = createFileRoute('/$orgSlug/')({
+  validateSearch: zodValidator(onboardingSearchSchema),
   component: OrgIndexRoute,
 })
 
-// Type helpers using Hono's InferResponseType
-type ListConnectionsResponse = InferResponseType<(typeof api.connections)['$get'], 200>
-type Connection = ListConnectionsResponse['connections'][number]
-
-async function fetchConnections(): Promise<Connection[]> {
-  const res = await api.connections.$get()
-  if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string }
-    throw new ApiError(data.error || data.message || `API error: ${res.status}`, res.status)
-  }
-  const data = await res.json()
-  return data.connections
+function getOnboardingStorageKey(orgSlug: string) {
+  return `${ONBOARDING_STORAGE_PREFIX}${orgSlug}`
 }
 
-/**
- * Index route for an organization.
- * Automatically redirects to the default connection's queues dashboard.
- */
+function readOnboardingState(orgSlug: string): boolean {
+  if (typeof window === 'undefined') return false
+  return window.localStorage.getItem(getOnboardingStorageKey(orgSlug)) === 'completed'
+}
+
+function writeOnboardingState(orgSlug: string) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(getOnboardingStorageKey(orgSlug), 'completed')
+}
+
+function humanizeOrgSlug(orgSlug: string) {
+  return orgSlug
+    .split('-')
+    .filter(Boolean)
+    .map((segment) => segment[0]?.toUpperCase() + segment.slice(1))
+    .join(' ')
+}
+
 function OrgIndexRoute() {
   const { orgSlug } = Route.useParams()
+  const { onboarding } = Route.useSearch()
+  const navigate = useNavigate()
+  const { connections, currentConnection, isLoading, error } = useConnection()
+  const { data: organizations } = useOrganizations()
+  const [onboardingCompleted, setOnboardingCompleted] = useState(() => readOnboardingState(orgSlug))
 
-  const {
-    data: connections,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: connectionsQueryKey,
-    queryFn: fetchConnections,
-    staleTime: 30_000,
-  })
+  useEffect(() => {
+    setOnboardingCompleted(readOnboardingState(orgSlug))
+  }, [orgSlug])
 
-  // Loading state
+  const completeOnboarding = useCallback(() => {
+    writeOnboardingState(orgSlug)
+    setOnboardingCompleted(true)
+    void navigate({
+      to: '/$orgSlug',
+      params: { orgSlug },
+      search: {},
+      replace: true,
+    })
+  }, [navigate, orgSlug])
+
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
-        <p className="text-muted-foreground">Loading connections...</p>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading connections...</p>
+        </div>
       </div>
     )
   }
 
-  // Error state or no connections - redirect to connections page to set up
-  if (error || !connections || connections.length === 0) {
-    return <Navigate to="/$orgSlug/connections" params={{ orgSlug }} replace />
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <div className="rounded-full bg-destructive/10 p-4">
+          <AlertCircle className="h-8 w-8 text-destructive" />
+        </div>
+        <h2 className="mt-4 text-xl font-semibold text-foreground">Failed to load connections</h2>
+        <p className="mt-2 max-w-md text-center text-muted-foreground">{error.message}</p>
+      </div>
+    )
   }
 
-  // Find the default connection or use the first one
-  const defaultConnection = connections.find((c) => c.isDefault) ?? connections[0]
+  if (connections.length === 0) {
+    const organizationName =
+      organizations?.find((organization) => organization.slug === orgSlug)?.name ??
+      humanizeOrgSlug(orgSlug)
 
-  // Redirect to the default connection's queues dashboard
+    if (onboarding || !onboardingCompleted) {
+      return (
+        <OrganizationOnboarding
+          orgSlug={orgSlug}
+          organizationName={organizationName}
+          onSkip={completeOnboarding}
+        />
+      )
+    }
+
+    return <NoConnectionConfigured orgSlug={orgSlug} area="Queues" icon={Layers} />
+  }
+
+  if (!currentConnection) {
+    return <NoConnectionConfigured orgSlug={orgSlug} area="Queues" icon={Layers} />
+  }
+
   return (
     <Navigate
       to="/$orgSlug/c/$connectionId"
-      params={{ orgSlug, connectionId: defaultConnection.id }}
+      params={{ orgSlug, connectionId: currentConnection.id }}
       replace
     />
   )

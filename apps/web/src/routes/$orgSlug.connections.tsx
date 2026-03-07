@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
+import { zodValidator } from '@tanstack/zod-adapter'
 
 // Connection types - matches API response
 type ConnectionEnvironment = 'development' | 'staging' | 'production'
@@ -32,6 +33,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { z } from 'zod'
 import { useAppTopBar } from '@/components/app-top-bar'
 import { useConnection } from '@/components/connection-provider'
 import { Badge } from '@/components/ui/badge'
@@ -55,8 +57,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAppMode } from '@/hooks/use-app-mode'
 import {
-  useConnectionQueueDiscoveryStatus,
   useConnectionDetail,
+  useConnectionQueueDiscoveryStatus,
   useCreateConnection,
   useDeleteConnection,
   useRunConnectionQueueDiscovery,
@@ -66,7 +68,15 @@ import {
 } from '@/hooks/use-connections'
 import { cn } from '@/lib/utils'
 
+const connectionsSearchSchema = z.object({
+  create: z
+    .union([z.literal(true), z.literal('true'), z.literal(1), z.literal('1')])
+    .transform(() => true)
+    .optional(),
+})
+
 export const Route = createFileRoute('/$orgSlug/connections')({
+  validateSearch: zodValidator(connectionsSearchSchema),
   component: ConnectionsPage,
 })
 
@@ -194,6 +204,7 @@ function EnvironmentSectionSkeleton({ envConfig }: { envConfig: (typeof environm
 
 function ConnectionsPage() {
   const { envConnections } = useAppMode()
+  const { create } = Route.useSearch()
   const { connections, isLoading, error } = useConnection()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editingConnection, setEditingConnection] = useState<RedisConnection | null>(null)
@@ -237,6 +248,11 @@ function ConnectionsPage() {
   useEffect(() => {
     trackEvent(AnalyticsEvents.CONNECTIONS_VIEWED)
   }, [])
+
+  useEffect(() => {
+    if (!create || envConnections) return
+    setCreateDialogOpen(true)
+  }, [create, envConnections])
 
   if (error) {
     return (
