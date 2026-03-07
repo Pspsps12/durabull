@@ -294,7 +294,7 @@ function SidebarNav() {
         Scheduled Jobs
       </NavLink>
       <NavLink to={`${basePath}/redis-keys`} icon={Database}>
-        Redis Explorer
+        KV Explorer
       </NavLink>
 
       <div className="mb-2 mt-4 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -340,7 +340,7 @@ function MobileSidebarNav({ onNavigate }: { onNavigate: () => void }) {
         Scheduled Jobs
       </MobileNavLink>
       <MobileNavLink to={`${basePath}/redis-keys`} icon={Database} onNavigate={onNavigate}>
-        Redis Explorer
+        KV Explorer
       </MobileNavLink>
 
       <div className="mb-2 mt-4 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">

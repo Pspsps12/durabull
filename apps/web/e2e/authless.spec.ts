@@ -94,7 +94,7 @@ test.describe('Authless Mode', () => {
       page.getByRole('heading', { name: 'Scheduled Jobs', exact: true, level: 1 })
     ).toBeVisible()
 
-    await page.getByRole('link', { name: 'Redis Explorer' }).click()
+    await page.getByRole('link', { name: 'KV Explorer' }).click()
     await expect(
       page.getByRole('heading', { name: 'Redis Explorer', exact: true, level: 1 })
     ).toBeVisible()
