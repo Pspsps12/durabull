@@ -15,6 +15,7 @@ import {
   LineChart,
   Pause,
   Play,
+  Plus,
   RefreshCw,
   Repeat,
   Rocket,
@@ -37,6 +38,7 @@ import {
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { z } from 'zod'
 import { useAppTopBar } from '@/components/app-top-bar'
+import { AddJobDialog } from '@/components/add-job-dialog'
 import { DeleteQueueDialog } from '@/components/delete-queue-dialog'
 import { PurgeQueueDialog } from '@/components/purge-queue-dialog'
 import { RetryQueueDialog } from '@/components/retry-queue-dialog'
@@ -147,6 +149,7 @@ function QueueDetailPage() {
   const matchRoute = useMatchRoute()
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set())
   const [jobIdInput, setJobIdInput] = useState(jobId)
+  const [addJobDialogOpen, setAddJobDialogOpen] = useState(false)
   const [retryDialogOpen, setRetryDialogOpen] = useState(false)
   const [purgeDialogOpen, setPurgeDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -370,6 +373,10 @@ function QueueDetailPage() {
       ),
       actions: (
         <>
+          <Button variant="outline" size="xs" onClick={() => setAddJobDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Job
+          </Button>
           <Button
             variant="outline"
             size="xs"
@@ -422,6 +429,11 @@ function QueueDetailPage() {
       ),
       mobileActions: (
         <>
+          <DropdownMenuItem onClick={() => setAddJobDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Job
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={handleTogglePause}
             disabled={pauseMutation.isPending || resumeMutation.isPending}
@@ -458,6 +470,7 @@ function QueueDetailPage() {
       ),
     }),
     [
+      addJobDialogOpen,
       connectionId,
       orgSlug,
       pauseMutation.isPending,
@@ -1581,6 +1594,13 @@ function QueueDetailPage() {
           </TabsContent>
         </Tabs>
       )}
+
+      {/* Add Job Dialog */}
+      <AddJobDialog
+        queueName={queueName}
+        open={addJobDialogOpen}
+        onOpenChange={setAddJobDialogOpen}
+      />
 
       {/* Retry Queue Dialog */}
       <RetryQueueDialog
