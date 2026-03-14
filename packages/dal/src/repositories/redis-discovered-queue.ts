@@ -140,4 +140,65 @@ export const redisDiscoveredQueueRepository = {
 
     return rows.length
   },
+
+  async syncConnectionSnapshot(
+    connectionId: string,
+    queueNames: string[],
+    discoveredAt: Date
+  ): Promise<{ confirmed: number; removed: number }> {
+    const normalizedQueueNames = Array.from(
+      new Set(queueNames.map((name) => name.trim()).filter((name) => name.length > 0))
+    )
+
+    const db = await getDb()
+    const now = new Date()
+
+    return db.transaction(async (tx) => {
+      await tx
+        .update(redisDiscoveredQueue)
+        .set({
+          state: 'pending',
+          updatedAt: now,
+        })
+        .where(eq(redisDiscoveredQueue.connectionId, connectionId))
+
+      if (normalizedQueueNames.length > 0) {
+        const rows = normalizedQueueNames.map((name) => ({
+          connectionId,
+          name,
+          state: 'confirmed' as const,
+          lastDiscoveredAt: discoveredAt,
+          createdAt: now,
+          updatedAt: now,
+        }))
+
+        await tx
+          .insert(redisDiscoveredQueue)
+          .values(rows)
+          .onConflictDoUpdate({
+            target: [redisDiscoveredQueue.connectionId, redisDiscoveredQueue.name],
+            set: {
+              state: 'confirmed',
+              lastDiscoveredAt: discoveredAt,
+              updatedAt: now,
+            },
+          })
+      }
+
+      const removedRows = await tx
+        .delete(redisDiscoveredQueue)
+        .where(
+          and(
+            eq(redisDiscoveredQueue.connectionId, connectionId),
+            eq(redisDiscoveredQueue.state, 'pending')
+          )
+        )
+        .returning({ id: redisDiscoveredQueue.id })
+
+      return {
+        confirmed: normalizedQueueNames.length,
+        removed: removedRows.length,
+      }
+    })
+  },
 }

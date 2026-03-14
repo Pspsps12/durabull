@@ -14,6 +14,7 @@ import {
   startQueueDiscovery,
   waitForQueueDiscovery,
 } from '../lib/queue-discovery'
+import { deleteQueueWithDiscoveryCleanup } from '../lib/delete-queue'
 import { debugGetBullKeys, getQueue } from '../lib/redis'
 
 // Default and max page sizes for pagination
@@ -742,8 +743,7 @@ const app = new Hono()
         )
       }
 
-      // Queue is empty, safe to delete
-      await queue.obliterate({ force: true })
+      await deleteQueueWithDiscoveryCleanup(connectionId, queueName, queue)
       return c.json({ success: true, deleted: queueName })
     }
   )
