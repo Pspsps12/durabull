@@ -19,6 +19,9 @@ import {
   useRejectInvitation,
   useSetActiveOrganization,
 } from '@/hooks/use-organization'
+import { api, type InferResponseType } from '@/lib/api'
+
+type AppConfigResponse = InferResponseType<(typeof api.app.config)['$get'], 200>
 
 export const Route = createFileRoute('/setup-organization')({
   beforeLoad: async ({ context }) => {
@@ -32,6 +35,22 @@ export const Route = createFileRoute('/setup-organization')({
         // Redirect to home - the user should already have an org from accepting the invite
         throw redirect({ to: '/' })
       }
+    }
+
+    const config = await context.queryClient.ensureQueryData({
+      queryKey: ['app-config'],
+      queryFn: async (): Promise<AppConfigResponse> => {
+        const response = await api.app.config.$get()
+        if (!response.ok) {
+          throw new Error(`Failed to fetch app config: ${response.status}`)
+        }
+        return response.json()
+      },
+      staleTime: 5 * 60 * 1000,
+    })
+
+    if (config.authless) {
+      throw redirect({ to: '/' })
     }
 
     // Check if user already has organizations - if so, set active and redirect

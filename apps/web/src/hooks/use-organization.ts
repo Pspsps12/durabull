@@ -183,11 +183,14 @@ export function useInvitationById(invitationId: string) {
  */
 export function useOrganizations() {
   const { isAuthenticated } = useAuth()
-  const { isAuthless } = useAppMode()
+  const { isAuthless, isLoading: modeLoading } = useAppMode()
 
   return useQuery({
     queryKey: organizationKeys.list(),
     queryFn: async () => {
+      if (modeLoading) {
+        return []
+      }
       if (isAuthless) {
         const authlessOrganization = await fetchSessionOrganization()
         return authlessOrganization ? [authlessOrganization] : []
@@ -198,7 +201,7 @@ export function useOrganizations() {
       }
       return result.data ?? []
     },
-    enabled: isAuthless || isAuthenticated,
+    enabled: !modeLoading && (isAuthless || isAuthenticated),
     retry: 1, // Only retry once to prevent infinite loops
     staleTime: 30000, // Cache for 30 seconds
   })
@@ -209,11 +212,14 @@ export function useOrganizations() {
  */
 export function useActiveOrganization() {
   const { isAuthenticated, session } = useAuth()
-  const { isAuthless } = useAppMode()
+  const { isAuthless, isLoading: modeLoading } = useAppMode()
 
   return useQuery({
     queryKey: organizationKeys.active,
     queryFn: async () => {
+      if (modeLoading) {
+        return null
+      }
       if (isAuthless) {
         return fetchSessionOrganization()
       }
@@ -225,8 +231,9 @@ export function useActiveOrganization() {
       return result.data ?? null
     },
     enabled:
-      isAuthless ||
-      (isAuthenticated && !!(session as { activeOrganizationId?: string })?.activeOrganizationId),
+      !modeLoading &&
+      (isAuthless ||
+        (isAuthenticated && !!(session as { activeOrganizationId?: string })?.activeOrganizationId)),
   })
 }
 
@@ -322,11 +329,12 @@ export function useSetActiveOrganization() {
  */
 export function usePendingInvitations() {
   const { isAuthenticated } = useAuth()
-  const { isAuthless } = useAppMode()
+  const { isAuthless, isLoading: modeLoading } = useAppMode()
 
   return useQuery({
     queryKey: organizationKeys.invitations,
     queryFn: async () => {
+      if (modeLoading) return []
       if (isAuthless) return []
       // Use listUserInvitations to get invitations sent TO this user
       // This doesn't require an active organization
@@ -340,7 +348,7 @@ export function usePendingInvitations() {
       const invitations = result.data ?? []
       return invitations.filter((inv: Invitation) => inv.status === 'pending')
     },
-    enabled: isAuthless || isAuthenticated,
+    enabled: !modeLoading && (isAuthless || isAuthenticated),
     retry: 1,
     staleTime: 30000,
   })
@@ -483,12 +491,13 @@ export function useInviteMember() {
  */
 export function useOrganizationMembers() {
   const { isAuthenticated, session, user } = useAuth()
-  const { isAuthless } = useAppMode()
+  const { isAuthless, isLoading: modeLoading } = useAppMode()
   const activeOrgId = (session as { activeOrganizationId?: string })?.activeOrganizationId
 
   return useQuery({
     queryKey: [...organizationKeys.members, user?.id, activeOrgId],
     queryFn: async () => {
+      if (modeLoading) return []
       if (isAuthless) return []
       const response = await api.team.members.$get()
       const data = await handleRes<TeamMembersResponse>(response)
@@ -502,7 +511,7 @@ export function useOrganizationMembers() {
         },
       }))
     },
-    enabled: isAuthless || (isAuthenticated && !!activeOrgId),
+    enabled: !modeLoading && (isAuthless || (isAuthenticated && !!activeOrgId)),
     retry: 1,
     staleTime: 30000,
     refetchOnMount: 'always',
@@ -514,12 +523,13 @@ export function useOrganizationMembers() {
  */
 export function useOrganizationInvitations() {
   const { isAuthenticated, session } = useAuth()
-  const { isAuthless } = useAppMode()
+  const { isAuthless, isLoading: modeLoading } = useAppMode()
   const activeOrgId = (session as { activeOrganizationId?: string })?.activeOrganizationId
 
   return useQuery({
     queryKey: [...organizationKeys.orgInvitations, activeOrgId],
     queryFn: async () => {
+      if (modeLoading) return []
       if (isAuthless) return []
       const result = await organization.listInvitations()
       if (result.error) {
@@ -529,7 +539,7 @@ export function useOrganizationInvitations() {
       const invitations = result.data ?? []
       return invitations.filter((inv: Invitation) => inv.status === 'pending') as Invitation[]
     },
-    enabled: isAuthless || (isAuthenticated && !!activeOrgId),
+    enabled: !modeLoading && (isAuthless || (isAuthenticated && !!activeOrgId)),
     retry: 1,
     staleTime: 30000,
   })
