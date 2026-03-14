@@ -93,6 +93,17 @@ describe('env-redis-connections', () => {
     expect(connections[0]?.envName).toBe('SECONDARY')
   })
 
+  it('ignores non-connection redis settings', () => {
+    process.env.DURABULL_REDIS_URL_ENCRYPTION_KEY =
+      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    process.env.DURABULL_REDIS_URL_MAIN = 'redis://localhost:6379'
+
+    const connections = getEnvRedisConnections()
+
+    expect(connections).toHaveLength(1)
+    expect(connections[0]?.envName).toBe('MAIN')
+  })
+
   it('generates deterministic IDs per organization and env name', () => {
     const first = getEnvRedisConnectionId('org-1', 'MAIN')
     const second = getEnvRedisConnectionId('org-1', 'MAIN')

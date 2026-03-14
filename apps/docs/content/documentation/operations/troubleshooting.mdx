@@ -50,7 +50,21 @@ Checks:
 - `APP_BASE_URL` and browser origin alignment
 - OAuth callback URLs match deployment host
 
-### 4. PostgreSQL Connection Refused (`ECONNREFUSED`)
+### 4. `/api/app/config` or `/api/auth/get-session` Returns `500` in Docker
+
+Symptoms:
+
+- initial page load hangs on the spinner
+- browser console shows `500` for `/api/app/config` or `/api/auth/get-session`
+
+Checks:
+
+- inspect container logs for `EACCES: permission denied, mkdir '/app/data'`
+- if using PGlite, mount `/app/data` to a named volume
+- if using a bind mount, ensure the path is writable by UID/GID `1000:1000`
+- if pinned to an older image, set `DURABULL_PGLITE_DIR` to a writable path or switch to PostgreSQL mode
+
+### 5. PostgreSQL Connection Refused (`ECONNREFUSED`)
 
 Symptoms:
 
@@ -62,14 +76,14 @@ Checks:
 - verify `DURABULL_POSTGRES_PORT` in `.env` matches `DATABASE_URL`
 - if that port is already in use, pick another free port (for example `55433`)
 
-### 5. Rate Limit Responses (`429`)
+### 6. Rate Limit Responses (`429`)
 
 Checks:
 
 - high burst traffic against auth/API routes
 - whether `DISABLE_RATE_LIMIT` is intentionally configured in non-production
 
-### 6. Redis Explorer Delete Blocked
+### 7. Redis Explorer Delete Blocked
 
 Symptom:
 

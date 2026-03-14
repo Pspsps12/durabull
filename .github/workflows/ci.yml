@@ -262,3 +262,19 @@ jobs:
           name: test-results-authless
           path: apps/web/test-results/
           retention-days: 7
+
+  docker-image-smoke:
+    name: Docker Image Smoke Test
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build production image
+        run: docker build -f tooling/docker/Dockerfile -t durabull-ci:${{ github.sha }} .
+
+      - name: Smoke test self-hosted image
+        run: bash tooling/scripts/docker-image-smoke.sh
+        env:
+          DURABULL_IMAGE: durabull-ci:${{ github.sha }}

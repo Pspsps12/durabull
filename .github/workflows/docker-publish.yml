@@ -11,11 +11,19 @@ permissions:
 
 jobs:
   docker:
-    name: Build & Publish Image
+    name: Smoke Test, Build & Publish Image
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Build smoke-test image
+        run: docker build -f tooling/docker/Dockerfile -t durabull-release:${{ github.sha }} .
+
+      - name: Smoke test self-hosted image
+        run: bash tooling/scripts/docker-image-smoke.sh
+        env:
+          DURABULL_IMAGE: durabull-release:${{ github.sha }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

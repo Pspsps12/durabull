@@ -1,0 +1,43 @@
+name: durabull-self-hosted
+
+services:
+  durabull:
+    image: "${DURABULL_IMAGE:-ghcr.io/durabullhq/durabull:latest}"
+    restart: unless-stopped
+    ports:
+      - "${DURABULL_APP_PORT:-3000}:3000"
+    environment:
+      DURABULL_AUTHLESS: "${DURABULL_AUTHLESS:-true}"
+      DURABULL_ENV_CONNECTIONS: "${DURABULL_ENV_CONNECTIONS:-true}"
+      DURABULL_REDIS_URL_ENCRYPTION_KEY: "${DURABULL_REDIS_URL_ENCRYPTION_KEY:?set a 32-byte key with 'openssl rand -hex 32'}"
+      DURABULL_REDIS_URL_MAIN: "${DURABULL_REDIS_URL_MAIN:-redis://redis:6379}"
+      DURABULL_REDIS_URL_MAIN_ENVIRONMENT: "${DURABULL_REDIS_URL_MAIN_ENVIRONMENT:-development}"
+      DURABULL_REDIS_URL_DEFAULT: "${DURABULL_REDIS_URL_DEFAULT:-MAIN}"
+      APP_BASE_URL: "${APP_BASE_URL:-http://localhost:3000}"
+      VITE_PUBLIC_APP_URL: "${VITE_PUBLIC_APP_URL:-http://localhost:3000}"
+    volumes:
+      - durabull_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    ports:
+      - "${DURABULL_REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    command: redis-server --appendonly yes
+
+volumes:
+  durabull_data:
+    driver: local
+  redis_data:
+    driver: local

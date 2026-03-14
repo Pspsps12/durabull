@@ -37,6 +37,7 @@ docker run --rm -p 3000:3000 --network durabull \
 Open `http://localhost:3000`, then confirm:
 
 - `GET /api/health` returns `status: ok`
+- `GET /api/app/config` returns JSON instead of `500`
 - the queue dashboard loads for your default connection
 
 ## 3) Docker Compose (Durabull + Redis)
@@ -44,9 +45,12 @@ Open `http://localhost:3000`, then confirm:
 Use Compose for repeatable team setup:
 
 ```yaml
+name: durabull-self-hosted
+
 services:
   durabull:
     image: ghcr.io/durabullhq/durabull:latest
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
@@ -58,14 +62,46 @@ services:
       DURABULL_REDIS_URL_DEFAULT: MAIN
       APP_BASE_URL: http://localhost:3000
       VITE_PUBLIC_APP_URL: http://localhost:3000
+    volumes:
+      - durabull_data:/app/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
 
   redis:
     image: redis:8-alpine
+    restart: unless-stopped
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    command: redis-server --appendonly yes
+
+volumes:
+  durabull_data:
+  redis_data:
 ```
+
+Start it with:
+
+```bash
+export DURABULL_REDIS_URL_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+docker compose -f tooling/docker/docker-compose.self-hosted.yaml up -d
+```
+
+Then validate:
+
+- `GET /api/health`
+- `GET /api/app/config`
+- `GET /api/auth/get-session` when `DURABULL_AUTHLESS=true`
+
+An example file is included at `tooling/docker/docker-compose.self-hosted.yaml`.
 
 ## 4) Persistence Notes
 
@@ -73,6 +109,16 @@ When `DATABASE_URL` is unset, PGlite data is file-backed inside the container.
 
 - Default location: `/app/data/pglite`
 - For persistence, mount `/app/data` or set `DURABULL_PGLITE_DIR` to a mounted path.
+- Named Docker volumes are the simplest option for local deployments.
+- If you bind-mount a host directory, ensure it is writable by container UID/GID `1000:1000` (`bun`).
+
+### Older Image Workaround
+
+If you are pinned to an older image that fails with `EACCES: permission denied, mkdir '/app/data'` or returns `500` for `/api/app/config`, use one of these temporary workarounds:
+
+- upgrade to an image that includes the writable `/app/data` fix
+- set `DURABULL_PGLITE_DIR` to a writable path inside the container for ephemeral evaluation
+- switch to PostgreSQL mode with `DATABASE_URL`
 
 ## 5) Production Notes
 
@@ -90,5 +136,6 @@ For internet-facing deployments:
 Source Dockerfile path:
 
 - `tooling/docker/Dockerfile`
+- `tooling/docker/docker-compose.self-hosted.yaml`
 
 It uses `turbo prune` and multi-stage builds for optimized production images.
