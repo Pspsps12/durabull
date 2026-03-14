@@ -76,8 +76,6 @@ async function runQueueDiscovery(
   const runtime = discoveryStateByConnection.get(connectionId)
   if (!runtime) return
 
-  await redisDiscoveredQueueRepository.markAllPending(connectionId)
-
   let cursor = '0'
   const discoveredQueueNames = new Set<string>()
 
@@ -91,17 +89,15 @@ async function runQueueDiscovery(
     }
 
     runtime.confirmedThisRun = discoveredQueueNames.size
-
-    if (page.queueNames.length > 0) {
-      await redisDiscoveredQueueRepository.upsertConfirmedQueues(
-        connectionId,
-        page.queueNames,
-        new Date()
-      )
-    }
   } while (cursor !== '0')
 
-  runtime.removedThisRun = await redisDiscoveredQueueRepository.deletePending(connectionId)
+  const syncResult = await redisDiscoveredQueueRepository.syncConnectionSnapshot(
+    connectionId,
+    Array.from(discoveredQueueNames),
+    new Date()
+  )
+  runtime.confirmedThisRun = syncResult.confirmed
+  runtime.removedThisRun = syncResult.removed
 }
 
 export async function getQueueDiscoveryStatus(connectionId: string): Promise<QueueDiscoveryStatus> {
