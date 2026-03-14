@@ -11,6 +11,7 @@
     "stage": "bun scripts/stage.ts",
     "start": "bun run build && electron .",
     "dist": "bun run build && electron-builder --publish never",
+    "dist:publish": "bun run build && electron-builder --publish always",
     "dist:dir": "bun run build && electron-builder --dir --publish never",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint ./src ./scripts",
@@ -69,6 +70,11 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    }
+    },
+    "publish": [
+      {
+        "provider": "github"
+      }
+    ]
   }
 }

@@ -208,6 +208,8 @@ function stopLocalRuntime(): void {
 }
 
 function createMainWindow(baseUrl: string): BrowserWindow {
+  const isMac = process.platform === 'darwin'
+
   const window = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -215,6 +217,12 @@ function createMainWindow(baseUrl: string): BrowserWindow {
     minHeight: 760,
     backgroundColor: '#0b0e14',
     show: false,
+    autoHideMenuBar: true,
+    ...(isMac
+      ? {
+          titleBarStyle: 'hiddenInset',
+        }
+      : {}),
     webPreferences: {
       contextIsolation: true,
       sandbox: true,
