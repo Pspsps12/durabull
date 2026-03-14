@@ -3,7 +3,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".output/**", ".next/**", "out/**"],
+      "outputs": ["dist/**", ".output/**", ".next/**", "out/**", "release/**"],
       "passThroughEnv": [
         "DATABASE_URL",
         "REDIS_URL",
@@ -31,6 +31,23 @@
         "GOOGLE_OAUTH_CLIENT_SECRET",
         "GITHUB_CLIENT_ID",
         "GITHUB_CLIENT_SECRET",
+        "DURABULL_*",
+        "VITE_PUBLIC_APP_URL",
+        "NEXT_PUBLIC_WEB_APP_URL",
+        "NEXT_PUBLIC_POSTHOG_KEY",
+        "POSTHOG_KEY",
+        "POSTHOG_HOST"
+      ]
+    },
+    "dist": {
+      "dependsOn": ["build"],
+      "outputs": ["release/**"],
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "REDIS_URL",
+        "DOTENV_PRIVATE_KEY",
+        "MARKETPLACE_*",
+        "RESEND_API_KEY",
         "DURABULL_*",
         "VITE_PUBLIC_APP_URL",
         "NEXT_PUBLIC_WEB_APP_URL",
