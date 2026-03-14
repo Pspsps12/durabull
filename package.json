@@ -30,6 +30,7 @@
     "docker:down": "docker compose -f tooling/docker/docker-compose.yaml down",
     "docker:logs": "docker compose -f tooling/docker/docker-compose.yaml logs -f",
     "docker:reset": "docker compose -f tooling/docker/docker-compose.yaml down -v && docker compose -f tooling/docker/docker-compose.yaml up -d",
+    "docker:smoke:image": "bash tooling/scripts/docker-image-smoke.sh",
     "prod": "bun run build && bun apps/api/src/index.ts",
     "prod:start": "bun apps/api/src/index.ts",
     "docker:build": "docker build -t durabull .",

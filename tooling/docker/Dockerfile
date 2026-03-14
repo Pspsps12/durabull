@@ -61,6 +61,8 @@ COPY --from=build /app/tooling ./tooling
 # Built web app
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 
+RUN mkdir -p /app/data && chown -R bun:bun /app/data
+
 USER bun
 EXPOSE 3000/tcp
 ENTRYPOINT ["bun", "run", "apps/api/src/index.ts"]

@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROJECT_NAME="${PROJECT_NAME:-durabull-smoke}"
+COMPOSE_FILE="${COMPOSE_FILE:-tooling/docker/docker-compose.self-hosted.yaml}"
+APP_PORT="${DURABULL_APP_PORT:-38080}"
+REDIS_PORT="${DURABULL_REDIS_PORT:-36379}"
+IMAGE_TAG="${DURABULL_IMAGE:-ghcr.io/durabullhq/durabull:latest}"
+
+export DURABULL_IMAGE="$IMAGE_TAG"
+export DURABULL_APP_PORT="$APP_PORT"
+export DURABULL_REDIS_PORT="$REDIS_PORT"
+export APP_BASE_URL="${APP_BASE_URL:-http://127.0.0.1:${APP_PORT}}"
+export VITE_PUBLIC_APP_URL="${VITE_PUBLIC_APP_URL:-http://127.0.0.1:${APP_PORT}}"
+export DURABULL_AUTHLESS="${DURABULL_AUTHLESS:-true}"
+export DURABULL_ENV_CONNECTIONS="${DURABULL_ENV_CONNECTIONS:-true}"
+export DURABULL_REDIS_URL_MAIN="${DURABULL_REDIS_URL_MAIN:-redis://redis:6379}"
+export DURABULL_REDIS_URL_MAIN_ENVIRONMENT="${DURABULL_REDIS_URL_MAIN_ENVIRONMENT:-development}"
+export DURABULL_REDIS_URL_DEFAULT="${DURABULL_REDIS_URL_DEFAULT:-MAIN}"
+export DURABULL_REDIS_URL_ENCRYPTION_KEY="${DURABULL_REDIS_URL_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"
+
+compose() {
+  docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" "$@"
+}
+
+cleanup() {
+  local exit_code=$?
+  if [[ $exit_code -ne 0 ]]; then
+    compose logs --no-color || true
+  fi
+  compose down -v --remove-orphans || true
+  return $exit_code
+}
+
+trap cleanup EXIT
+
+wait_for_url() {
+  local url="$1"
+  local max_attempts="${2:-60}"
+
+  for ((attempt = 1; attempt <= max_attempts; attempt += 1)); do
+    if curl --silent --show-error --fail "$url" >/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "Timed out waiting for $url" >&2
+  return 1
+}
+
+assert_json_contains() {
+  local url="$1"
+  local expected="$2"
+  local body
+
+  body="$(curl --silent --show-error --fail "$url")"
+  echo "$body"
+
+  if [[ "$body" != *"$expected"* ]]; then
+    echo "Expected response from $url to contain: $expected" >&2
+    return 1
+  fi
+}
+
+echo "Starting smoke stack with image: $DURABULL_IMAGE"
+compose up -d
+
+wait_for_url "${APP_BASE_URL}/api/health"
+
+assert_json_contains "${APP_BASE_URL}/api/health" '"status":"ok"'
+assert_json_contains "${APP_BASE_URL}/api/app/config" '"authless":true'
+assert_json_contains "${APP_BASE_URL}/api/app/config" '"persistence":"pglite"'
+assert_json_contains "${APP_BASE_URL}/api/auth/get-session" '"id":"authless-user"'
+
+echo "Docker image smoke test passed."

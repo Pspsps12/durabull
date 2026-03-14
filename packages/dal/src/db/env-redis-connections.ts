@@ -9,6 +9,7 @@ import type { ConnectionEnvironment } from './schemas/redis-connection/schema'
 
 const ENV_PREFIX = 'DURABULL_REDIS_URL_'
 const ENV_DEFAULT_KEY = 'DURABULL_REDIS_URL_DEFAULT'
+const ENV_ENCRYPTION_KEY = 'DURABULL_REDIS_URL_ENCRYPTION_KEY'
 const ENVIRONMENT_SUFFIX = '_ENVIRONMENT'
 const ENV_NAMESPACE_UUID = '2a48b9e7-32fa-4d5a-8f61-7e7a2f6c3f0b'
 
@@ -66,7 +67,13 @@ export function getEnvRedisConnections(): EnvRedisConnection[] {
 
   for (const [key, value] of Object.entries(process.env)) {
     if (!key.startsWith(ENV_PREFIX)) continue
-    if (key === ENV_DEFAULT_KEY || key.endsWith(ENVIRONMENT_SUFFIX)) continue
+    if (
+      key === ENV_DEFAULT_KEY ||
+      key === ENV_ENCRYPTION_KEY ||
+      key.endsWith(ENVIRONMENT_SUFFIX)
+    ) {
+      continue
+    }
 
     const match = key.match(urlPattern)
     if (!match) continue

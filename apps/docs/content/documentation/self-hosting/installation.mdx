@@ -70,6 +70,7 @@ For full local infrastructure, seeded data, and contributor workflows, see
 ## First-Run Validation Checklist
 
 - `GET /api/health` returns `status: ok`
+- `GET /api/app/config` returns `200`
 - `GET /api/mode` matches expected auth, connection, and persistence mode
 - Queues load in the dashboard for your selected connection
 - Job details, scheduled jobs, and workers pages load without API errors
