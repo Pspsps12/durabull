@@ -15,6 +15,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAddJob } from '@/hooks/use-queues'
+import { ApiError } from '@/lib/api'
 
 interface AddJobDialogProps {
   open: boolean
@@ -76,8 +77,18 @@ export function AddJobDialog({ open, onOpenChange, queueName, onSuccess }: AddJo
       if (result.jobId && onSuccess) {
         onSuccess(result.jobId)
       }
-    } catch {
-      // Error is handled by react-query
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 429) {
+        // 429 errors already show a toast in handleRes.
+        return
+      }
+
+      const apiErrorMessage =
+        error instanceof Error && error.message ? error.message : 'Unable to add job.'
+
+      toast.error('Failed to add job', {
+        description: apiErrorMessage,
+      })
     }
   }
 
