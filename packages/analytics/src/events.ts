@@ -207,6 +207,7 @@ export const DialogType = {
   DELETE_REDIS_KEY: 'delete_redis_key',
   INVOKE_JOB: 'invoke_job',
   DUPLICATE_JOB: 'duplicate_job',
+  ADD_JOB: 'add_job',
   DELETE_JOB_LOGS: 'delete_job_logs',
 } as const
 
