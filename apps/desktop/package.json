@@ -1,19 +1,23 @@
 {
   "name": "@durabull/desktop",
   "productName": "Durabull",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Durabull native desktop shell",
   "author": "Durabull",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/durabullhq/durabull.git"
+  },
   "main": "dist/main.js",
   "scripts": {
     "build": "bun run build:main && bun run stage",
     "build:main": "bun build src/main.ts --target=node --format=cjs --outfile=dist/main.js --external electron",
     "stage": "bun scripts/stage.ts",
     "start": "bun run build && bun scripts/start.ts",
-    "dist": "bun run build && electron-builder --publish never",
-    "dist:publish": "bun run build && electron-builder --publish always",
-    "dist:dir": "bun run build && electron-builder --dir --publish never",
+    "dist": "bun run build && electron-builder --config electron-builder.config.cjs --publish never",
+    "dist:publish": "bun run build && electron-builder --config electron-builder.config.cjs --publish always -c.publish.provider=github -c.publish.owner=durabullhq -c.publish.repo=durabull -c.publish.channel=latest",
+    "dist:dir": "bun run build && electron-builder --config electron-builder.config.cjs --dir --publish never",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint ./src ./scripts",
@@ -28,56 +32,5 @@
     "electron": "^41.0.2",
     "electron-builder": "^26.8.1",
     "typescript": "^5.7.2"
-  },
-  "build": {
-    "appId": "com.durabull.desktop",
-    "productName": "Durabull",
-    "icon": "../web/public/favicon-512x512.png",
-    "asar": true,
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/main.js",
-      "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "dist/app-bundle",
-        "to": "app-bundle",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "dist/bin",
-        "to": "bin",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
-    "mac": {
-      "category": "public.app-category.developer-tools",
-      "target": [
-        "dmg",
-        "zip"
-      ]
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "zip"
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    },
-    "publish": [
-      {
-        "provider": "github"
-      }
-    ]
   }
 }

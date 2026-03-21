@@ -3,6 +3,10 @@
   "version": "1.2.0",
   "private": true,
   "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/durabullhq/durabull.git"
+  },
   "scripts": {
     "dev": "turbo dev --ui tui --filter=!@durabull/docs",
     "dev:authless": "bun tooling/scripts/authless-dev.ts",
