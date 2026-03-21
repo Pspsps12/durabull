@@ -232,3 +232,55 @@ tbody tr {
   fill: var(--color-muted-foreground);
   opacity: 0.1;
 }
+
+/*
+ * Electron desktop shell: avoid incidental text selection on labels and chrome.
+ * Restore selection where copying matters: forms, tables, dialogs, code/JSON.
+ */
+html.electron-shell {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html.electron-shell :where(
+  input,
+  textarea,
+  select,
+  [contenteditable='true'],
+  [contenteditable=''],
+  [contenteditable='plaintext-only']
+) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+html.electron-shell tbody {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+html.electron-shell :where([role='dialog'], [role='alertdialog']) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+html.electron-shell :where(pre, pre *, code) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+html.electron-shell :where(.json-viewer, .json-viewer *) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Electron: drag-to-move when using a hidden / inset title bar */
+@layer utilities {
+  .app-region-drag {
+    -webkit-app-region: drag;
+  }
+
+  .app-region-no-drag {
+    -webkit-app-region: no-drag;
+  }
+}

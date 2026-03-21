@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { getEnvRedisConnections, shouldUseEnvConnections } from '@durabull/dal'
+import { closeDb, getEnvRedisConnections, shouldUseEnvConnections } from '@durabull/dal'
 import { isEmailConfigured } from '@durabull/email'
 import { env } from '@durabull/env'
 import { serveStatic } from 'hono/bun'
@@ -15,6 +15,42 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (error) => {
   console.error('[process] Uncaught exception:', error)
 })
+
+let shutdownPromise: Promise<void> | null = null
+
+async function shutdown(reason: NodeJS.Signals): Promise<void> {
+  if (shutdownPromise) return shutdownPromise
+
+  shutdownPromise = (async () => {
+    console.log(`[shutdown] Received ${reason}, closing database...`)
+
+    try {
+      await closeDb()
+      console.log('[shutdown] Database closed cleanly.')
+      process.exit(0)
+    } catch (error) {
+      console.error('[shutdown] Failed to close database cleanly:', error)
+      process.exit(1)
+    }
+  })()
+
+  return shutdownPromise
+}
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    void shutdown(signal)
+  })
+}
+
+if (!process.stdin.isTTY) {
+  process.stdin.setEncoding('utf8')
+  process.stdin.on('data', (chunk) => {
+    if (chunk.includes('__durabull_shutdown__')) {
+      void shutdown('SIGTERM')
+    }
+  })
+}
 
 // Create the API app
 const { app } = await createApiApp()

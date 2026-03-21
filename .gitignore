@@ -5,6 +5,7 @@ node_modules/
 dist/
 .output/
 out/
+release/
 
 # Turbo
 .turbo/

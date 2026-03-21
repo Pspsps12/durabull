@@ -66,6 +66,7 @@ bun run dev
 
 ## Useful repo guides
 
+- Desktop build and release guide: [`apps/desktop/README.md`](apps/desktop/README.md)
 - Authentication package: [`packages/auth/README.md`](packages/auth/README.md)
 - Fleet demo workload: [`packages/fleet-demo-workload/README.md`](packages/fleet-demo-workload/README.md)
 - Example environment config: [`.env.example`](.env.example)

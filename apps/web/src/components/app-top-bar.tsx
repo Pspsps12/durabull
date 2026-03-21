@@ -6,6 +6,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useIsElectronShell } from '@/hooks/use-electron-shell'
 import { cn } from '@/lib/utils'
 
 export const APP_TOP_BAR_HEIGHT_CLASS = 'h-14'
@@ -93,33 +94,56 @@ export function AppTopBar({
   className?: string
 }) {
   const { left, actions, mobileActions } = useContext(AppTopBarStateContext)
+  const isElectronShell = useIsElectronShell()
 
   return (
     <header
       className={cn(
         `${APP_TOP_BAR_HEIGHT_CLASS} shrink-0 border-b border-border/80 bg-background/90 backdrop-blur supports-backdrop-filter:bg-background/75`,
+        isElectronShell && 'app-region-drag',
         className
       )}
     >
-      <div className="flex h-full items-center justify-between gap-2 px-4 md:px-6">
-        <div className="min-w-0 flex items-center gap-1.5 md:gap-2.5">
+      <div
+        className={cn(
+          'flex h-full items-center justify-between gap-2 px-4 md:px-6',
+          isElectronShell && 'pointer-events-none'
+        )}
+      >
+        <div
+          className={cn(
+            'min-w-0 flex items-center gap-1.5 md:gap-2.5',
+            isElectronShell && 'pointer-events-none'
+          )}
+        >
           <Button
             type="button"
             variant="ghost"
             size="icon"
             onClick={onOpenMobileNav}
-            className="md:hidden"
+            className={cn('md:hidden', isElectronShell && 'pointer-events-auto app-region-no-drag')}
             aria-label="Open navigation menu"
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <div className="min-w-0">{left ?? <div className="h-6" />}</div>
+          <div className={cn('min-w-0', isElectronShell && 'pointer-events-none')}>
+            {left ?? <div className="h-6" />}
+          </div>
         </div>
 
-        <div className="ml-auto hidden items-center gap-1.5 md:flex">{actions}</div>
+        <div
+          className={cn(
+            'ml-auto hidden items-center gap-1.5 md:flex',
+            isElectronShell && 'pointer-events-auto app-region-no-drag'
+          )}
+        >
+          {actions}
+        </div>
 
         {mobileActions ? (
-          <div className="md:hidden">
+          <div
+            className={cn('md:hidden', isElectronShell && 'pointer-events-auto app-region-no-drag')}
+          >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="Open page actions">
