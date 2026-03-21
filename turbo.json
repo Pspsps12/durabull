@@ -56,6 +56,23 @@
         "POSTHOG_HOST"
       ]
     },
+    "dist:dir": {
+      "dependsOn": ["build"],
+      "outputs": ["release/**"],
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "REDIS_URL",
+        "DOTENV_PRIVATE_KEY",
+        "MARKETPLACE_*",
+        "RESEND_API_KEY",
+        "DURABULL_*",
+        "VITE_PUBLIC_APP_URL",
+        "NEXT_PUBLIC_WEB_APP_URL",
+        "NEXT_PUBLIC_POSTHOG_KEY",
+        "POSTHOG_KEY",
+        "POSTHOG_HOST"
+      ]
+    },
     "typecheck": {
       "dependsOn": ["^build"]
     },

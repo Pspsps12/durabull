@@ -40,13 +40,13 @@ This produces the packaged desktop artifacts in `apps/desktop/release/`, includi
 If you only want the unpacked app bundle for a quick local sanity check, run:
 
 ```bash
-bun run --filter @durabull/desktop dist:dir
+bun run dist:desktop:dir
 ```
 
 ### Release the mac app
 
 - Tagged releases are built in GitHub Actions by `.github/workflows/desktop-build.yml`.
-- Pushing a tag like `v1.2.3` runs `bun run --filter @durabull/desktop dist`, then uploads the generated desktop artifacts from `apps/desktop/release/` to the matching GitHub Release assets in CI.
+- Pushing a tag like `v1.2.3` runs `bun run dist:desktop`, which uses Turborepo to build the desktop app plus its dependent `@durabull/api` and `@durabull/web` workspaces before uploading the generated desktop artifacts from `apps/desktop/release/` to the matching GitHub Release assets in CI.
 - Manual `workflow_dispatch` runs build the desktop artifacts and upload them as workflow artifacts without publishing a GitHub Release.
 
 If you need to publish directly from a macOS machine instead of CI, run this from `apps/desktop` with a GitHub token available as `GH_TOKEN`:

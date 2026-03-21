@@ -13,6 +13,7 @@
     "build:docs": "turbo build --filter=@durabull/docs",
     "build:prod": "turbo build",
     "dist:desktop": "turbo run dist --filter=@durabull/desktop",
+    "dist:desktop:dir": "turbo run dist:dir --filter=@durabull/desktop",
     "start:desktop": "bun run --filter @durabull/desktop start",
     "typecheck": "turbo typecheck",
     "clean": "turbo clean",
