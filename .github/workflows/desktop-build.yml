@@ -43,7 +43,7 @@ jobs:
 
       - name: Build native release artifacts
         if: github.event_name == 'push'
-        run: bun run --filter @durabull/desktop dist
+        run: bun run dist:desktop
 
       - name: Wait for GitHub release
         if: github.event_name == 'push'
@@ -74,7 +74,7 @@ jobs:
 
       - name: Build native app bundle
         if: github.event_name == 'workflow_dispatch'
-        run: bun run --filter @durabull/desktop dist:dir
+        run: bun run dist:desktop:dir
 
       - name: Upload desktop artifacts
         uses: actions/upload-artifact@v4
