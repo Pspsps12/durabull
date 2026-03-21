@@ -23,3 +23,36 @@ bun run dist:desktop
 ```
 
 Artifacts are emitted from `apps/desktop/release/`.
+
+## macOS build and release
+
+### Build a local mac app
+
+From the repo root on macOS:
+
+```bash
+bun run build:desktop
+bun run dist:desktop
+```
+
+This produces the packaged desktop artifacts in `apps/desktop/release/`, including the macOS `.dmg` and `.zip` targets configured in `apps/desktop/package.json`.
+
+If you only want the unpacked app bundle for a quick local sanity check, run:
+
+```bash
+bun run --filter @durabull/desktop dist:dir
+```
+
+### Release the mac app
+
+- Tagged releases are built in GitHub Actions by `.github/workflows/desktop-build.yml`.
+- Pushing a tag like `v1.2.3` runs `bun run --filter @durabull/desktop dist`, then uploads the generated desktop artifacts from `apps/desktop/release/` to the matching GitHub Release assets in CI.
+- Manual `workflow_dispatch` runs build the desktop artifacts and upload them as workflow artifacts without publishing a GitHub Release.
+
+If you need to publish directly from a macOS machine instead of CI, run this from `apps/desktop` with a GitHub token available as `GH_TOKEN`:
+
+```bash
+bun run dist:publish
+```
+
+That uses `electron-builder`'s direct GitHub publish path and targets the configured GitHub release provider.

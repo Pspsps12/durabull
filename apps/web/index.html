@@ -37,6 +37,10 @@
     <!-- Theme initialization script to prevent flash of wrong theme -->
     <script>
       try {
+        /* Electron: native-app UX (see styles.css html.electron-shell) */
+        if (/\belectron\b/i.test(navigator.userAgent)) {
+          document.documentElement.classList.add('electron-shell');
+        }
         const theme = localStorage.getItem('durabull-theme') || 'dark';
         const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         const resolvedTheme = theme === 'system' ? systemTheme : theme;

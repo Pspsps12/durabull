@@ -161,10 +161,7 @@ export function NoConnectionConfigured({
               >
                 <CardContent className="relative p-4">
                   <div
-                    className={cn(
-                      'absolute inset-0 bg-gradient-to-br opacity-80',
-                      item.gradient
-                    )}
+                    className={cn('absolute inset-0 bg-gradient-to-br opacity-80', item.gradient)}
                   />
                   <motion.div
                     className="relative space-y-3"

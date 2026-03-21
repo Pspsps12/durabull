@@ -15,6 +15,8 @@ import { BarChart3, Calendar, Database, Layers, Link2, Loader2, Network, Users }
 import { PostHogProvider } from 'posthog-js/react'
 import { useState } from 'react'
 import { APP_TOP_BAR_HEIGHT_CLASS, AppTopBar, AppTopBarProvider } from '@/components/app-top-bar'
+import { ElectronTitleBarDragStrip } from '@/components/electron-title-bar-drag-strip'
+import { MacDesktopSidebarControls } from '@/components/mac-desktop-sidebar-controls'
 import { ConnectionProvider, useConnection } from '@/components/connection-provider'
 import { ConnectionSelector } from '@/components/connection-selector'
 import { DurabullLogo } from '@/components/durabull-logo'
@@ -26,6 +28,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { useAppConfig } from '@/hooks/use-app-config'
 import { useAppMode } from '@/hooks/use-app-mode'
 import { useAuth } from '@/hooks/use-auth'
+import { useIsElectronShell } from '@/hooks/use-electron-shell'
 import { type Organization, useOrganizations } from '@/hooks/use-organization'
 import { usePageViewTracking } from '@/hooks/use-page-view-tracking'
 import { cn } from '@/lib/utils'
@@ -121,6 +124,7 @@ function RootLayout() {
   const { isAuthless } = useAppMode()
   const location = useLocation()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const isElectronShell = useIsElectronShell()
 
   usePageViewTracking()
 
@@ -146,10 +150,13 @@ function RootLayout() {
   // Show loading state while checking auth or organizations for protected routes
   if (isLoading || (isAuthenticated && orgsLoading)) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
+      <div className="flex min-h-screen flex-col bg-background">
+        <ElectronTitleBarDragStrip />
+        <div className="flex flex-1 flex-col items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          </div>
         </div>
       </div>
     )
@@ -172,17 +179,34 @@ function RootLayout() {
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar - inspired by developer-focused dashboards */}
           <aside className="hidden w-64 shrink-0 flex-col border-r bg-sidebar-background md:flex">
-            <div className={cn('shrink-0 border-b', APP_TOP_BAR_HEIGHT_CLASS)}>
-              <div className="flex h-full items-center">
+            <MacDesktopSidebarControls />
+            <div
+              className={cn(
+                'shrink-0 border-b',
+                APP_TOP_BAR_HEIGHT_CLASS,
+                isElectronShell && 'app-region-drag'
+              )}
+            >
+              <div
+                className={cn('flex h-full items-center', isElectronShell && 'pointer-events-none')}
+              >
                 <Link
                   to="/"
-                  className="flex h-full w-14 shrink-0 items-center justify-center border-r border-border transition-opacity hover:opacity-85"
+                  className={cn(
+                    'flex h-full w-14 shrink-0 items-center justify-center border-r border-border transition-opacity hover:opacity-85',
+                    isElectronShell && 'pointer-events-auto app-region-no-drag'
+                  )}
                   aria-label="Go to dashboard"
                 >
                   <DurabullLogo className="h-5 w-5 text-black dark:text-white" />
                 </Link>
                 {!isAuthless && (
-                  <div className="min-w-0 flex-1 px-3">
+                  <div
+                    className={cn(
+                      'min-w-0 flex-1 px-3',
+                      isElectronShell && 'pointer-events-auto app-region-no-drag'
+                    )}
+                  >
                     <OrganizationSelector compact />
                   </div>
                 )}
@@ -223,18 +247,37 @@ function RootLayout() {
               className="flex h-full w-72 flex-col overflow-hidden p-0 bg-sidebar-background"
             >
               <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
-              <div className={cn('shrink-0 border-b', APP_TOP_BAR_HEIGHT_CLASS)}>
-                <div className="flex h-full items-center">
+              <div
+                className={cn(
+                  'shrink-0 border-b',
+                  APP_TOP_BAR_HEIGHT_CLASS,
+                  isElectronShell && 'app-region-drag'
+                )}
+              >
+                <div
+                  className={cn(
+                    'flex h-full items-center',
+                    isElectronShell && 'pointer-events-none'
+                  )}
+                >
                   <Link
                     to="/"
-                    className="flex h-full w-14 shrink-0 items-center justify-center border-r border-border transition-opacity hover:opacity-85"
+                    className={cn(
+                      'flex h-full w-14 shrink-0 items-center justify-center border-r border-border transition-opacity hover:opacity-85',
+                      isElectronShell && 'pointer-events-auto app-region-no-drag'
+                    )}
                     onClick={() => setMobileNavOpen(false)}
                     aria-label="Go to dashboard"
                   >
                     <DurabullLogo className="h-5 w-5 text-black dark:text-white" />
                   </Link>
                   {!isAuthless && (
-                    <div className="min-w-0 flex-1 px-3">
+                    <div
+                      className={cn(
+                        'min-w-0 flex-1 px-3',
+                        isElectronShell && 'pointer-events-auto app-region-no-drag'
+                      )}
+                    >
                       <OrganizationSelector compact />
                     </div>
                   )}

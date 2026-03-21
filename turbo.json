@@ -73,6 +73,9 @@
       "cache": false
     },
     "format:check": {},
+    "test": {
+      "dependsOn": ["^build"]
+    },
     "test:e2e": {
       "dependsOn": ["build"],
       "cache": false,

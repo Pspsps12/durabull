@@ -1,13 +1,16 @@
+import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, safeStorage, shell } from 'electron'
+import { DESKTOP_RESOURCE_ROOT_ENV, resolveDesktopResourceRoot } from './desktop-launcher'
 
 const APP_HOST = '127.0.0.1'
 const SERVER_BOOT_TIMEOUT_MS = 30_000
+const SERVER_SHUTDOWN_TIMEOUT_MS = 5_000
+const SERVER_FORCE_KILL_TIMEOUT_MS = 2_000
 const SECRET_FILE_NAME = 'local-secret.json'
 const SECRET_KEY_BYTES = 32
 
@@ -15,6 +18,9 @@ let mainWindow: BrowserWindow | null = null
 let apiProcess: ChildProcessWithoutNullStreams | null = null
 let runtimeUrl = ''
 let isQuitting = false
+let runtimeShutdownPromise: Promise<void> | null = null
+
+app.setName('Durabull')
 
 interface PersistedSecret {
   mode: 'plain' | 'safeStorage'
@@ -22,11 +28,26 @@ interface PersistedSecret {
 }
 
 function getResourceRoot(): string {
-  return app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'dist')
+  return resolveDesktopResourceRoot({
+    appPath: app.getAppPath(),
+    envRoot: process.env[DESKTOP_RESOURCE_ROOT_ENV],
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+  })
 }
 
 function getBundleRoot(): string {
   return join(getResourceRoot(), 'app-bundle')
+}
+
+/** Same artwork as the web favicon (see apps/web/public/favicon.svg → favicon-512x512.png). */
+function getAppIconPath(): string | undefined {
+  if (app.isPackaged) {
+    const packaged = join(getBundleRoot(), 'apps', 'web', 'dist', 'favicon-512x512.png')
+    return existsSync(packaged) ? packaged : undefined
+  }
+  const dev = join(app.getAppPath(), '..', 'web', 'public', 'favicon-512x512.png')
+  return existsSync(dev) ? dev : undefined
 }
 
 function getBunPath(): string {
@@ -104,7 +125,9 @@ async function waitForServer(url: string): Promise<void> {
   while (Date.now() < deadline) {
     const currentProcess = apiProcess
     if (currentProcess && currentProcess.exitCode !== null) {
-      throw new Error(`Local API exited before startup completed (code ${currentProcess.exitCode}).`)
+      throw new Error(
+        `Local API exited before startup completed (code ${currentProcess.exitCode}).`
+      )
     }
 
     try {
@@ -120,7 +143,11 @@ async function waitForServer(url: string): Promise<void> {
   throw new Error(`Timed out waiting for the local API server at ${url}.`)
 }
 
-function buildServerEnvironment(baseUrl: string, port: number, localSecret: string): NodeJS.ProcessEnv {
+function buildServerEnvironment(
+  baseUrl: string,
+  port: number,
+  localSecret: string
+): NodeJS.ProcessEnv {
   const env = { ...process.env }
 
   delete env.DATABASE_URL
@@ -156,7 +183,9 @@ async function startLocalRuntime(): Promise<string> {
   }
 
   if (!existsSync(entryPoint)) {
-    throw new Error(`Bundled API entry point not found at ${entryPoint}. Run the desktop build first.`)
+    throw new Error(
+      `Bundled API entry point not found at ${entryPoint}. Run the desktop build first.`
+    )
   }
 
   const port = await getAvailablePort()
@@ -165,24 +194,30 @@ async function startLocalRuntime(): Promise<string> {
 
   await mkdir(join(app.getPath('userData'), 'pglite'), { recursive: true })
 
-  apiProcess = spawn(bunPath, [entryPoint], {
+  const child = spawn(bunPath, [entryPoint], {
     cwd: bundleRoot,
     env: buildServerEnvironment(baseUrl, port, localSecret),
     stdio: 'pipe',
   })
+  apiProcess = child
 
-  apiProcess.stdout.on('data', (chunk) => {
+  child.stdout.on('data', (chunk) => {
     process.stdout.write(`[durabull-api] ${String(chunk)}`)
   })
 
-  apiProcess.stderr.on('data', (chunk) => {
+  child.stderr.on('data', (chunk) => {
     process.stderr.write(`[durabull-api] ${String(chunk)}`)
   })
 
-  apiProcess.once('exit', (code) => {
+  child.once('exit', (code) => {
+    if (apiProcess === child) {
+      apiProcess = null
+    }
+
     if (isQuitting) return
 
-    const detail = code === null ? 'The local API process exited unexpectedly.' : `Exit code: ${code}`
+    const detail =
+      code === null ? 'The local API process exited unexpectedly.' : `Exit code: ${code}`
     dialog.showErrorBox('Durabull stopped running', detail)
     app.quit()
   })
@@ -192,23 +227,74 @@ async function startLocalRuntime(): Promise<string> {
   return baseUrl
 }
 
-function stopLocalRuntime(): void {
-  if (!apiProcess || apiProcess.killed) return
+async function waitForProcessExit(
+  child: ChildProcessWithoutNullStreams,
+  timeoutMs: number
+): Promise<boolean> {
+  if (child.exitCode !== null) return true
+
+  return new Promise((resolve) => {
+    const onExit = () => {
+      clearTimeout(timeoutId)
+      resolve(true)
+    }
+
+    const timeoutId = setTimeout(() => {
+      child.off('exit', onExit)
+      resolve(false)
+    }, timeoutMs)
+
+    child.once('exit', onExit)
+  })
+}
+
+async function stopLocalRuntime(): Promise<void> {
+  const child = apiProcess
+  if (!child || child.exitCode !== null) {
+    apiProcess = null
+    return
+  }
 
   if (process.platform === 'win32') {
-    if (apiProcess.pid) {
-      spawn('taskkill', ['/pid', String(apiProcess.pid), '/t', '/f'], {
+    if (child.pid) {
+      spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
         stdio: 'ignore',
         windowsHide: true,
       })
     }
-  } else {
-    apiProcess.kill('SIGTERM')
+
+    await waitForProcessExit(child, SERVER_SHUTDOWN_TIMEOUT_MS)
+    apiProcess = null
+    return
   }
+
+  if (child.stdin && !child.stdin.destroyed) {
+    child.stdin.write('__durabull_shutdown__\n')
+    child.stdin.end()
+  }
+
+  let exitedGracefully = await waitForProcessExit(child, SERVER_SHUTDOWN_TIMEOUT_MS)
+  if (!exitedGracefully && child.exitCode === null) {
+    child.kill('SIGTERM')
+    exitedGracefully = await waitForProcessExit(child, SERVER_FORCE_KILL_TIMEOUT_MS)
+  }
+
+  if (!exitedGracefully && child.exitCode === null) {
+    process.stderr.write('[durabull-api] Graceful shutdown timed out; forcing exit.\n')
+    child.kill('SIGKILL')
+    await waitForProcessExit(child, SERVER_FORCE_KILL_TIMEOUT_MS)
+  }
+
+  apiProcess = null
 }
 
 function createMainWindow(baseUrl: string): BrowserWindow {
   const isMac = process.platform === 'darwin'
+  const iconPath = getAppIconPath()
+
+  if (isMac && iconPath && app.dock) {
+    app.dock.setIcon(iconPath)
+  }
 
   const window = new BrowserWindow({
     width: 1440,
@@ -216,6 +302,7 @@ function createMainWindow(baseUrl: string): BrowserWindow {
     minWidth: 1120,
     minHeight: 760,
     backgroundColor: '#0b0e14',
+    ...(iconPath ? { icon: iconPath } : {}),
     show: false,
     autoHideMenuBar: true,
     ...(isMac
@@ -265,7 +352,8 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow.focus()
   })
 
-  app.whenReady()
+  app
+    .whenReady()
     .then(async () => {
       const baseUrl = await startLocalRuntime()
       mainWindow = createMainWindow(baseUrl)
@@ -296,7 +384,24 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   isQuitting = true
-  stopLocalRuntime()
+
+  if (!apiProcess) return
+
+  if (runtimeShutdownPromise) {
+    event.preventDefault()
+    return
+  }
+
+  event.preventDefault()
+  runtimeShutdownPromise = stopLocalRuntime()
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error)
+      process.stderr.write(`[durabull-api] Failed to stop local runtime cleanly: ${message}\n`)
+    })
+    .finally(() => {
+      runtimeShutdownPromise = null
+      app.quit()
+    })
 })

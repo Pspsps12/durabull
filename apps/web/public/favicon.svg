@@ -1,8 +1,29 @@
 <svg width="32" height="32" viewBox="0 0 569 569" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M295 25L515 150.597V401.847L422.757 457" stroke="#10b981" stroke-width="28.409" stroke-linecap="round"/>
-<path d="M274 544L54 418.112V166.281L146.243 111" stroke="#10b981" stroke-width="28.409" stroke-linecap="round"/>
-<path d="M245 55L465 180.659V372.821L372.758 428" stroke="#10b981" stroke-width="28.409" stroke-linecap="round"/>
-<path d="M324 515L105 389.004V196.327L196.823 141" stroke="#10b981" stroke-width="28.409" stroke-linecap="round"/>
-<path d="M195 84L415 209.743V342.783L322.757 398" stroke="#10b981" stroke-width="28.409" stroke-linecap="round"/>
-<path d="M374 484L154 358.657V226.041L246.243 171" stroke="#10b981" stroke-width="28.409" stroke-linecap="round"/>
+<defs>
+  <linearGradient id="tile-gradient" x1="72" y1="40" x2="514" y2="529" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#1E2229"/>
+    <stop offset="0.42" stop-color="#0F1218"/>
+    <stop offset="1" stop-color="#030405"/>
+  </linearGradient>
+  <radialGradient id="tile-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(170 126) rotate(47.8) scale(355 431)">
+    <stop stop-color="#FFFFFF" stop-opacity="0.18"/>
+    <stop offset="0.38" stop-color="#7C8798" stop-opacity="0.08"/>
+    <stop offset="1" stop-color="#7C8798" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="mark-gradient" x1="109" y1="79" x2="461" y2="492" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#34F5B1"/>
+    <stop offset="1" stop-color="#10B981"/>
+  </linearGradient>
+</defs>
+<rect x="28" y="28" width="513" height="513" rx="132" fill="url(#tile-gradient)"/>
+<rect x="28" y="28" width="513" height="513" rx="132" fill="url(#tile-glow)"/>
+<rect x="28.5" y="28.5" width="512" height="512" rx="131.5" stroke="white" stroke-opacity="0.08"/>
+<g transform="translate(86 86) scale(0.698)">
+  <path d="M295 25L515 150.597V401.847L422.757 457" stroke="url(#mark-gradient)" stroke-width="28.409" stroke-linecap="round"/>
+  <path d="M274 544L54 418.112V166.281L146.243 111" stroke="url(#mark-gradient)" stroke-width="28.409" stroke-linecap="round"/>
+  <path d="M245 55L465 180.659V372.821L372.758 428" stroke="url(#mark-gradient)" stroke-width="28.409" stroke-linecap="round"/>
+  <path d="M324 515L105 389.004V196.327L196.823 141" stroke="url(#mark-gradient)" stroke-width="28.409" stroke-linecap="round"/>
+  <path d="M195 84L415 209.743V342.783L322.757 398" stroke="url(#mark-gradient)" stroke-width="28.409" stroke-linecap="round"/>
+  <path d="M374 484L154 358.657V226.041L246.243 171" stroke="url(#mark-gradient)" stroke-width="28.409" stroke-linecap="round"/>
+</g>
 </svg>

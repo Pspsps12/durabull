@@ -41,11 +41,36 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build and publish native release
+      - name: Build native release artifacts
         if: github.event_name == 'push'
-        run: bun run --filter @durabull/desktop dist:publish
+        run: bun run --filter @durabull/desktop dist
+
+      - name: Wait for GitHub release
+        if: github.event_name == 'push'
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for attempt in {1..24}; do
+            if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+              exit 0
+            fi
+
+            sleep 5
+          done
+
+          echo "GitHub release ${GITHUB_REF_NAME} was not available in time." >&2
+          exit 1
+
+      - name: Upload desktop assets to GitHub release
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" apps/desktop/release/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --clobber
 
       - name: Build native app bundle
         if: github.event_name == 'workflow_dispatch'
