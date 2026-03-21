@@ -68,7 +68,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${GITHUB_REF_NAME}" apps/desktop/release/* \
+          shopt -s nullglob
+          assets=(
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.blockmap
+          )
+
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No desktop release assets were produced." >&2
+            exit 1
+          fi
+
+          gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" \
             --repo "${GITHUB_REPOSITORY}" \
             --clobber
 
@@ -80,5 +93,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: durabull-desktop-${{ runner.os }}
-          path: apps/desktop/release/**
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.blockmap
           if-no-files-found: error
