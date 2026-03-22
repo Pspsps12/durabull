@@ -28,13 +28,6 @@ module.exports = {
   mac: {
     category: 'public.app-category.developer-tools',
     target: ['dmg', 'zip'],
-    hardenedRuntime: true,
-    gatekeeperAssess: false,
-    entitlements: 'entitlements.mac.plist',
-    entitlementsInherit: 'entitlements.mac.plist',
-    notarize: process.env.APPLE_TEAM_ID
-      ? { teamId: process.env.APPLE_TEAM_ID }
-      : false,
   },
   win: {
     target: ['nsis', 'zip'],
