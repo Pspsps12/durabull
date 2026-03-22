@@ -4,8 +4,7 @@
  */
 
 import type { Metadata } from 'next'
-
-const SITE_URL = 'https://durabull.io'
+import { GITHUB_RELEASE_URL, MAC_DOWNLOAD_URL, SITE_URL } from '@/lib/config'
 const SITE_NAME = 'Durabull'
 const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png`
 
@@ -81,10 +80,12 @@ export function createSoftwareApplicationSchema() {
     '@type': 'SoftwareApplication',
     name: 'Durabull',
     applicationCategory: 'DeveloperApplication',
-    operatingSystem: 'Web',
+    operatingSystem: ['Web', 'macOS', 'Windows'],
     description:
-      'The modern, powerful dashboard for BullMQ. Monitor jobs, debug failures, and scale your background processing with confidence.',
+      'The modern BullMQ dashboard for browser, Apple Silicon macOS, Windows, and self-hosted environments. Monitor jobs, debug failures, and scale background processing with confidence.',
     url: SITE_URL,
+    downloadUrl: MAC_DOWNLOAD_URL,
+    installUrl: GITHUB_RELEASE_URL,
     offers: {
       '@type': 'Offer',
       price: '0',

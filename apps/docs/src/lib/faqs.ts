@@ -27,6 +27,11 @@ export const faqs = [
       "Durabull is completely free while in beta. When we introduce pricing, it will be kept as low as possible — just enough to cover our cloud compute costs. We're a group of dedicated engineers running this as a break-even venture to create a better BullMQ experience for the community, not to maximize profits.",
   },
   {
+    question: 'How can I install Durabull?',
+    answer:
+      'You can start in the hosted web app, install the native desktop app on Apple Silicon macOS or Windows, or self-host Durabull with Docker or from source. Apple Silicon Macs can also be rolled out with Homebrew using `brew install --cask durabullhq/tap/durabull`, and the documentation includes a dedicated desktop installation guide with direct download links.',
+  },
+  {
     question: 'Can I run Durabull in authless mode?',
     answer:
       'Yes. Durabull supports authless mode, and you can choose stateful (Postgres) or stateless (PGlite) persistence based on your environment and durability needs. For production, keep authless mode behind private network controls.',

@@ -4,6 +4,7 @@
   "pages": [
     "index",
     "---Start Here---",
+    "getting-started/desktop-apps",
     "getting-started/how-to-use-durabull",
     "getting-started/architecture-and-modes",
     "getting-started/authentication-and-organizations",

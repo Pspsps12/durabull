@@ -6,7 +6,7 @@ export const metadata: Metadata = createMetadata(
   {
     title: 'Documentation',
     description:
-      'Durabull documentation. Learn how to set up, connect BullMQ, and manage queues with our comprehensive guides.',
+      'Durabull documentation. Learn how to install the desktop app, self-host confidently, connect BullMQ, and manage queues with clear operational guides.',
     keywords: [
       'Durabull docs',
       'BullMQ documentation',
@@ -35,14 +35,25 @@ export default function DocsPage() {
       <MarketingPage
         badge="Documentation"
         title="Durabull Documentation"
-        subtitle="Friendly guides for self-hosting, day-to-day operations, and incident response in BullMQ environments."
-        primaryCta={{ label: 'Open Documentation', to: '/documentation' }}
-        secondaryCta={{ label: 'Self Hosting Setup', to: '/documentation/self-hosting/setup' }}
+        subtitle="Friendly guides for desktop installs, self-hosting, day-to-day operations, and incident response in BullMQ environments."
+        primaryCta={{ label: 'Desktop Install Guide', to: '/documentation/getting-started/desktop-apps' }}
+        secondaryCta={{ label: 'Open Documentation', to: '/documentation' }}
         sections={[
+          {
+            title: 'Desktop Apps',
+            description:
+              'Install Durabull on Apple Silicon macOS or Windows, or roll out Apple Silicon Macs with Homebrew using the current release assets.',
+            items: [
+              'Direct Apple Silicon macOS download',
+              'Windows installer and zip options',
+              'Homebrew cask command and verification steps',
+            ],
+          },
           {
             title: 'Start Here',
             description: 'Learn how the app is organized and what to do first.',
             items: [
+              'Desktop app installation',
               'How to use Durabull',
               'Architecture and mode matrix',
               'Connection and auth model',

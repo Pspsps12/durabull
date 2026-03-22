@@ -83,3 +83,15 @@
 
 - Updated `.github/workflows/desktop-build.yml` so tag builds produce desktop artifacts locally, wait for the matching GitHub Release, and explicitly upload `apps/desktop/release/*` as release assets instead of relying on implicit `electron-builder` publish behavior.
 - Aligned `apps/desktop/README.md` with the new CI release-asset upload flow.
+
+## Current Task
+
+- [x] Add docs coverage for desktop installation across macOS, Windows, and Homebrew.
+- [x] Update the docs landing page and homepage CTAs/copy to reflect the new platform availability and direct macOS download.
+- [x] Verify the docs app with targeted lint and typecheck.
+
+## Result
+
+- Added a dedicated `Desktop Apps` guide with direct macOS and Windows download links, the Homebrew cask command, first-launch verification steps, and release-note links.
+- Updated the docs homepage, docs hub, footer, FAQ, and SEO metadata so desktop availability is now clearly represented alongside browser and self-hosted paths.
+- Verified the docs app with `bun run lint`, `bun run typecheck`, and `bun run build` in `apps/docs`.

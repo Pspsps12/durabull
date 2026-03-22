@@ -10,7 +10,7 @@ const footerLinks = {
   ],
   resources: [
     { label: 'Documentation', href: '/documentation' },
-    { label: 'Getting Started', href: '/documentation/getting-started/local-development' },
+    { label: 'Desktop Apps', href: '/documentation/getting-started/desktop-apps' },
     { label: 'HTTP API', href: '/documentation/reference/http-api' },
     { label: 'Deployment Guide', href: '/documentation/deployment/docker' },
   ],
@@ -53,8 +53,8 @@ export function Footer() {
               <DurabullWordmark className="h-5 text-foreground" />
             </Link>
             <p className="text-muted-foreground text-sm max-w-xs mb-6">
-              The modern, powerful dashboard for managing your BullMQ queues. Built for developers
-              who demand reliability.
+              The modern BullMQ dashboard for browser, desktop, and self-hosted teams. Built for
+              developers who demand reliability at every stage of queue operations.
             </p>
             <div className="flex items-center gap-4">
               <a
