@@ -2,6 +2,33 @@
 
 Durabull's Electron app is a thin native shell around the existing production web and Bun API builds.
 
+## Installing on macOS
+
+Durabull is distributed outside the Mac App Store and is not signed with an Apple Developer ID certificate. macOS will block the app on first launch with a "cannot be verified" warning.
+
+After mounting the `.dmg` and dragging Durabull to Applications, run this once in Terminal:
+
+```bash
+xattr -cr /Applications/Durabull.app
+```
+
+Then open Durabull normally. The command strips the macOS quarantine flag that triggers Gatekeeper.
+
+**Alternative (no Terminal required):**
+
+1. Try to open Durabull — macOS will block it.
+2. Open **System Settings → Privacy & Security**.
+3. Scroll down to find *"Durabull" was blocked* and click **Open Anyway**.
+4. Confirm the dialog that follows.
+
+### Homebrew
+
+```bash
+brew install --cask durabullhq/tap/durabull
+```
+
+> Homebrew strips the quarantine flag automatically during install — no extra steps needed.
+
 ## Why this structure
 
 - The current API server is Bun-native, so the desktop app ships a bundled Bun runtime and starts the already-built API locally.
