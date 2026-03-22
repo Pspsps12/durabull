@@ -4,13 +4,13 @@ import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion
 import { ArrowRight, BarChart3, BookOpen, Radar, ShieldCheck, Sparkles } from 'lucide-react'
 import Image from 'next/image'
 import { useRef } from 'react'
-import { WEB_APP_URL } from '@/lib/config'
+import { MAC_DOWNLOAD_URL, WEB_APP_URL } from '@/lib/config'
 
 const trustSignals = [
   { icon: Radar, label: 'Live Queue Telemetry' },
   { icon: BarChart3, label: 'Fleet Analytics Insights' },
   { icon: ShieldCheck, label: 'Incident-Ready Visibility' },
-  { icon: Sparkles, label: 'Developer-First Workflows' },
+  { icon: Sparkles, label: 'Self-Hosted or Managed Rollout' },
 ]
 
 const floatingCards = [
@@ -63,7 +63,7 @@ export function Hero() {
               className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-4 py-2 text-xs font-medium uppercase tracking-[0.16em] text-emerald-100/90 backdrop-blur-xl"
             >
               <span className="status-dot active" />
-              Public Beta
+              Desktop apps now available
             </motion.div>
 
             <motion.h1
@@ -94,7 +94,7 @@ export function Hero() {
             >
               <a
                 href={`${WEB_APP_URL}/signup`}
-                className="group inline-flex touch-manipulation items-center justify-center gap-2 rounded-xl bg-emerald-400 px-6 py-3.5 text-sm font-semibold text-emerald-950 shadow-[0_16px_42px_rgba(16,185,129,0.24)] transition-colors duration-200 hover:bg-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="group inline-flex min-h-14 touch-manipulation items-center justify-center gap-2 rounded-xl bg-emerald-400 px-6 py-4 text-sm font-semibold text-emerald-950 shadow-[0_16px_42px_rgba(16,185,129,0.24)] transition-colors duration-200 hover:bg-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 Start Free
                 <ArrowRight
@@ -104,17 +104,55 @@ export function Hero() {
               </a>
               <a
                 href="/documentation"
-                className="inline-flex touch-manipulation items-center justify-center gap-2 rounded-xl border border-border/80 bg-card/60 px-6 py-3.5 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="inline-flex min-h-14 touch-manipulation items-center justify-center gap-2 rounded-xl border border-border/80 bg-card/60 px-6 py-4 text-sm font-medium text-foreground transition-colors duration-200 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 Read Docs
                 <BookOpen className="h-4 w-4" aria-hidden="true" />
               </a>
             </motion.div>
 
+            <motion.div
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.55, delay: 0.28 }}
+              className="mt-7 max-w-2xl"
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200/75">
+                Also available on desktop
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2.5">
+                {['Apple Silicon macOS', 'Windows', 'Homebrew'].map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-full border border-emerald-300/18 bg-emerald-300/8 px-3.5 py-1.5 text-xs font-medium text-emerald-100/85"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+                Need the desktop build? Download the current Apple Silicon macOS release or see
+                install options for Windows and Homebrew in the
+                <a
+                  href="/documentation/getting-started/desktop-apps"
+                  className="ml-1 text-emerald-200 transition-colors duration-200 hover:text-emerald-100"
+                >
+                  desktop apps guide
+                </a>
+                .
+              </p>
+              <a
+                href={MAC_DOWNLOAD_URL}
+                className="mt-4 inline-flex items-center text-sm font-medium text-emerald-200 transition-colors duration-200 hover:text-emerald-100"
+              >
+                Download the macOS app
+              </a>
+            </motion.div>
+
             <motion.ul
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.55, delay: 0.32 }}
+              transition={{ duration: 0.55, delay: 0.36 }}
               className="mt-8 grid gap-3 text-sm text-muted-foreground sm:grid-cols-2"
             >
               {trustSignals.map((signal) => (
