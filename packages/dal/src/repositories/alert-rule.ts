@@ -1,6 +1,10 @@
 import { and, asc, eq } from 'drizzle-orm'
 import { getDb } from '../db/client'
-import { alertRule, type AlertRuleType, type QueueFilterMode } from '../db/schemas/alert-rule/schema'
+import {
+  alertRule,
+  type AlertRuleType,
+  type QueueFilterMode,
+} from '../db/schemas/alert-rule/schema'
 import type { AlertRule } from '../db/schemas/alert-rule/types'
 
 export const alertRuleRepository = {
@@ -19,10 +23,7 @@ export const alertRuleRepository = {
   }): Promise<AlertRule> {
     const db = await getDb()
 
-    const [result] = await db
-      .insert(alertRule)
-      .values(data)
-      .returning()
+    const [result] = await db.insert(alertRule).values(data).returning()
 
     return result
   },

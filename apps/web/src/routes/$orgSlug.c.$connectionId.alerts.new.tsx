@@ -9,7 +9,7 @@ export const Route = createFileRoute('/$orgSlug/c/$connectionId/alerts/new')({
   component: CreateAlertRuleRoute,
 })
 
-function CreateAlertRuleRoute() {
+export function CreateAlertRuleRoute() {
   const { orgSlug, connectionId } = Route.useParams()
   const navigate = useNavigate()
   const { currentConnection } = useConnection()

@@ -59,7 +59,9 @@ export function QueueMultiSelect({
       return
     }
 
-    onSelectedQueueNamesChange([...selectedQueueNames, queueName].sort((left, right) => left.localeCompare(right)))
+    onSelectedQueueNamesChange(
+      [...selectedQueueNames, queueName].sort((left, right) => left.localeCompare(right))
+    )
   }
 
   const helperText =
@@ -74,7 +76,9 @@ export function QueueMultiSelect({
           type="button"
           className={cn(
             'px-4 py-2 text-sm transition-colors',
-            queueFilterMode === 'include' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
+            queueFilterMode === 'include'
+              ? 'bg-foreground text-background'
+              : 'text-muted-foreground hover:text-foreground'
           )}
           onClick={() => {
             if (queueFilterMode !== 'include') {
@@ -89,7 +93,9 @@ export function QueueMultiSelect({
           type="button"
           className={cn(
             'border-l border-border/70 px-4 py-2 text-sm transition-colors',
-            queueFilterMode === 'exclude' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
+            queueFilterMode === 'exclude'
+              ? 'bg-foreground text-background'
+              : 'text-muted-foreground hover:text-foreground'
           )}
           onClick={() => {
             if (queueFilterMode !== 'exclude') {
@@ -167,13 +173,19 @@ export function QueueMultiSelect({
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {selectedQueueNames.map((queueName) => (
-              <Badge key={queueName} variant="outline" className="gap-1 border-border/70 bg-background">
+              <Badge
+                key={queueName}
+                variant="outline"
+                className="gap-1 border-border/70 bg-background"
+              >
                 {queueName}
                 <button
                   type="button"
                   className="ml-1 rounded-sm text-muted-foreground transition-colors hover:text-foreground"
                   onClick={() =>
-                    onSelectedQueueNamesChange(selectedQueueNames.filter((current) => current !== queueName))
+                    onSelectedQueueNamesChange(
+                      selectedQueueNames.filter((current) => current !== queueName)
+                    )
                   }
                   aria-label={`Remove ${queueName}`}
                 >
@@ -205,8 +217,8 @@ export function QueueMultiSelect({
 
       {queueFilterMode === 'include' && availableQueues.length === 0 ? (
         <div className="rounded-md border border-dashed border-border/70 bg-muted/10 px-3 py-3 text-sm text-muted-foreground">
-          No queues are currently indexed for this connection yet. You can switch to "all except" mode
-          to watch all future queues, or return after discovery finishes.
+          No queues are currently indexed for this connection yet. You can switch to "all except"
+          mode to watch all future queues, or return after discovery finishes.
         </div>
       ) : null}
     </div>

@@ -42,7 +42,10 @@ export const alertCheckCursorRepository = {
       .select()
       .from(alertCheckCursor)
       .where(
-        and(eq(alertCheckCursor.connectionId, connectionId), eq(alertCheckCursor.queueName, queueName))
+        and(
+          eq(alertCheckCursor.connectionId, connectionId),
+          eq(alertCheckCursor.queueName, queueName)
+        )
       )
       .limit(1)
 

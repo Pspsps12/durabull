@@ -40,7 +40,9 @@ function OrganizationAlertsPage() {
   const resolveEventMutation = useResolveAlertEvent()
 
   const summaryByConnection = useMemo(() => {
-    return new Map((summaryQuery.data?.connections ?? []).map((entry) => [entry.connectionId, entry.count]))
+    return new Map(
+      (summaryQuery.data?.connections ?? []).map((entry) => [entry.connectionId, entry.count])
+    )
   }, [summaryQuery.data?.connections])
 
   const totalOpenAlerts = useMemo(
@@ -60,7 +62,10 @@ function OrganizationAlertsPage() {
         connection,
         count: summaryByConnection.get(connection.id) ?? 0,
       }))
-      .sort((left, right) => right.count - left.count || left.connection.name.localeCompare(right.connection.name))
+      .sort(
+        (left, right) =>
+          right.count - left.count || left.connection.name.localeCompare(right.connection.name)
+      )
   }, [connections, summaryByConnection])
 
   const eventConnectionName = useMemo(() => {
@@ -102,7 +107,10 @@ function OrganizationAlertsPage() {
   async function handleResolveEvent(event: AlertEventRecord) {
     try {
       setResolvingEventId(event.id)
-      await resolveEventMutation.mutateAsync({ connectionId: event.connectionId, eventId: event.id })
+      await resolveEventMutation.mutateAsync({
+        connectionId: event.connectionId,
+        eventId: event.id,
+      })
     } finally {
       setResolvingEventId(null)
     }
@@ -150,10 +158,30 @@ function OrganizationAlertsPage() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <MetricCard label="Open Incidents" value={totalOpenAlerts} tone={totalOpenAlerts > 0 ? 'critical' : 'good'} icon={ShieldAlert} />
-            <MetricCard label="Affected Connections" value={affectedConnections} tone={affectedConnections > 0 ? 'warn' : 'good'} icon={Link2} />
-            <MetricCard label="Resolved Events (page)" value={resolvedEventCount} tone="good" icon={Radar} />
-            <MetricCard label="Notifications Sent" value={deliveredEventCount} tone="neutral" icon={Cable} />
+            <MetricCard
+              label="Open Incidents"
+              value={totalOpenAlerts}
+              tone={totalOpenAlerts > 0 ? 'critical' : 'good'}
+              icon={ShieldAlert}
+            />
+            <MetricCard
+              label="Affected Connections"
+              value={affectedConnections}
+              tone={affectedConnections > 0 ? 'warn' : 'good'}
+              icon={Link2}
+            />
+            <MetricCard
+              label="Resolved Events (page)"
+              value={resolvedEventCount}
+              tone="good"
+              icon={Radar}
+            />
+            <MetricCard
+              label="Notifications Sent"
+              value={deliveredEventCount}
+              tone="neutral"
+              icon={Cable}
+            />
           </div>
         </div>
       </motion.section>
@@ -176,7 +204,10 @@ function OrganizationAlertsPage() {
                     <CardTitle className="text-lg">{connection.name}</CardTitle>
                     <CardDescription>{connection.environment}</CardDescription>
                   </div>
-                  <AlertStatusBadge status={count > 0 ? 'firing' : 'resolved'} emphasize={count > 0} />
+                  <AlertStatusBadge
+                    status={count > 0 ? 'firing' : 'resolved'}
+                    emphasize={count > 0}
+                  />
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -188,7 +219,11 @@ function OrganizationAlertsPage() {
                     {formatNumber(count)}
                   </div>
                 </div>
-                <Button asChild className="w-full gap-2" variant={count > 0 ? 'default' : 'outline'}>
+                <Button
+                  asChild
+                  className="w-full gap-2"
+                  variant={count > 0 ? 'default' : 'outline'}
+                >
                   <Link
                     to="/$orgSlug/c/$connectionId/alerts"
                     params={{ orgSlug, connectionId: connection.id }}
@@ -259,7 +294,9 @@ function OrganizationAlertsPage() {
             emptyTitle="No organization-wide incidents yet"
             emptyCopy="Connection-level incidents will appear here automatically once alert rules start firing."
             showConnectionColumn
-            connectionNameForEvent={(event) => eventConnectionName.get(event.connectionId) ?? 'Unknown connection'}
+            connectionNameForEvent={(event) =>
+              eventConnectionName.get(event.connectionId) ?? 'Unknown connection'
+            }
             onResolve={(event) => handleResolveEvent(event)}
             resolvingEventId={resolvingEventId}
           />

@@ -105,7 +105,10 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
     return await Promise.race([
       promise,
       new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
+        timer = setTimeout(
+          () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+          timeoutMs
+        )
       }),
     ])
   } finally {
@@ -276,7 +279,9 @@ async function evaluateAndMaybeAlert(
     const cooldownMs = rule.cooldownMinutes * 60_000
     const elapsedMs = Date.now() - recentEvent.firedAt.getTime()
     if (elapsedMs < cooldownMs) {
-      console.log(`[alert-monitor] Suppressed alert for rule "${rule.name}" on ${snapshot.queueName}`)
+      console.log(
+        `[alert-monitor] Suppressed alert for rule "${rule.name}" on ${snapshot.queueName}`
+      )
       return
     }
   }
@@ -334,4 +339,12 @@ async function processWithConcurrency<T>(
   })
 
   await Promise.all(workers)
+}
+
+export const __alertMonitorTestUtils = {
+  getUniqueQueueNames,
+  isRuleApplicableToQueue,
+  evaluateAndMaybeAlert,
+  processConnection,
+  processWithConcurrency,
 }

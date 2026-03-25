@@ -1,6 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import { ArrowUpRight, CheckCheck, Loader2 } from 'lucide-react'
-import { AlertStatusBadge, AlertTypeBadge, formatAlertDate } from '@/components/alerts/alert-primitives'
+import {
+  AlertStatusBadge,
+  AlertTypeBadge,
+  formatAlertDate,
+} from '@/components/alerts/alert-primitives'
 import { Button } from '@/components/ui/button'
 import {
   Table,

@@ -4,7 +4,11 @@ import { BellRing, Cable, Radar, ShieldCheck, Siren } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertEventsTable } from '@/components/alerts/alert-events-table'
-import { AlertSeverityChip, AlertTypeBadge, getAlertTypeMeta } from '@/components/alerts/alert-primitives'
+import {
+  AlertSeverityChip,
+  AlertTypeBadge,
+  getAlertTypeMeta,
+} from '@/components/alerts/alert-primitives'
 import { useAppTopBar } from '@/components/app-top-bar'
 import { useConnection } from '@/components/connection-provider'
 import { Badge } from '@/components/ui/badge'
@@ -12,7 +16,14 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   useAlertSummary,
@@ -95,11 +106,7 @@ export function ConnectionAlertsWorkspace({
         </div>
       ),
       actions: (
-        <Button
-          asChild
-          size="xs"
-          className="gap-2"
-        >
+        <Button asChild size="xs" className="gap-2">
           <Link to="/$orgSlug/c/$connectionId/alerts/new" params={{ orgSlug, connectionId }}>
             <BellRing className="h-4 w-4" />
             Create rule
@@ -129,7 +136,9 @@ export function ConnectionAlertsWorkspace({
   }
 
   async function handleDeleteRule(rule: AlertRuleRecord) {
-    if (!window.confirm(`Delete "${rule.name}"? Any active incidents for this rule will be resolved.`)) {
+    if (
+      !window.confirm(`Delete "${rule.name}"? Any active incidents for this rule will be resolved.`)
+    ) {
       return
     }
 
@@ -180,22 +189,46 @@ export function ConnectionAlertsWorkspace({
                 Queue incident policy for {currentConnection?.name ?? 'this connection'}
               </h2>
               <p className="max-w-3xl text-sm leading-7 text-muted-foreground sm:text-base">
-                Define alert thresholds, route incidents to responders, and manage queue incidents from
-                one place. Use the full-page builder for complex rule authoring.
+                Define alert thresholds, route incidents to responders, and manage queue incidents
+                from one place. Use the full-page builder for complex rule authoring.
               </p>
             </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <MetricCard icon={Radar} label="Enabled Rules" value={coverageStats.enabledRules} tone={coverageStats.enabledRules > 0 ? 'good' : 'neutral'} />
-            <MetricCard icon={Siren} label="Muted Rules" value={coverageStats.mutedRules} tone={coverageStats.mutedRules > 0 ? 'warn' : 'neutral'} />
-            <MetricCard icon={Cable} label="Recipients" value={coverageStats.recipients} tone={coverageStats.recipients > 0 ? 'good' : 'neutral'} />
-            <MetricCard icon={ShieldCheck} label="Connection-Wide Guards" value={coverageStats.connectionWideRules} tone={coverageStats.connectionWideRules > 0 ? 'good' : 'neutral'} />
+            <MetricCard
+              icon={Radar}
+              label="Enabled Rules"
+              value={coverageStats.enabledRules}
+              tone={coverageStats.enabledRules > 0 ? 'good' : 'neutral'}
+            />
+            <MetricCard
+              icon={Siren}
+              label="Muted Rules"
+              value={coverageStats.mutedRules}
+              tone={coverageStats.mutedRules > 0 ? 'warn' : 'neutral'}
+            />
+            <MetricCard
+              icon={Cable}
+              label="Recipients"
+              value={coverageStats.recipients}
+              tone={coverageStats.recipients > 0 ? 'good' : 'neutral'}
+            />
+            <MetricCard
+              icon={ShieldCheck}
+              label="Connection-Wide Guards"
+              value={coverageStats.connectionWideRules}
+              tone={coverageStats.connectionWideRules > 0 ? 'good' : 'neutral'}
+            />
           </div>
         </div>
       </motion.section>
 
-      <Tabs value={tab} onValueChange={(value) => onTabChange(value as 'rules' | 'history')} className="space-y-4">
+      <Tabs
+        value={tab}
+        onValueChange={(value) => onTabChange(value as 'rules' | 'history')}
+        className="space-y-4"
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <TabsList className="h-11 bg-muted/40 p-1">
             <TabsTrigger value="rules" className="gap-2 px-4">
@@ -345,7 +378,9 @@ function RulesTable({
                 <TableCell className="min-w-[240px]">
                   <div className="space-y-1">
                     <div className="font-medium">{rule.name}</div>
-                    <div className="text-xs leading-5 text-muted-foreground">{meta.description}</div>
+                    <div className="text-xs leading-5 text-muted-foreground">
+                      {meta.description}
+                    </div>
                   </div>
                 </TableCell>
                 <TableCell>

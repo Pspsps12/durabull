@@ -11,7 +11,17 @@ import {
   useParams,
 } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
-import { BarChart3, BellRing, Calendar, Database, Layers, Link2, Loader2, Network, Users } from 'lucide-react'
+import {
+  BarChart3,
+  BellRing,
+  Calendar,
+  Database,
+  Layers,
+  Link2,
+  Loader2,
+  Network,
+  Users,
+} from 'lucide-react'
 import { PostHogProvider } from 'posthog-js/react'
 import { useState } from 'react'
 import { APP_TOP_BAR_HEIGHT_CLASS, AppTopBar, AppTopBarProvider } from '@/components/app-top-bar'
@@ -317,7 +327,10 @@ function SidebarNav() {
   // Get orgSlug from route params or fall back to active organization
   const orgSlug = useCurrentOrgSlug()
   const totalOpenAlerts =
-    alertSummary?.connections.reduce((sum: number, entry: { count: number }) => sum + entry.count, 0) ?? 0
+    alertSummary?.connections.reduce(
+      (sum: number, entry: { count: number }) => sum + entry.count,
+      0
+    ) ?? 0
 
   // If no connection or org is selected, we can still show nav but links won't work
   // The index page will handle redirecting to a connection
@@ -371,7 +384,10 @@ function MobileSidebarNav({ onNavigate }: { onNavigate: () => void }) {
   // Get orgSlug from route params or fall back to active organization
   const orgSlug = useCurrentOrgSlug()
   const totalOpenAlerts =
-    alertSummary?.connections.reduce((sum: number, entry: { count: number }) => sum + entry.count, 0) ?? 0
+    alertSummary?.connections.reduce(
+      (sum: number, entry: { count: number }) => sum + entry.count,
+      0
+    ) ?? 0
 
   const basePath =
     orgSlug && connectionId ? `/${orgSlug}/c/${connectionId}` : orgSlug ? `/${orgSlug}` : '/'

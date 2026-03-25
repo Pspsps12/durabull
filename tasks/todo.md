@@ -128,3 +128,16 @@
 - Redesigned the builder into a flatter, more developer-oriented workflow with step-based sections, selected rule-type toggles, queue search + multi-select, clearer inline guidance, and a right-rail summary/tips panel.
 - Added multi-queue create behavior that generates one queue-scoped rule per selected queue, plus richer notification routing rows for multiple email destinations and disabled `Slack` / `Linear` placeholders tagged as coming soon.
 - Revalidated with `@durabull/web` typecheck, unit tests, build, and lint. The only remaining web lint warning is the same unrelated pre-existing warning in `apps/web/src/routes/$orgSlug.c.$connectionId.queues.$queueName.tsx`.
+
+## Current Task
+
+- [x] Add substantial backend alerting tests covering evaluator edge cases, monitor lifecycle behavior, and alert API route integration.
+- [x] Add substantial frontend alerting tests covering form helpers, hooks, components, and route-level orchestration.
+- [x] Revalidate the touched alerting suites with targeted and package-level test/lint/typecheck runs.
+
+## Result
+
+- Added deep backend alerting coverage: evaluator edge cases, notifier URL encoding, monitor state-machine behavior, connection-scoped alert route integration, and org-level alert summary/history integration.
+- Added deep frontend alerting coverage: rule-form validation/serialization helpers, alert query/mutation hooks, queue multi-select interactions, alert events table rendering, builder-page flows, workspace rule/history actions, and `alerts/new` / `alerts/$ruleId` route orchestration.
+- Verified with `apps/api` full `bun test`, `bun run typecheck`, and `bun run lint`, plus `apps/web` full `bun run test:unit`, `bun run typecheck`, and `bun run lint`.
+- `apps/web` lint still reports the same pre-existing unrelated warning in `apps/web/src/routes/$orgSlug.c.$connectionId.queues.$queueName.tsx`.

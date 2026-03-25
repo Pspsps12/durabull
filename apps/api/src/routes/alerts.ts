@@ -180,7 +180,10 @@ const app = new Hono()
       },
     }
 
-    const cursorRow = await alertCheckCursorRepository.findByConnectionQueue(connectionId, queueName)
+    const cursorRow = await alertCheckCursorRepository.findByConnectionQueue(
+      connectionId,
+      queueName
+    )
     const cursor: CursorState | null = cursorRow
       ? {
           lastCheckedAt: cursorRow.lastCheckedAt,

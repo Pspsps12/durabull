@@ -36,7 +36,13 @@ export function getAlertTypeMeta(type: AlertRuleType) {
   return ALERT_TYPE_META[type]
 }
 
-export function AlertTypeBadge({ type, compact = false }: { type: AlertRuleType; compact?: boolean }) {
+export function AlertTypeBadge({
+  type,
+  compact = false,
+}: {
+  type: AlertRuleType
+  compact?: boolean
+}) {
   const meta = getAlertTypeMeta(type)
   const Icon = meta.icon
 

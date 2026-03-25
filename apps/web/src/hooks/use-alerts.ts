@@ -6,8 +6,14 @@ type ConnectionAlertsEndpoint = (typeof api.c)[':connectionId']['alerts']
 
 type AlertSummaryResponse = InferResponseType<(typeof api.alerts.summary)['$get'], 200>
 type GlobalAlertEventsResponse = InferResponseType<(typeof api.alerts.events)['$get'], 200>
-type ConnectionAlertRulesResponse = InferResponseType<ConnectionAlertsEndpoint['rules']['$get'], 200>
-type ConnectionAlertEventsResponse = InferResponseType<ConnectionAlertsEndpoint['events']['$get'], 200>
+type ConnectionAlertRulesResponse = InferResponseType<
+  ConnectionAlertsEndpoint['rules']['$get'],
+  200
+>
+type ConnectionAlertEventsResponse = InferResponseType<
+  ConnectionAlertsEndpoint['events']['$get'],
+  200
+>
 type CreateAlertRuleResponse = InferResponseType<ConnectionAlertsEndpoint['rules']['$post'], 201>
 type UpdateAlertRuleResponse = InferResponseType<
   ConnectionAlertsEndpoint['rules'][':ruleId']['$patch'],
@@ -104,8 +110,10 @@ export interface AlertEventFilterOptions {
 export const alertKeys = {
   all: ['alerts'] as const,
   summary: () => ['alerts', 'summary'] as const,
-  globalEvents: (filters: AlertEventFilterOptions = {}) => ['alerts', 'global-events', filters] as const,
-  connectionRules: (connectionId: string) => ['alerts', 'connection', connectionId, 'rules'] as const,
+  globalEvents: (filters: AlertEventFilterOptions = {}) =>
+    ['alerts', 'global-events', filters] as const,
+  connectionRules: (connectionId: string) =>
+    ['alerts', 'connection', connectionId, 'rules'] as const,
   connectionEvents: (connectionId: string, filters: AlertEventFilterOptions = {}) =>
     ['alerts', 'connection', connectionId, 'events', filters] as const,
 }

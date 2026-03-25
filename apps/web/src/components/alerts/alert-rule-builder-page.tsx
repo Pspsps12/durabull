@@ -10,7 +10,11 @@ import {
   validateAlertRuleDraft,
   type AlertRuleDraft,
 } from '@/components/alerts/alert-rule-form'
-import { AlertStatusBadge, AlertTypeBadge, getAlertTypeMeta } from '@/components/alerts/alert-primitives'
+import {
+  AlertStatusBadge,
+  AlertTypeBadge,
+  getAlertTypeMeta,
+} from '@/components/alerts/alert-primitives'
 import { QueueMultiSelect } from '@/components/alerts/queue-multi-select'
 import { useAppTopBar } from '@/components/app-top-bar'
 import { Badge } from '@/components/ui/badge'
@@ -48,7 +52,8 @@ const RULE_TYPE_EXAMPLES: Record<
   },
   failure_rate: {
     headline: 'Detect quality degradation over time',
-    example: 'Example: "If failure rate exceeds 12% over 15 minutes with at least 250 jobs, trigger."',
+    example:
+      'Example: "If failure rate exceeds 12% over 15 minutes with at least 250 jobs, trigger."',
     note: 'Best for high-volume queues where raw failure counts are less meaningful than error ratio.',
   },
   queue_stalled: {
@@ -132,7 +137,6 @@ export function AlertRuleBuilderPage({
     draft.notificationRoutes.map((route) => route.target)
   )
 
-
   async function handleSubmit() {
     const validationError = validateAlertRuleDraft(draft)
     if (validationError) {
@@ -153,10 +157,13 @@ export function AlertRuleBuilderPage({
     try {
       const result = await onTest()
       setLastTestResult(result)
-      toast.success(result.evaluation.triggered ? 'Rule would fire right now' : 'Rule would stay quiet', {
-        description:
-          result.evaluation.summary || 'The live queue snapshot did not trigger this rule.',
-      })
+      toast.success(
+        result.evaluation.triggered ? 'Rule would fire right now' : 'Rule would stay quiet',
+        {
+          description:
+            result.evaluation.summary || 'The live queue snapshot did not trigger this rule.',
+        }
+      )
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to run a live test.'
       setErrorMessage(message)
@@ -184,8 +191,9 @@ export function AlertRuleBuilderPage({
                   {mode === 'create' ? 'Author a durable alert policy' : 'Refine this alert policy'}
                 </h2>
                 <p className="max-w-3xl text-sm leading-7 text-muted-foreground sm:text-base">
-                  Build an alert the way an operator thinks: choose the failure model, target the right
-                  queues, route notifications, and verify the rule before it lands in production.
+                  Build an alert the way an operator thinks: choose the failure model, target the
+                  right queues, route notifications, and verify the rule before it lands in
+                  production.
                 </p>
               </div>
             </div>
@@ -250,9 +258,16 @@ export function AlertRuleBuilderPage({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm font-semibold">{meta.label}</span>
-                    {isActive ? <span className="text-xs uppercase tracking-wide">Selected</span> : null}
+                    {isActive ? (
+                      <span className="text-xs uppercase tracking-wide">Selected</span>
+                    ) : null}
                   </div>
-                  <p className={cn('mt-3 text-sm leading-6', isActive ? 'text-background/80' : 'text-muted-foreground')}>
+                  <p
+                    className={cn(
+                      'mt-3 text-sm leading-6',
+                      isActive ? 'text-background/80' : 'text-muted-foreground'
+                    )}
+                  >
                     {meta.description}
                   </p>
                 </button>
@@ -278,7 +293,9 @@ export function AlertRuleBuilderPage({
             <QueueMultiSelect
               availableQueues={availableQueues}
               selectedQueueNames={draft.selectedQueueNames}
-              onSelectedQueueNamesChange={(selectedQueueNames) => updateDraft({ selectedQueueNames })}
+              onSelectedQueueNamesChange={(selectedQueueNames) =>
+                updateDraft({ selectedQueueNames })
+              }
               queueFilterMode={draft.queueFilterMode}
               onQueueFilterModeChange={(queueFilterMode) =>
                 updateDraft({ queueFilterMode, selectedQueueNames: [] })
@@ -374,7 +391,10 @@ export function AlertRuleBuilderPage({
             </div>
 
             {draft.notificationRoutes.map((route, index) => (
-              <div key={route.id} className="grid grid-cols-[140px_minmax(0,1fr)_auto] items-center gap-3">
+              <div
+                key={route.id}
+                className="grid grid-cols-[140px_minmax(0,1fr)_auto] items-center gap-3"
+              >
                 <div className="inline-flex items-center gap-2 text-sm font-medium">
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   Email
@@ -394,10 +414,14 @@ export function AlertRuleBuilderPage({
                   variant="ghost"
                   size="icon"
                   onClick={() => {
-                    const notificationRoutes = draft.notificationRoutes.filter((current) => current.id !== route.id)
+                    const notificationRoutes = draft.notificationRoutes.filter(
+                      (current) => current.id !== route.id
+                    )
                     updateDraft({
                       notificationRoutes:
-                        notificationRoutes.length > 0 ? notificationRoutes : [createNotificationRouteDraft()],
+                        notificationRoutes.length > 0
+                          ? notificationRoutes
+                          : [createNotificationRouteDraft()],
                     })
                   }}
                   aria-label={`Remove email route ${index + 1}`}
@@ -429,8 +453,14 @@ export function AlertRuleBuilderPage({
 
           <div className="mt-6 border border-dashed border-border/70 bg-muted/10 px-4 py-4">
             <div className="grid gap-3 md:grid-cols-2">
-              <ComingSoonRoute label="Slack" description="Post incidents to channel-based on-call flows." />
-              <ComingSoonRoute label="Linear" description="Open issues directly from alert policy routing." />
+              <ComingSoonRoute
+                label="Slack"
+                description="Post incidents to channel-based on-call flows."
+              />
+              <ComingSoonRoute
+                label="Linear"
+                description="Open issues directly from alert policy routing."
+              />
             </div>
           </div>
         </BuilderSection>
@@ -448,7 +478,9 @@ export function AlertRuleBuilderPage({
                   type="button"
                   className={cn(
                     'px-4 py-2 text-sm transition-colors',
-                    draft.enabled ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
+                    draft.enabled
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground hover:text-foreground'
                   )}
                   onClick={() => updateDraft({ enabled: true })}
                 >
@@ -458,7 +490,9 @@ export function AlertRuleBuilderPage({
                   type="button"
                   className={cn(
                     'border-l border-border/70 px-4 py-2 text-sm transition-colors',
-                    !draft.enabled ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
+                    !draft.enabled
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground hover:text-foreground'
                   )}
                   onClick={() => updateDraft({ enabled: false })}
                 >
@@ -504,9 +538,18 @@ export function AlertRuleBuilderPage({
 
         <FlatPanel title="Helpful guidance">
           <ul className="space-y-3 text-sm leading-6 text-muted-foreground">
-            <li>Prefer failure threshold for sudden breakages and failure rate for noisy, high-volume queues.</li>
-            <li>Use all-queues mode for shared platform protections; use specific queues for owner-scoped incidents.</li>
-            <li>Keep cooldowns long enough to avoid paging fatigue, but short enough to notice persistent regressions.</li>
+            <li>
+              Prefer failure threshold for sudden breakages and failure rate for noisy, high-volume
+              queues.
+            </li>
+            <li>
+              Use all-queues mode for shared platform protections; use specific queues for
+              owner-scoped incidents.
+            </li>
+            <li>
+              Keep cooldowns long enough to avoid paging fatigue, but short enough to notice
+              persistent regressions.
+            </li>
           </ul>
         </FlatPanel>
 
@@ -578,7 +621,12 @@ function NumberField({
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} inputMode="numeric" value={value} onChange={(event) => onChange(event.target.value)} />
+      <Input
+        id={id}
+        inputMode="numeric"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
       <p className="text-sm text-muted-foreground">{helper}</p>
       <p className="font-mono text-xs text-muted-foreground">{example}</p>
     </div>

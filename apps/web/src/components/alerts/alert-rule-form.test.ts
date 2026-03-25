@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   createAlertRuleDraft,
+  normalizeNotificationEmails,
+  normalizeQueueNames,
   serializeAlertRuleDraft,
   validateAlertRuleDraft,
 } from '@/components/alerts/alert-rule-form'
@@ -136,6 +138,49 @@ describe('alert rule form helpers', () => {
     expect(error).toContain('Invalid notification email')
   })
 
+  it('rejects a blank rule name', () => {
+    const error = validateAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: '   ',
+      queueFilterMode: 'exclude',
+    })
+
+    expect(error).toBe('Rule name is required.')
+  })
+
+  it('rejects cooldown values outside the supported range', () => {
+    const tooSmall = validateAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Cooldown too small',
+      queueFilterMode: 'exclude',
+      cooldownMinutes: '0',
+    })
+    const notWholeNumber = validateAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Cooldown not whole',
+      queueFilterMode: 'exclude',
+      cooldownMinutes: '12.5',
+    })
+
+    expect(tooSmall).toBe('Cooldown must be a whole number between 1 and 1440 minutes.')
+    expect(notWholeNumber).toBe('Cooldown must be a whole number between 1 and 1440 minutes.')
+  })
+
+  it('rejects more than ten distinct notification emails', () => {
+    const error = validateAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Too many recipients',
+      queueFilterMode: 'exclude',
+      notificationRoutes: Array.from({ length: 11 }, (_, index) => ({
+        id: `route-${index}`,
+        type: 'email' as const,
+        target: `ops-${index}@example.com`,
+      })),
+    })
+
+    expect(error).toBe('You can configure up to 10 notification email recipients.')
+  })
+
   it('rejects out-of-range failure threshold windows', () => {
     const error = validateAlertRuleDraft({
       ...createAlertRuleDraft(),
@@ -147,6 +192,88 @@ describe('alert rule form helpers', () => {
     })
 
     expect(error).toBe('Failure threshold window must be between 1 and 1440 minutes.')
+  })
+
+  it('rejects out-of-range failure threshold counts', () => {
+    const error = validateAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Threshold count',
+      queueFilterMode: 'exclude',
+      type: 'failure_threshold',
+      failureThresholdCount: '0',
+      failureThresholdWindowMinutes: '5',
+    })
+
+    expect(error).toBe('Failure threshold count must be a whole number between 1 and 10000.')
+  })
+
+  it('rejects invalid failure rate settings', () => {
+    const invalidPercent = validateAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Invalid rate',
+      queueFilterMode: 'exclude',
+      type: 'failure_rate',
+      failureRatePercent: '0',
+      failureRateWindowMinutes: '15',
+      failureRateMinSample: '100',
+    })
+    const invalidMinSample = validateAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Invalid min sample',
+      queueFilterMode: 'exclude',
+      type: 'failure_rate',
+      failureRatePercent: '12.5',
+      failureRateWindowMinutes: '15',
+      failureRateMinSample: '100001',
+    })
+
+    expect(invalidPercent).toBe('Failure rate must be between 1 and 100 percent.')
+    expect(invalidMinSample).toBe('Minimum sample must be a whole number between 1 and 100000.')
+  })
+
+  it('rejects invalid stalled queue windows', () => {
+    const error = validateAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Stalled queue',
+      queueFilterMode: 'exclude',
+      type: 'queue_stalled',
+      stalledMinutes: '1441',
+    })
+
+    expect(error).toBe('Stalled window must be a whole number between 1 and 1440 minutes.')
+  })
+
+  it('serializes stalled queue rules with the correct config shape', () => {
+    const payloads = serializeAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Workers stopped',
+      queueFilterMode: 'exclude',
+      type: 'queue_stalled',
+      stalledMinutes: '12',
+    })
+
+    expect(payloads[0]).toMatchObject({
+      type: 'queue_stalled',
+      config: {
+        stalledMinutes: 12,
+      },
+    })
+  })
+
+  it('normalizes notification emails and queue names by trimming and deduping', () => {
+    expect(
+      normalizeNotificationEmails([
+        ' ops@example.com ',
+        '',
+        'ops@example.com',
+        'platform@example.com',
+      ])
+    ).toEqual(['ops@example.com', 'platform@example.com'])
+
+    expect(normalizeQueueNames([' email-send ', 'email-send', '', 'sms-send'])).toEqual([
+      'email-send',
+      'sms-send',
+    ])
   })
 
   it('hydrates draft from an existing exclude-mode rule', () => {

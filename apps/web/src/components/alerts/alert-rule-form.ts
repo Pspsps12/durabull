@@ -1,5 +1,10 @@
 import { z } from 'zod'
-import type { AlertRuleMutationInput, AlertRuleRecord, AlertRuleType, QueueFilterMode } from '@/hooks/use-alerts'
+import type {
+  AlertRuleMutationInput,
+  AlertRuleRecord,
+  AlertRuleType,
+  QueueFilterMode,
+} from '@/hooks/use-alerts'
 
 const emailSchema = z.string().email()
 
@@ -38,7 +43,8 @@ export function createAlertRuleDraft(rule?: AlertRuleRecord | null): AlertRuleDr
       selectedQueueNames = filterList
     } else {
       queueFilterMode = 'include'
-      selectedQueueNames = filterList.length > 0 ? filterList : rule.queueName?.trim() ? [rule.queueName.trim()] : []
+      selectedQueueNames =
+        filterList.length > 0 ? filterList : rule.queueName?.trim() ? [rule.queueName.trim()] : []
     }
   }
 
@@ -75,7 +81,10 @@ function extractNotificationRoutes(rule?: AlertRuleRecord | null): NotificationR
 
 export function createNotificationRouteDraft(sequence = 0, target = ''): NotificationRouteDraft {
   return {
-    id: sequence > 0 ? `email-route-${sequence}` : `email-route-${Math.random().toString(36).slice(2, 10)}`,
+    id:
+      sequence > 0
+        ? `email-route-${sequence}`
+        : `email-route-${Math.random().toString(36).slice(2, 10)}`,
     type: 'email',
     target,
   }
@@ -177,17 +186,19 @@ export function serializeAlertRuleDraft(draft: AlertRuleDraft): AlertRuleMutatio
   const config = buildAlertRuleConfig(type, draft)
   const cooldownMinutes = parseWholeNumber(draft.cooldownMinutes) ?? 30
 
-  return [{
-    name: baseName,
-    type,
-    queueName: null,
-    queueFilterMode: draft.queueFilterMode,
-    filterQueueNames: normalizeQueueNames(draft.selectedQueueNames),
-    enabled: draft.enabled,
-    cooldownMinutes,
-    notificationChannels,
-    config,
-  }]
+  return [
+    {
+      name: baseName,
+      type,
+      queueName: null,
+      queueFilterMode: draft.queueFilterMode,
+      filterQueueNames: normalizeQueueNames(draft.selectedQueueNames),
+      enabled: draft.enabled,
+      cooldownMinutes,
+      notificationChannels,
+      config,
+    },
+  ]
 }
 
 function buildAlertRuleConfig(type: AlertRuleType, draft: AlertRuleDraft): Record<string, unknown> {
