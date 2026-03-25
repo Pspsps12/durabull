@@ -174,7 +174,7 @@ export function validateAlertRuleDraft(draft: AlertRuleDraft): string | null {
   }
 }
 
-export function serializeAlertRuleDraft(draft: AlertRuleDraft): AlertRuleMutationInput[] {
+export function serializeAlertRuleDraft(draft: AlertRuleDraft): AlertRuleMutationInput {
   const type = draft.type
   const baseName = draft.name.trim()
   const notificationChannels = normalizeNotificationEmails(
@@ -186,19 +186,17 @@ export function serializeAlertRuleDraft(draft: AlertRuleDraft): AlertRuleMutatio
   const config = buildAlertRuleConfig(type, draft)
   const cooldownMinutes = parseWholeNumber(draft.cooldownMinutes) ?? 30
 
-  return [
-    {
-      name: baseName,
-      type,
-      queueName: null,
-      queueFilterMode: draft.queueFilterMode,
-      filterQueueNames: normalizeQueueNames(draft.selectedQueueNames),
-      enabled: draft.enabled,
-      cooldownMinutes,
-      notificationChannels,
-      config,
-    },
-  ]
+  return {
+    name: baseName,
+    type,
+    queueName: null,
+    queueFilterMode: draft.queueFilterMode,
+    filterQueueNames: normalizeQueueNames(draft.selectedQueueNames),
+    enabled: draft.enabled,
+    cooldownMinutes,
+    notificationChannels,
+    config,
+  }
 }
 
 function buildAlertRuleConfig(type: AlertRuleType, draft: AlertRuleDraft): Record<string, unknown> {

@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import { getDb } from '../db/client'
 import {
   alertRule,
@@ -99,13 +99,13 @@ export const alertRuleRepository = {
 
   async countByConnection(connectionId: string, organizationId: string): Promise<number> {
     const db = await getDb()
-    const rows = await db
-      .select({ id: alertRule.id })
+    const [row] = await db
+      .select({ count: sql<number>`count(*)` })
       .from(alertRule)
       .where(
         and(eq(alertRule.connectionId, connectionId), eq(alertRule.organizationId, organizationId))
       )
 
-    return rows.length
+    return Number(row?.count ?? 0)
   },
 }

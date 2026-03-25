@@ -540,6 +540,32 @@
     {
       "type": "text",
       "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "queue_filter_mode",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "alert_rule"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": "'[]'",
+      "generated": null,
+      "identity": null,
+      "name": "filter_queue_names",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "alert_rule"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
       "default": null,
@@ -1712,6 +1738,35 @@
       "entityType": "indexes",
       "schema": "public",
       "table": "redis_discovered_queue"
+    },
+    {
+      "name": "alert_rule_conn_org_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "alert_rule",
+      "columns": [
+        "connection_id",
+        "organization_id"
+      ],
+      "isUnique": false,
+      "with": null,
+      "where": null,
+      "method": "btree",
+      "concurrently": false
+    },
+    {
+      "name": "alert_rule_enabled_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "alert_rule",
+      "columns": [
+        "enabled"
+      ],
+      "isUnique": false,
+      "with": null,
+      "where": "\"enabled\" = true",
+      "method": "btree",
+      "concurrently": false
     },
     {
       "nameExplicit": false,

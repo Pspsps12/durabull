@@ -217,14 +217,14 @@ function invalidateAlertQueries(queryClient: QueryClient, connectionId?: string)
   }
 }
 
-export function useAlertSummary() {
+export function useAlertSummary(options?: { refetchInterval?: number }) {
   return useQuery({
     queryKey: alertKeys.summary(),
     queryFn: async () => {
       const res = await api.alerts.summary.$get()
       return handleRes<AlertSummaryResponse>(res)
     },
-    refetchInterval: 15_000,
+    refetchInterval: options?.refetchInterval ?? 60_000,
   })
 }
 
