@@ -24,16 +24,11 @@ export function CreateAlertRuleRoute() {
       connectionName={currentConnection?.name}
       availableQueues={(queuesQuery.data?.queues ?? []).map((queue) => queue.name)}
       isSaving={createRuleMutation.isPending}
-      onSave={async (inputs) => {
-        for (const input of inputs) {
-          await createRuleMutation.mutateAsync(input)
-        }
+      onSave={async (input) => {
+        await createRuleMutation.mutateAsync(input)
 
-        toast.success(inputs.length === 1 ? 'Alert rule created' : 'Alert rules created', {
-          description:
-            inputs.length === 1
-              ? `${inputs[0]?.name ?? 'Rule'} is now being evaluated in the background.`
-              : `${inputs.length} queue-scoped alert rules were created from this builder.`,
+        toast.success('Alert rule created', {
+          description: `${input.name} is now being evaluated in the background.`,
         })
 
         navigate({

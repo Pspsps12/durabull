@@ -156,27 +156,24 @@ export const alertEventRepository = {
 
   async resolveAllForRule(alertRuleId: string): Promise<number> {
     const db = await getDb()
-    const rows = await db
-      .update(alertEvent)
-      .set({
-        status: 'resolved',
-        resolvedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(and(eq(alertEvent.alertRuleId, alertRuleId), eq(alertEvent.status, 'firing')))
-      .returning({ id: alertEvent.id })
+    const now = new Date()
+    const result = await db.execute(
+      sql`UPDATE ${alertEvent}
+          SET status = 'resolved', resolved_at = ${now}, updated_at = ${now}
+          WHERE ${alertEvent.alertRuleId} = ${alertRuleId}
+            AND ${alertEvent.status} = 'firing'`
+    )
 
-    return rows.length
+    return toNumber((result as { rowCount?: number }).rowCount)
   },
 
   async deleteOlderThan(days: number): Promise<number> {
     const db = await getDb()
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
-    const rows = await db
-      .delete(alertEvent)
-      .where(lt(alertEvent.firedAt, cutoff))
-      .returning({ id: alertEvent.id })
+    const result = await db.execute(
+      sql`DELETE FROM ${alertEvent} WHERE ${alertEvent.firedAt} < ${cutoff}`
+    )
 
-    return rows.length
+    return toNumber((result as { rowCount?: number }).rowCount)
   },
 }

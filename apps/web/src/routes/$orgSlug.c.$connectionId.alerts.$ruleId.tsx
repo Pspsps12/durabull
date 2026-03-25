@@ -44,12 +44,7 @@ export function EditAlertRuleRoute() {
       rule={rule}
       isSaving={updateRuleMutation.isPending}
       isTesting={testRuleMutation.isPending}
-      onSave={async (inputs) => {
-        const input = inputs[0]
-        if (!input) {
-          throw new Error('No alert rule payload was generated.')
-        }
-
+      onSave={async (input) => {
         await updateRuleMutation.mutateAsync({ ruleId, input })
         toast.success('Alert rule updated', {
           description: `${input.name} is now enforcing the latest policy.`,

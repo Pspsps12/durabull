@@ -1,4 +1,5 @@
 import type { AlertRule } from '@durabull/dal'
+import { z } from 'zod'
 
 export interface AlertEvaluation {
   triggered: boolean
@@ -35,13 +36,29 @@ export interface QueueStalledConfig {
   stalledMinutes: number
 }
 
+const failureThresholdConfigSchema = z.object({
+  count: z.number().int().min(1),
+  windowMinutes: z.number().int().min(1),
+})
+
+const failureRateConfigSchema = z.object({
+  rate: z.number().min(0.01).max(1),
+  windowMinutes: z.number().int().min(1),
+  minSample: z.number().int().min(1),
+})
+
+const queueStalledConfigSchema = z.object({
+  stalledMinutes: z.number().int().min(1),
+})
+
 function sum(values: number[]): number {
   return values.reduce((total, value) => total + value, 0)
 }
 
 /**
  * failure_threshold: ">= N NEW failures in M minutes"
- * Uses cursor delta so old failures don't re-trigger.
+ * Uses cursor delta scoped by the configured window so old failures don't re-trigger
+ * and monitor downtime doesn't produce false positives.
  */
 export function evaluateFailureThreshold(
   config: FailureThresholdConfig,
@@ -51,7 +68,18 @@ export function evaluateFailureThreshold(
   const currentFailed = snapshot.jobCounts.failed
   const previousFailed = cursor?.lastFailedCount ?? 0
   const delta = Math.max(0, currentFailed - previousFailed)
-  const triggered = delta >= config.count
+
+  // Only count the delta if the cursor falls within the configured window.
+  // If the monitor was down or the last check is older than the window, skip
+  // to avoid counting a large backlog as a sudden spike.
+  const minutesSinceLastCheck = cursor
+    ? (Date.now() - cursor.lastCheckedAt.getTime()) / 60_000
+    : Number.POSITIVE_INFINITY
+
+  // Allow a 10% tolerance beyond the window to account for polling jitter and clock drift
+  const windowWithTolerance = config.windowMinutes * 1.1
+  const withinWindow = minutesSinceLastCheck <= windowWithTolerance
+  const triggered = withinWindow && delta >= config.count
 
   return {
     triggered,
@@ -64,6 +92,8 @@ export function evaluateFailureThreshold(
       previousFailed,
       threshold: config.count,
       windowMinutes: config.windowMinutes,
+      minutesSinceLastCheck,
+      withinWindow,
     },
   }
 }
@@ -163,12 +193,27 @@ export function evaluateRule(
   const config = (rule.config ?? {}) as Record<string, unknown>
 
   switch (rule.type) {
-    case 'failure_threshold':
-      return evaluateFailureThreshold(config as unknown as FailureThresholdConfig, snapshot, cursor)
-    case 'failure_rate':
-      return evaluateFailureRate(config as unknown as FailureRateConfig, snapshot)
-    case 'queue_stalled':
-      return evaluateQueueStalled(config as unknown as QueueStalledConfig, snapshot, cursor)
+    case 'failure_threshold': {
+      const parsed = failureThresholdConfigSchema.safeParse(config)
+      if (!parsed.success) {
+        return { triggered: false, summary: `Invalid config for rule ${rule.id}: ${parsed.error.message}`, context: {} }
+      }
+      return evaluateFailureThreshold(parsed.data, snapshot, cursor)
+    }
+    case 'failure_rate': {
+      const parsed = failureRateConfigSchema.safeParse(config)
+      if (!parsed.success) {
+        return { triggered: false, summary: `Invalid config for rule ${rule.id}: ${parsed.error.message}`, context: {} }
+      }
+      return evaluateFailureRate(parsed.data, snapshot)
+    }
+    case 'queue_stalled': {
+      const parsed = queueStalledConfigSchema.safeParse(config)
+      if (!parsed.success) {
+        return { triggered: false, summary: `Invalid config for rule ${rule.id}: ${parsed.error.message}`, context: {} }
+      }
+      return evaluateQueueStalled(parsed.data, snapshot, cursor)
+    }
     default:
       return { triggered: false, summary: `Unknown rule type: ${rule.type}`, context: {} }
   }

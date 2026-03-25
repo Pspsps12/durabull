@@ -71,6 +71,25 @@ describe('alert evaluator', () => {
     expect(evaluation.summary).toBe('')
   })
 
+  it('does not fire failure threshold when cursor is outside the configured window', () => {
+    const cursor: CursorState = {
+      lastFailedCount: 10,
+      lastCompletedCount: 100,
+      lastCheckedAt: new Date(Date.now() - 120 * 60_000), // 2 hours ago (outside 5-min window)
+    }
+
+    const evaluation = evaluateFailureThreshold(
+      { count: 5, windowMinutes: 5 },
+      createSnapshot({
+        jobCounts: { failed: 100, waiting: 0, active: 0, completed: 200 },
+      }),
+      cursor
+    )
+
+    expect(evaluation.triggered).toBe(false)
+    expect(evaluation.context.withinWindow).toBe(false)
+  })
+
   it('uses metric datapoints when calculating failure rate', () => {
     const evaluation = evaluateFailureRate(
       { rate: 0.2, windowMinutes: 15, minSample: 20 },

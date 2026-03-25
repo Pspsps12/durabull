@@ -39,9 +39,13 @@ CREATE TABLE "alert_rule" (
 	"config" jsonb NOT NULL,
 	"enabled" boolean DEFAULT true NOT NULL,
 	"notification_channels" jsonb DEFAULT '[]' NOT NULL,
-	"cooldown_minutes" integer DEFAULT 30 NOT NULL
+	"cooldown_minutes" integer DEFAULT 30 NOT NULL,
+	"queue_filter_mode" text,
+	"filter_queue_names" jsonb DEFAULT '[]'
 );
 --> statement-breakpoint
+CREATE INDEX "alert_rule_conn_org_idx" ON "alert_rule" ("connection_id","organization_id");--> statement-breakpoint
+CREATE INDEX "alert_rule_enabled_idx" ON "alert_rule" ("enabled") WHERE "enabled" = true;--> statement-breakpoint
 CREATE UNIQUE INDEX "alert_check_cursor_connection_queue_idx" ON "alert_check_cursor" ("connection_id","queue_name");--> statement-breakpoint
 CREATE INDEX "alert_event_rule_id_status_idx" ON "alert_event" ("alert_rule_id","status");--> statement-breakpoint
 CREATE INDEX "alert_event_org_id_fired_at_idx" ON "alert_event" ("organization_id","fired_at");--> statement-breakpoint

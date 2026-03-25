@@ -56,7 +56,7 @@ export function ConnectionAlertsWorkspace({
   const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
   const [mutatingRuleId, setMutatingRuleId] = useState<string | null>(null)
 
-  const summaryQuery = useAlertSummary()
+  const summaryQuery = useAlertSummary({ refetchInterval: 15_000 })
   const rulesQuery = useConnectionAlertRules(connectionId)
   const eventsQuery = useConnectionAlertEvents(connectionId, {
     status: statusFilter === 'all' ? undefined : statusFilter,
@@ -88,7 +88,11 @@ export function ConnectionAlertsWorkspace({
       enabledRules: enabledRules.length,
       mutedRules,
       recipients: activeRecipients.size,
-      connectionWideRules: rules.filter((rule) => !rule.queueName).length,
+      connectionWideRules: rules.filter((rule) => {
+        if (rule.queueFilterMode === 'include' && rule.filterQueueNames.length > 0) return false
+        if (rule.queueName) return false
+        return true
+      }).length,
     }
   }, [rules])
 
@@ -130,6 +134,10 @@ export function ConnectionAlertsWorkspace({
       toast.success(enabled ? 'Alert rule enabled' : 'Alert rule muted', {
         description: `${rule.name} is ${enabled ? 'live again' : 'now muted'} for ${currentConnection?.name ?? 'this connection'}.`,
       })
+    } catch (error) {
+      toast.error('Failed to update rule', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred.',
+      })
     } finally {
       setMutatingRuleId(null)
     }
@@ -148,6 +156,10 @@ export function ConnectionAlertsWorkspace({
       toast.success('Alert rule deleted', {
         description: `${rule.name} was removed from this connection.`,
       })
+    } catch (error) {
+      toast.error('Failed to delete rule', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred.',
+      })
     } finally {
       setMutatingRuleId(null)
     }
@@ -159,6 +171,10 @@ export function ConnectionAlertsWorkspace({
       await resolveEventMutation.mutateAsync({ connectionId, eventId })
       toast.success('Incident resolved', {
         description: 'The alert event was marked resolved for this connection.',
+      })
+    } catch (error) {
+      toast.error('Failed to resolve incident', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred.',
       })
     } finally {
       setResolvingEventId(null)
@@ -256,7 +272,9 @@ export function ConnectionAlertsWorkspace({
         </div>
 
         <TabsContent value="rules" className="space-y-4">
-          {rulesQuery.isLoading ? (
+          {rulesQuery.isError ? (
+            <AlertErrorCard message="Failed to load alert rules. Please try refreshing the page." />
+          ) : rulesQuery.isLoading ? (
             <RulesLoadingState />
           ) : rules.length === 0 ? (
             <EmptyRulesState orgSlug={orgSlug} connectionId={connectionId} />
@@ -277,7 +295,9 @@ export function ConnectionAlertsWorkspace({
         </TabsContent>
 
         <TabsContent value="history" className="space-y-4">
-          {eventsQuery.isLoading ? (
+          {eventsQuery.isError ? (
+            <AlertErrorCard message="Failed to load alert events. Please try refreshing the page." />
+          ) : eventsQuery.isLoading ? (
             <EventsLoadingState />
           ) : (
             <AlertEventsTable
@@ -392,7 +412,11 @@ function RulesTable({
                   </Badge>
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {rule.queueName ?? 'All queues'}
+                  {rule.queueFilterMode === 'include' && rule.filterQueueNames.length > 0
+                    ? `${formatNumber(rule.filterQueueNames.length)} queue${rule.filterQueueNames.length === 1 ? '' : 's'}`
+                    : rule.queueFilterMode === 'exclude' && rule.filterQueueNames.length > 0
+                      ? `All except ${formatNumber(rule.filterQueueNames.length)}`
+                      : rule.queueName ?? 'All queues'}
                 </TableCell>
                 <TableCell className="font-mono text-xs tabular-nums">
                   {formatNumber(rule.cooldownMinutes)} min
@@ -506,6 +530,18 @@ function EventsLoadingState() {
         {Array.from({ length: 6 }, (_, index) => (
           <Skeleton key={index} className="h-14 rounded-xl" />
         ))}
+      </CardContent>
+    </Card>
+  )
+}
+
+function AlertErrorCard({ message }: { message: string }) {
+  return (
+    <Card className="border-destructive/30 bg-destructive/5">
+      <CardContent className="flex flex-col items-center justify-center py-10 text-center">
+        <ShieldCheck className="h-8 w-8 text-destructive" />
+        <h3 className="mt-4 text-lg font-semibold">Unable to load alert data</h3>
+        <p className="mt-2 max-w-md text-sm text-muted-foreground">{message}</p>
       </CardContent>
     </Card>
   )

@@ -119,11 +119,13 @@ const app = new Hono()
       return c.json({ error: 'Organization is required' }, 403)
     }
 
-    await alertEventRepository.resolveAllForRule(ruleId)
-    const deleted = await alertRuleRepository.delete(ruleId, organizationId)
-    if (!deleted) {
+    const existingRule = await alertRuleRepository.findById(ruleId, organizationId)
+    if (!existingRule) {
       return c.json({ error: 'Rule not found' }, 404)
     }
+
+    await alertEventRepository.resolveAllForRule(ruleId)
+    await alertRuleRepository.delete(ruleId, organizationId)
 
     return c.json({ success: true })
   })

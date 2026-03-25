@@ -19,7 +19,7 @@ describe('alert rule form helpers', () => {
   })
 
   it('serializes include-mode draft into a single rule with filterQueueNames', () => {
-    const payloads = serializeAlertRuleDraft({
+    const payload = serializeAlertRuleDraft({
       ...createAlertRuleDraft(),
       name: 'Quality regression',
       queueFilterMode: 'include',
@@ -35,8 +35,7 @@ describe('alert rule form helpers', () => {
       ],
     })
 
-    expect(payloads).toHaveLength(1)
-    expect(payloads[0]).toEqual({
+    expect(payload).toEqual({
       name: 'Quality regression',
       queueName: null,
       queueFilterMode: 'include',
@@ -57,15 +56,14 @@ describe('alert rule form helpers', () => {
   })
 
   it('stores multiple included queues in a single rule', () => {
-    const payloads = serializeAlertRuleDraft({
+    const payload = serializeAlertRuleDraft({
       ...createAlertRuleDraft(),
       name: 'Delivery spike',
       queueFilterMode: 'include',
       selectedQueueNames: ['email-send', 'invoice-send'],
     })
 
-    expect(payloads).toHaveLength(1)
-    expect(payloads[0]).toMatchObject({
+    expect(payload).toMatchObject({
       name: 'Delivery spike',
       queueFilterMode: 'include',
       filterQueueNames: ['email-send', 'invoice-send'],
@@ -73,15 +71,14 @@ describe('alert rule form helpers', () => {
   })
 
   it('serializes exclude-mode draft with excluded queue names', () => {
-    const payloads = serializeAlertRuleDraft({
+    const payload = serializeAlertRuleDraft({
       ...createAlertRuleDraft(),
       name: 'Platform-wide spike',
       queueFilterMode: 'exclude',
       selectedQueueNames: ['debug-queue', 'test-queue'],
     })
 
-    expect(payloads).toHaveLength(1)
-    expect(payloads[0]).toMatchObject({
+    expect(payload).toMatchObject({
       name: 'Platform-wide spike',
       queueName: null,
       queueFilterMode: 'exclude',
@@ -90,15 +87,14 @@ describe('alert rule form helpers', () => {
   })
 
   it('creates an all-queues rule when exclude mode has no exclusions', () => {
-    const payloads = serializeAlertRuleDraft({
+    const payload = serializeAlertRuleDraft({
       ...createAlertRuleDraft(),
       name: 'Catch all failures',
       queueFilterMode: 'exclude',
       selectedQueueNames: [],
     })
 
-    expect(payloads).toHaveLength(1)
-    expect(payloads[0]).toMatchObject({
+    expect(payload).toMatchObject({
       queueName: null,
       queueFilterMode: 'exclude',
       filterQueueNames: [],
@@ -244,7 +240,7 @@ describe('alert rule form helpers', () => {
   })
 
   it('serializes stalled queue rules with the correct config shape', () => {
-    const payloads = serializeAlertRuleDraft({
+    const payload = serializeAlertRuleDraft({
       ...createAlertRuleDraft(),
       name: 'Workers stopped',
       queueFilterMode: 'exclude',
@@ -252,7 +248,7 @@ describe('alert rule form helpers', () => {
       stalledMinutes: '12',
     })
 
-    expect(payloads[0]).toMatchObject({
+    expect(payload).toMatchObject({
       type: 'queue_stalled',
       config: {
         stalledMinutes: 12,

@@ -81,11 +81,14 @@ export function AlertRuleBuilderPage({
   const typeMeta = getAlertTypeMeta(draft.type)
   const exampleMeta = RULE_TYPE_EXAMPLES[draft.type]
 
+  const ruleId = rule?.id
   useEffect(() => {
     setDraft(createAlertRuleDraft(rule))
     setErrorMessage(null)
     setLastTestResult(null)
-  }, [rule])
+    // Only reset when the rule identity changes, not on every refetch
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ruleId])
 
   const topBarConfig = useMemo(
     () => ({

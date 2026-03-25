@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { motion } from 'framer-motion'
+import { toast } from 'sonner'
 import { ArrowRight, BellRing, Cable, Link2, Radar, ShieldAlert, Sparkles } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { AlertEventsTable } from '@/components/alerts/alert-events-table'
@@ -32,7 +33,7 @@ function OrganizationAlertsPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | AlertEventStatus>('all')
   const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
 
-  const summaryQuery = useAlertSummary()
+  const summaryQuery = useAlertSummary({ refetchInterval: 15_000 })
   const eventsQuery = useGlobalAlertEvents({
     status: statusFilter === 'all' ? undefined : statusFilter,
     limit: 100,
@@ -111,6 +112,10 @@ function OrganizationAlertsPage() {
         connectionId: event.connectionId,
         eventId: event.id,
       })
+    } catch (error) {
+      toast.error('Failed to resolve incident', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred.',
+      })
     } finally {
       setResolvingEventId(null)
     }
@@ -186,7 +191,17 @@ function OrganizationAlertsPage() {
         </div>
       </motion.section>
 
-      {summaryQuery.isLoading ? (
+      {summaryQuery.isError || eventsQuery.isError ? (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="flex flex-col items-center justify-center py-10 text-center">
+            <ShieldAlert className="h-8 w-8 text-destructive" />
+            <h3 className="mt-4 text-lg font-semibold">Unable to load alert data</h3>
+            <p className="mt-2 max-w-md text-sm text-muted-foreground">
+              Failed to fetch alert data. Please try refreshing the page.
+            </p>
+          </CardContent>
+        </Card>
+      ) : summaryQuery.isLoading ? (
         <ConnectionRowLoadingState />
       ) : connectionRows.length > 0 ? (
         <div className="grid gap-4 xl:grid-cols-3">

@@ -16,6 +16,7 @@ const DEFAULT_POLL_INTERVAL_MS = 60_000
 const MAX_STARTUP_JITTER_MS = 30_000
 const CONNECTION_TIMEOUT_MS = 30_000
 const MAX_CONCURRENT_CONNECTIONS = 3
+const MAX_CONCURRENT_QUEUES = 5
 const METRICS_WINDOW_MINUTES = 60
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000
 const EVENT_RETENTION_DAYS = 90
@@ -24,6 +25,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let cleanupTimer: ReturnType<typeof setInterval> | null = null
 let startupTimer: ReturnType<typeof setTimeout> | null = null
 let isRunning = false
+let pollInProgress = false
 
 function getPollIntervalMs(): number {
   return Math.max(5_000, env.DURABULL_ALERT_POLL_INTERVAL_MS ?? DEFAULT_POLL_INTERVAL_MS)
@@ -156,6 +158,9 @@ export function stopAlertMonitor(): void {
 }
 
 async function runPollCycle(): Promise<void> {
+  if (pollInProgress) return
+  pollInProgress = true
+
   try {
     const rules = await alertRuleRepository.findAllEnabled()
     if (rules.length === 0) return
@@ -180,11 +185,16 @@ async function runPollCycle(): Promise<void> {
     )
   } catch (error) {
     console.error('[alert-monitor] Poll cycle failed:', error)
+  } finally {
+    pollInProgress = false
   }
 }
 
 async function processConnection(connectionId: string, rules: AlertRule[]): Promise<void> {
   try {
+    // findByIdUnsafe bypasses org-scoping because the background monitor needs to
+    // access connections across all organizations. Access is implicitly scoped via
+    // the alert rules, which are always org-scoped when created through the API.
     const connection = await redisConnectionRepository.findByIdUnsafe(connectionId)
     if (!connection) return
 
@@ -195,7 +205,7 @@ async function processConnection(connectionId: string, rules: AlertRule[]): Prom
     const cursors = await alertCheckCursorRepository.findByConnection(connectionId)
     const cursorMap = new Map(cursors.map((cursor) => [cursor.queueName, cursor]))
 
-    for (const queueName of queueNames) {
+    await processWithConcurrency(queueNames, MAX_CONCURRENT_QUEUES, async (queueName) => {
       const queue = await getQueue(connectionId, connection.url, queueName)
 
       const [jobCountsRaw, failedMetricsRaw, completedMetricsRaw] = await Promise.all([
@@ -249,7 +259,7 @@ async function processConnection(connectionId: string, rules: AlertRule[]): Prom
           completedMetrics: snapshot.completedMetrics,
         },
       })
-    }
+    })
   } catch (error) {
     console.error(`[alert-monitor] Connection ${connectionId} failed:`, error)
   }
