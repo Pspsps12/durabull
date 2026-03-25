@@ -196,21 +196,33 @@ export function evaluateRule(
     case 'failure_threshold': {
       const parsed = failureThresholdConfigSchema.safeParse(config)
       if (!parsed.success) {
-        return { triggered: false, summary: `Invalid config for rule ${rule.id}: ${parsed.error.message}`, context: {} }
+        return {
+          triggered: false,
+          summary: `Invalid config for rule ${rule.id}: ${parsed.error.message}`,
+          context: {},
+        }
       }
       return evaluateFailureThreshold(parsed.data, snapshot, cursor)
     }
     case 'failure_rate': {
       const parsed = failureRateConfigSchema.safeParse(config)
       if (!parsed.success) {
-        return { triggered: false, summary: `Invalid config for rule ${rule.id}: ${parsed.error.message}`, context: {} }
+        return {
+          triggered: false,
+          summary: `Invalid config for rule ${rule.id}: ${parsed.error.message}`,
+          context: {},
+        }
       }
       return evaluateFailureRate(parsed.data, snapshot)
     }
     case 'queue_stalled': {
       const parsed = queueStalledConfigSchema.safeParse(config)
       if (!parsed.success) {
-        return { triggered: false, summary: `Invalid config for rule ${rule.id}: ${parsed.error.message}`, context: {} }
+        return {
+          triggered: false,
+          summary: `Invalid config for rule ${rule.id}: ${parsed.error.message}`,
+          context: {},
+        }
       }
       return evaluateQueueStalled(parsed.data, snapshot, cursor)
     }

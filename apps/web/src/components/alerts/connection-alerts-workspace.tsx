@@ -416,7 +416,7 @@ function RulesTable({
                     ? `${formatNumber(rule.filterQueueNames.length)} queue${rule.filterQueueNames.length === 1 ? '' : 's'}`
                     : rule.queueFilterMode === 'exclude' && rule.filterQueueNames.length > 0
                       ? `All except ${formatNumber(rule.filterQueueNames.length)}`
-                      : rule.queueName ?? 'All queues'}
+                      : (rule.queueName ?? 'All queues')}
                 </TableCell>
                 <TableCell className="font-mono text-xs tabular-nums">
                   {formatNumber(rule.cooldownMinutes)} min
