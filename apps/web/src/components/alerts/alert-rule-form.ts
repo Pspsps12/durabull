@@ -199,6 +199,27 @@ export function serializeAlertRuleDraft(draft: AlertRuleDraft): AlertRuleMutatio
   }
 }
 
+export function serializeAlertRuleDraftsForMode(
+  draft: AlertRuleDraft,
+  mode: 'create' | 'edit'
+): AlertRuleMutationInput[] {
+  const input = serializeAlertRuleDraft(draft)
+  const filterQueueNames = input.filterQueueNames ?? []
+
+  if (mode !== 'create') {
+    return [input]
+  }
+
+  if (input.queueFilterMode !== 'include' || filterQueueNames.length <= 1) {
+    return [input]
+  }
+
+  return filterQueueNames.map((queueName) => ({
+    ...input,
+    filterQueueNames: [queueName],
+  }))
+}
+
 function buildAlertRuleConfig(type: AlertRuleType, draft: AlertRuleDraft): Record<string, unknown> {
   switch (type) {
     case 'failure_threshold':

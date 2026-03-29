@@ -51,6 +51,21 @@ describe('alert evaluator', () => {
     expect(evaluation.context.delta).toBe(7)
   })
 
+  it('uses failed metrics as the baseline when no cursor exists yet', () => {
+    const evaluation = evaluateFailureThreshold(
+      { count: 5, windowMinutes: 5 },
+      createSnapshot({
+        jobCounts: { failed: 42, waiting: 0, active: 0, completed: 200 },
+        failedMetrics: { count: 42, dataPoints: [2, 3, 4] },
+      }),
+      null
+    )
+
+    expect(evaluation.triggered).toBe(true)
+    expect(evaluation.context.delta).toBe(9)
+    expect(evaluation.context.usedMetricsBaseline).toBe(true)
+  })
+
   it('clamps negative failure deltas to zero', () => {
     const cursor: CursorState = {
       lastFailedCount: 90,

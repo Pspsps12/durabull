@@ -55,6 +55,10 @@ function sum(values: number[]): number {
   return values.reduce((total, value) => total + value, 0)
 }
 
+function getMetricWindowCount(metrics: { count: number; dataPoints: number[] }): number {
+  return metrics.dataPoints.length > 0 ? sum(metrics.dataPoints) : metrics.count
+}
+
 /**
  * failure_threshold: ">= N NEW failures in M minutes"
  * Uses cursor delta scoped by the configured window so old failures don't re-trigger
@@ -66,19 +70,20 @@ export function evaluateFailureThreshold(
   cursor: CursorState | null
 ): AlertEvaluation {
   const currentFailed = snapshot.jobCounts.failed
+  const failuresInWindow = getMetricWindowCount(snapshot.failedMetrics)
   const previousFailed = cursor?.lastFailedCount ?? 0
-  const delta = Math.max(0, currentFailed - previousFailed)
+  const delta = cursor ? Math.max(0, currentFailed - previousFailed) : failuresInWindow
 
   // Only count the delta if the cursor falls within the configured window.
   // If the monitor was down or the last check is older than the window, skip
   // to avoid counting a large backlog as a sudden spike.
   const minutesSinceLastCheck = cursor
     ? (Date.now() - cursor.lastCheckedAt.getTime()) / 60_000
-    : Number.POSITIVE_INFINITY
+    : 0
 
   // Allow a 10% tolerance beyond the window to account for polling jitter and clock drift
   const windowWithTolerance = config.windowMinutes * 1.1
-  const withinWindow = minutesSinceLastCheck <= windowWithTolerance
+  const withinWindow = cursor ? minutesSinceLastCheck <= windowWithTolerance : true
   const triggered = withinWindow && delta >= config.count
 
   return {
@@ -90,10 +95,12 @@ export function evaluateFailureThreshold(
       delta,
       currentFailed,
       previousFailed,
+      failuresInWindow,
       threshold: config.count,
       windowMinutes: config.windowMinutes,
       minutesSinceLastCheck,
       withinWindow,
+      usedMetricsBaseline: cursor === null,
     },
   }
 }
@@ -106,14 +113,8 @@ export function evaluateFailureRate(
   config: FailureRateConfig,
   snapshot: QueueSnapshot
 ): AlertEvaluation {
-  const failedInWindow =
-    snapshot.failedMetrics.dataPoints.length > 0
-      ? sum(snapshot.failedMetrics.dataPoints)
-      : snapshot.failedMetrics.count
-  const completedInWindow =
-    snapshot.completedMetrics.dataPoints.length > 0
-      ? sum(snapshot.completedMetrics.dataPoints)
-      : snapshot.completedMetrics.count
+  const failedInWindow = getMetricWindowCount(snapshot.failedMetrics)
+  const completedInWindow = getMetricWindowCount(snapshot.completedMetrics)
   const totalProcessed = failedInWindow + completedInWindow
 
   if (totalProcessed < config.minSample) {
@@ -152,10 +153,7 @@ export function evaluateQueueStalled(
   cursor: CursorState | null
 ): AlertEvaluation {
   const hasWorkInQueue = snapshot.jobCounts.waiting > 0 || snapshot.jobCounts.active > 0
-  const completedInWindow =
-    snapshot.completedMetrics.dataPoints.length > 0
-      ? sum(snapshot.completedMetrics.dataPoints)
-      : snapshot.completedMetrics.count
+  const completedInWindow = getMetricWindowCount(snapshot.completedMetrics)
   const completionDelta = cursor
     ? Math.max(0, snapshot.jobCounts.completed - cursor.lastCompletedCount)
     : 0

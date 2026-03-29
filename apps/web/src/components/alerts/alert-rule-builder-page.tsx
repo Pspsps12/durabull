@@ -1,12 +1,12 @@
 import { Link } from '@tanstack/react-router'
 import { BellRing, ChevronLeft, ChevronRight, Mail, Plus, TestTube2, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   createAlertRuleDraft,
   createNotificationRouteDraft,
   normalizeNotificationEmails,
-  serializeAlertRuleDraft,
+  serializeAlertRuleDraftsForMode,
   validateAlertRuleDraft,
   type AlertRuleDraft,
 } from '@/components/alerts/alert-rule-form'
@@ -21,7 +21,12 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import type { AlertRuleRecord, AlertRuleType, AlertTestResult } from '@/hooks/use-alerts'
+import type {
+  AlertRuleMutationInput,
+  AlertRuleRecord,
+  AlertRuleType,
+  AlertTestResult,
+} from '@/hooks/use-alerts'
 import { cn, formatNumber } from '@/lib/utils'
 
 interface AlertRuleBuilderPageProps {
@@ -31,7 +36,7 @@ interface AlertRuleBuilderPageProps {
   connectionName?: string | null
   availableQueues: string[]
   rule?: AlertRuleRecord | null
-  onSave: (inputs: ReturnType<typeof serializeAlertRuleDraft>) => Promise<void>
+  onSave: (inputs: AlertRuleMutationInput[]) => Promise<void>
   onTest?: () => Promise<AlertTestResult>
   isSaving?: boolean
   isTesting?: boolean
@@ -80,15 +85,6 @@ export function AlertRuleBuilderPage({
   const [lastTestResult, setLastTestResult] = useState<AlertTestResult | null>(null)
   const typeMeta = getAlertTypeMeta(draft.type)
   const exampleMeta = RULE_TYPE_EXAMPLES[draft.type]
-
-  const ruleId = rule?.id
-  useEffect(() => {
-    setDraft(createAlertRuleDraft(rule))
-    setErrorMessage(null)
-    setLastTestResult(null)
-    // Only reset when the rule identity changes, not on every refetch
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ruleId])
 
   const topBarConfig = useMemo(
     () => ({
@@ -148,7 +144,7 @@ export function AlertRuleBuilderPage({
     }
 
     try {
-      await onSave(serializeAlertRuleDraft(draft))
+      await onSave(serializeAlertRuleDraftsForMode(draft, mode))
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to save the alert rule.')
     }

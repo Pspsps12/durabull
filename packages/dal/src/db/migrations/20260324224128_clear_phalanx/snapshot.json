@@ -1744,24 +1744,49 @@
       "entityType": "indexes",
       "schema": "public",
       "table": "alert_rule",
-      "columns": ["connection_id", "organization_id"],
+      "columns": [
+        {
+          "value": "connection_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "organization_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
       "isUnique": false,
-      "with": null,
+      "with": "",
       "where": null,
       "method": "btree",
-      "concurrently": false
+      "concurrently": false,
+      "nameExplicit": true
     },
     {
       "name": "alert_rule_enabled_idx",
       "entityType": "indexes",
       "schema": "public",
       "table": "alert_rule",
-      "columns": ["enabled"],
+      "columns": [
+        {
+          "value": "enabled",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
       "isUnique": false,
-      "with": null,
+      "with": "",
       "where": "\"enabled\" = true",
       "method": "btree",
-      "concurrently": false
+      "concurrently": false,
+      "nameExplicit": true
     },
     {
       "nameExplicit": false,

@@ -37,6 +37,7 @@ export function EditAlertRuleRoute() {
   return (
     <AlertRuleBuilderPage
       mode="edit"
+      key={rule.id}
       orgSlug={orgSlug}
       connectionId={connectionId}
       connectionName={currentConnection?.name}
@@ -44,7 +45,11 @@ export function EditAlertRuleRoute() {
       rule={rule}
       isSaving={updateRuleMutation.isPending}
       isTesting={testRuleMutation.isPending}
-      onSave={async (input) => {
+      onSave={async (inputs) => {
+        const [input] = inputs
+        if (!input) {
+          throw new Error('No rule changes were provided.')
+        }
         await updateRuleMutation.mutateAsync({ ruleId, input })
         toast.success('Alert rule updated', {
           description: `${input.name} is now enforcing the latest policy.`,
