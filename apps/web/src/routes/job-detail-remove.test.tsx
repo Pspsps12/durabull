@@ -155,4 +155,29 @@ describe('job detail scheduled removal', () => {
       })
     )
   })
+
+  it('routes regular job removal through confirmation before deleting', async () => {
+    routeState.params.jobId = 'job-123'
+    const user = userEvent.setup()
+    const Component = Route.options.component as () => React.ReactNode
+
+    render(<Component />)
+    render(<>{topBarState.config?.actions}</>)
+
+    await user.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(screen.getByText('Remove Job?')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Remove Job' }))
+
+    expect(removeMutateMock).toHaveBeenCalledTimes(1)
+    expect(removeMutateMock).toHaveBeenCalledWith(
+      {
+        queueName: 'emails',
+        jobIds: ['job-123'],
+        removeScheduler: false,
+      },
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+      })
+    )
+  })
 })
