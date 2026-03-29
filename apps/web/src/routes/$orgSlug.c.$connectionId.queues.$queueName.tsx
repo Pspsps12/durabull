@@ -37,9 +37,10 @@ import {
 } from 'react'
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { z } from 'zod'
-import { useAppTopBar } from '@/components/app-top-bar'
 import { AddJobDialog } from '@/components/add-job-dialog'
+import { useAppTopBar } from '@/components/app-top-bar'
 import { DeleteQueueDialog } from '@/components/delete-queue-dialog'
+import { JobRemoveButton } from '@/components/job-remove-button'
 import { PurgeQueueDialog } from '@/components/purge-queue-dialog'
 import { RetryQueueDialog } from '@/components/retry-queue-dialog'
 import { StatusIndicator } from '@/components/status-badge'
@@ -1397,51 +1398,14 @@ function QueueDetailPage() {
                   const hasScheduledJobs = Array.from(selectedJobs).some((id) =>
                     id.startsWith('repeat:')
                   )
-                  if (hasScheduledJobs) {
-                    return (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            disabled={removeMutation.isPending}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Remove
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleRemoveSelected(false)}>
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Remove Job Only
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              (scheduler will create new jobs)
-                            </span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleRemoveSelected(true)}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Remove Job & Stop Scheduler
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              (permanently stops scheduled runs)
-                            </span>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )
-                  }
                   return (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleRemoveSelected(false)}
-                      disabled={removeMutation.isPending}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Remove
-                    </Button>
+                    <JobRemoveButton
+                      isScheduledJob={hasScheduledJobs}
+                      isPending={removeMutation.isPending}
+                      onRemoveJobOnly={() => handleRemoveSelected(false)}
+                      onRemoveJobAndStopScheduler={() => handleRemoveSelected(true)}
+                      subject={`${selectedJobs.size} selected job${selectedJobs.size === 1 ? '' : 's'}`}
+                    />
                   )
                 })()}
               </div>

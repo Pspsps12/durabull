@@ -31,6 +31,7 @@ import { DeleteJobLogsButton } from '@/components/delete-job-logs-button'
 import { DuplicateJobDialog } from '@/components/duplicate-job-dialog'
 import { FailedAttempts } from '@/components/failed-attempts'
 import { InvokeJobDialog } from '@/components/invoke-job-dialog'
+import { JobRemoveButton } from '@/components/job-remove-button'
 import { JsonViewer } from '@/components/json-viewer'
 import { QueueNameTag } from '@/components/queue-name-tag'
 import { RetryCountdown } from '@/components/retry-countdown'
@@ -125,20 +126,25 @@ function JobDetailPage() {
     )
   }, [connectionId, jobId, navigate, orgSlug, queueName, retryMutation])
 
-  const handleRemove = useCallback(() => {
-    removeMutation.mutate(
-      { queueName, jobIds: [jobId] },
-      {
-        onSuccess: () => {
-          navigate({
-            to: '/$orgSlug/c/$connectionId/queues/$queueName',
-            params: { orgSlug, connectionId, queueName },
-            search: {},
-          })
-        },
-      }
-    )
-  }, [connectionId, jobId, navigate, orgSlug, queueName, removeMutation])
+  const isScheduledJob = jobId.startsWith('repeat:')
+
+  const handleRemove = useCallback(
+    (removeScheduler = false) => {
+      removeMutation.mutate(
+        { queueName, jobIds: [jobId], removeScheduler },
+        {
+          onSuccess: () => {
+            navigate({
+              to: '/$orgSlug/c/$connectionId/queues/$queueName',
+              params: { orgSlug, connectionId, queueName },
+              search: {},
+            })
+          },
+        }
+      )
+    },
+    [connectionId, jobId, navigate, orgSlug, queueName, removeMutation]
+  )
 
   const handleInvokeSuccess = useCallback(() => {
     navigate({
@@ -222,15 +228,13 @@ function JobDetailPage() {
             <CopyPlus className="mr-2 h-4 w-4" />
             Duplicate
           </Button>
-          <Button
-            variant="destructive"
+          <JobRemoveButton
+            isScheduledJob={isScheduledJob}
+            isPending={removeMutation.isPending}
+            onRemoveJobOnly={() => handleRemove(false)}
+            onRemoveJobAndStopScheduler={() => handleRemove(true)}
             size="xs"
-            onClick={handleRemove}
-            disabled={removeMutation.isPending}
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            Remove
-          </Button>
+          />
         </>
       ),
       mobileActions: (
@@ -252,14 +256,25 @@ function JobDetailPage() {
             Duplicate Job
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={handleRemove}
-            disabled={removeMutation.isPending}
-            className="text-destructive focus:text-destructive focus:bg-destructive/10"
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            Remove Job
-          </DropdownMenuItem>
+          {isScheduledJob ? (
+            <DropdownMenuItem
+              onClick={() => handleRemove(true)}
+              disabled={removeMutation.isPending}
+              className="text-destructive focus:text-destructive focus:bg-destructive/10"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Remove Job & Stop Scheduler
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              onClick={() => handleRemove(false)}
+              disabled={removeMutation.isPending}
+              className="text-destructive focus:text-destructive focus:bg-destructive/10"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Remove Job
+            </DropdownMenuItem>
+          )}
         </>
       ),
     }),
@@ -273,6 +288,7 @@ function JobDetailPage() {
       queueName,
       removeMutation.isPending,
       retryMutation.isPending,
+      isScheduledJob,
     ]
   )
 

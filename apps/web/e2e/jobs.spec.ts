@@ -181,6 +181,8 @@ test.describe('Jobs', () => {
       await expect(page.getByRole('button', { name: 'Remove' })).toBeVisible()
 
       await page.getByRole('button', { name: 'Remove' }).click()
+      await expect(page.getByRole('dialog')).toBeVisible()
+      await page.getByRole('button', { name: 'Remove Job' }).click()
       await page.waitForURL(new RegExp(`/${TEST_ORG_SLUG}/c/${connectionId}/queues/${queueName}`))
 
       await expect
