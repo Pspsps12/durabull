@@ -470,7 +470,6 @@ function QueueDetailPage() {
       ),
     }),
     [
-      addJobDialogOpen,
       connectionId,
       orgSlug,
       pauseMutation.isPending,
