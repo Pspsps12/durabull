@@ -8,9 +8,10 @@
     "url": "git+https://github.com/durabullhq/durabull.git"
   },
   "scripts": {
-    "dev": "turbo dev --ui tui --filter=!@durabull/docs",
+    "dev": "turbo dev --ui tui --filter=@durabull/api --filter=@durabull/web",
     "dev:authless": "bun tooling/scripts/authless-dev.ts",
     "dev:docs": "turbo dev --filter=@durabull/docs",
+    "dev:demo": "turbo dev --ui tui --filter=@durabull/api --filter=@durabull/web --filter=@durabull/fleet-demo-workload",
     "dev:all": "turbo dev",
     "build": "turbo build",
     "build:desktop": "turbo run build --filter=@durabull/desktop",
@@ -46,6 +47,9 @@
     "test:e2e": "cd apps/web && bun run test:e2e",
     "test:e2e:ui": "cd apps/web && bun run test:e2e:ui",
     "test:e2e:debug": "cd apps/web && bun run test:e2e:debug"
+  },
+  "engines": {
+    "node": ">=20.19.0 || >=22.12.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",

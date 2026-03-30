@@ -1,5 +1,14 @@
+import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { discoverQueues, getQueue } from '../lib/redis'
+import {
+  buildScheduledJobCreateInput,
+  buildScheduledJobUpdateInput,
+  createScheduledJobSchema,
+  mapScheduledJob,
+  type ScheduledJobSummary,
+  updateScheduledJobSchema,
+} from '../lib/scheduled-jobs'
 
 // Default and max page sizes for pagination
 const DEFAULT_PAGE_SIZE = 50
@@ -43,6 +52,18 @@ async function getScheduledJobFailureStats(
   return stats
 }
 
+async function loadSchedulerStats(
+  queue: Awaited<ReturnType<typeof getQueue>>,
+  schedulerName?: string
+): Promise<{ count: number; lastFailedAt?: number } | undefined> {
+  if (!schedulerName) {
+    return undefined
+  }
+
+  const failureStats = await getScheduledJobFailureStats(queue, [schedulerName])
+  return failureStats.get(schedulerName)
+}
+
 const app = new Hono()
   // List all scheduled jobs across all queues (paginated by queue)
   .get('/', async (c) => {
@@ -65,17 +86,7 @@ const app = new Hono()
     const end = start + pageSize
     const paginatedQueueNames = allQueueNames.slice(start, end)
 
-    const allScheduledJobs: Array<{
-      schedulerId: string
-      pattern: string
-      queueName: string
-      jobName: string
-      nextRun?: number
-      enabled: boolean
-      data?: Record<string, unknown>
-      recentFailedCount: number
-      lastFailedAt?: number
-    }> = []
+    const allScheduledJobs: ScheduledJobSummary[] = []
 
     for (const queueName of paginatedQueueNames) {
       const queue = await getQueue(connectionId, connectionUrl, queueName)
@@ -90,18 +101,7 @@ const app = new Hono()
       for (const scheduler of schedulers) {
         const jobName = scheduler.name ?? ''
         const stats = failureStats.get(jobName)
-
-        allScheduledJobs.push({
-          schedulerId: scheduler.key,
-          pattern: scheduler.pattern ?? '',
-          queueName,
-          jobName,
-          nextRun: scheduler.next ? Number(scheduler.next) : undefined,
-          enabled: true,
-          data: scheduler.template?.data as Record<string, unknown> | undefined,
-          recentFailedCount: stats?.count ?? 0,
-          lastFailedAt: stats?.lastFailedAt,
-        })
+        allScheduledJobs.push(mapScheduledJob(queueName, scheduler, stats))
       }
     }
 
@@ -132,22 +132,131 @@ const app = new Hono()
     const scheduledJobs = schedulers.map((scheduler) => {
       const jobName = scheduler.name ?? ''
       const stats = failureStats.get(jobName)
-
-      return {
-        schedulerId: scheduler.key,
-        pattern: scheduler.pattern ?? '',
-        queueName,
-        jobName,
-        nextRun: scheduler.next ? Number(scheduler.next) : undefined,
-        enabled: true,
-        data: scheduler.template?.data as Record<string, unknown> | undefined,
-        recentFailedCount: stats?.count ?? 0,
-        lastFailedAt: stats?.lastFailedAt,
-      }
+      return mapScheduledJob(queueName, scheduler, stats)
     })
 
     return c.json({ scheduledJobs, total: scheduledJobs.length })
   })
+  // Load one scheduled job for a specific queue
+  .get('/queue/:queueName/:schedulerId', async (c) => {
+    const connectionId = c.get('connectionId')
+    const connectionUrl = c.get('connectionUrl')
+    const queueName = c.req.param('queueName')
+    const schedulerId = c.req.param('schedulerId')
+
+    const queue = await getQueue(connectionId, connectionUrl, queueName)
+    const scheduler = (await queue.getJobSchedulers()).find((item) => item.key === schedulerId)
+
+    if (!scheduler) {
+      return c.json({ error: `Scheduler "${schedulerId}" was not found.` }, 404)
+    }
+
+    const stats = await loadSchedulerStats(queue, scheduler.name)
+
+    return c.json({
+      scheduler: mapScheduledJob(queueName, scheduler, stats),
+    })
+  })
+  // Create scheduled job for a specific queue
+  .post('/queue/:queueName', zValidator('json', createScheduledJobSchema), async (c) => {
+    const connectionId = c.get('connectionId')
+    const connectionUrl = c.get('connectionUrl')
+    const queueName = c.req.param('queueName')
+    const payload = c.req.valid('json')
+
+    const queue = await getQueue(connectionId, connectionUrl, queueName)
+    const existingSchedulers = await queue.getJobSchedulers()
+    const existingScheduler = existingSchedulers.find(
+      (scheduler) => scheduler.key === payload.schedulerId
+    )
+
+    if (existingScheduler) {
+      return c.json(
+        {
+          error: `Scheduler ID "${payload.schedulerId}" already exists in queue "${queueName}". Choose a different ID.`,
+        },
+        409
+      )
+    }
+
+    const scheduledJob = buildScheduledJobCreateInput(payload)
+
+    await queue.upsertJobScheduler(scheduledJob.schedulerId, scheduledJob.repeatOptions, {
+      name: scheduledJob.jobName,
+      data: scheduledJob.jobData,
+      opts: scheduledJob.templateOptions,
+    })
+
+    const createdScheduler = (await queue.getJobSchedulers()).find(
+      (scheduler) => scheduler.key === scheduledJob.schedulerId
+    )
+
+    if (!createdScheduler) {
+      return c.json(
+        {
+          error: `Scheduler "${scheduledJob.schedulerId}" was created but could not be loaded back from BullMQ.`,
+        },
+        500
+      )
+    }
+
+    return c.json(
+      {
+        success: true,
+        scheduler: mapScheduledJob(queueName, createdScheduler),
+      },
+      201
+    )
+  })
+  // Update scheduled job for a specific queue
+  .put(
+    '/queue/:queueName/:schedulerId',
+    zValidator('json', updateScheduledJobSchema),
+    async (c) => {
+      const connectionId = c.get('connectionId')
+      const connectionUrl = c.get('connectionUrl')
+      const queueName = c.req.param('queueName')
+      const schedulerId = c.req.param('schedulerId')
+      const payload = c.req.valid('json')
+
+      const queue = await getQueue(connectionId, connectionUrl, queueName)
+      const existingScheduler = (await queue.getJobSchedulers()).find(
+        (scheduler) => scheduler.key === schedulerId
+      )
+
+      if (!existingScheduler) {
+        return c.json({ error: `Scheduler "${schedulerId}" was not found.` }, 404)
+      }
+
+      const scheduledJob = buildScheduledJobUpdateInput(schedulerId, payload)
+
+      await queue.upsertJobScheduler(scheduledJob.schedulerId, scheduledJob.repeatOptions, {
+        name: scheduledJob.jobName,
+        data: scheduledJob.jobData,
+        opts: scheduledJob.templateOptions,
+      })
+
+      const updatedScheduler = (await queue.getJobSchedulers()).find(
+        (scheduler) => scheduler.key === scheduledJob.schedulerId
+      )
+
+      if (!updatedScheduler) {
+        return c.json(
+          {
+            error: `Scheduler "${scheduledJob.schedulerId}" was updated but could not be loaded back from BullMQ.`,
+          },
+          500
+        )
+      }
+
+      const stats = await loadSchedulerStats(queue, updatedScheduler.name)
+
+      return c.json({
+        success: true,
+        scheduler: mapScheduledJob(queueName, updatedScheduler, stats),
+      })
+    }
+  )
   // Remove scheduled job
   .delete('/queue/:queueName/:schedulerId', async (c) => {
     const connectionId = c.get('connectionId')

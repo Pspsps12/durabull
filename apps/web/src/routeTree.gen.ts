@@ -36,6 +36,8 @@ import { Route as OrgSlugCConnectionIdAlertsIndexRouteImport } from './routes/$o
 import { Route as OrgSlugCConnectionIdQueuesQueueNameRouteImport } from './routes/$orgSlug.c.$connectionId.queues.$queueName'
 import { Route as OrgSlugCConnectionIdAlertsNewRouteImport } from './routes/$orgSlug.c.$connectionId.alerts.new'
 import { Route as OrgSlugCConnectionIdAlertsRuleIdRouteImport } from './routes/$orgSlug.c.$connectionId.alerts.$ruleId'
+import { Route as OrgSlugCConnectionIdQueuesQueueNameScheduledJobsNewRouteImport } from './routes/$orgSlug.c.$connectionId.queues.$queueName_.scheduled-jobs.new'
+import { Route as OrgSlugCConnectionIdQueuesQueueNameScheduledJobsSchedulerIdRouteImport } from './routes/$orgSlug.c.$connectionId.queues.$queueName_.scheduled-jobs.$schedulerId'
 import { Route as OrgSlugCConnectionIdQueuesQueueNameJobsJobIdRouteImport } from './routes/$orgSlug.c.$connectionId.queues.$queueName_.jobs.$jobId'
 
 const SignupRoute = SignupRouteImport.update({
@@ -183,6 +185,20 @@ const OrgSlugCConnectionIdAlertsRuleIdRoute =
     path: '/$ruleId',
     getParentRoute: () => OrgSlugCConnectionIdAlertsRoute,
   } as any)
+const OrgSlugCConnectionIdQueuesQueueNameScheduledJobsNewRoute =
+  OrgSlugCConnectionIdQueuesQueueNameScheduledJobsNewRouteImport.update({
+    id: '/queues/$queueName_/scheduled-jobs/new',
+    path: '/queues/$queueName/scheduled-jobs/new',
+    getParentRoute: () => OrgSlugCConnectionIdRoute,
+  } as any)
+const OrgSlugCConnectionIdQueuesQueueNameScheduledJobsSchedulerIdRoute =
+  OrgSlugCConnectionIdQueuesQueueNameScheduledJobsSchedulerIdRouteImport.update(
+    {
+      id: '/queues/$queueName_/scheduled-jobs/$schedulerId',
+      path: '/queues/$queueName/scheduled-jobs/$schedulerId',
+      getParentRoute: () => OrgSlugCConnectionIdRoute,
+    } as any,
+  )
 const OrgSlugCConnectionIdQueuesQueueNameJobsJobIdRoute =
   OrgSlugCConnectionIdQueuesQueueNameJobsJobIdRouteImport.update({
     id: '/queues/$queueName_/jobs/$jobId',
@@ -219,6 +235,8 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/c/$connectionId/queues/$queueName': typeof OrgSlugCConnectionIdQueuesQueueNameRoute
   '/$orgSlug/c/$connectionId/alerts/': typeof OrgSlugCConnectionIdAlertsIndexRoute
   '/$orgSlug/c/$connectionId/queues/$queueName/jobs/$jobId': typeof OrgSlugCConnectionIdQueuesQueueNameJobsJobIdRoute
+  '/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/$schedulerId': typeof OrgSlugCConnectionIdQueuesQueueNameScheduledJobsSchedulerIdRoute
+  '/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/new': typeof OrgSlugCConnectionIdQueuesQueueNameScheduledJobsNewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -246,6 +264,8 @@ export interface FileRoutesByTo {
   '/$orgSlug/c/$connectionId/queues/$queueName': typeof OrgSlugCConnectionIdQueuesQueueNameRoute
   '/$orgSlug/c/$connectionId/alerts': typeof OrgSlugCConnectionIdAlertsIndexRoute
   '/$orgSlug/c/$connectionId/queues/$queueName/jobs/$jobId': typeof OrgSlugCConnectionIdQueuesQueueNameJobsJobIdRoute
+  '/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/$schedulerId': typeof OrgSlugCConnectionIdQueuesQueueNameScheduledJobsSchedulerIdRoute
+  '/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/new': typeof OrgSlugCConnectionIdQueuesQueueNameScheduledJobsNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -277,6 +297,8 @@ export interface FileRoutesById {
   '/$orgSlug/c/$connectionId/queues/$queueName': typeof OrgSlugCConnectionIdQueuesQueueNameRoute
   '/$orgSlug/c/$connectionId/alerts/': typeof OrgSlugCConnectionIdAlertsIndexRoute
   '/$orgSlug/c/$connectionId/queues/$queueName_/jobs/$jobId': typeof OrgSlugCConnectionIdQueuesQueueNameJobsJobIdRoute
+  '/$orgSlug/c/$connectionId/queues/$queueName_/scheduled-jobs/$schedulerId': typeof OrgSlugCConnectionIdQueuesQueueNameScheduledJobsSchedulerIdRoute
+  '/$orgSlug/c/$connectionId/queues/$queueName_/scheduled-jobs/new': typeof OrgSlugCConnectionIdQueuesQueueNameScheduledJobsNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -309,6 +331,8 @@ export interface FileRouteTypes {
     | '/$orgSlug/c/$connectionId/queues/$queueName'
     | '/$orgSlug/c/$connectionId/alerts/'
     | '/$orgSlug/c/$connectionId/queues/$queueName/jobs/$jobId'
+    | '/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/$schedulerId'
+    | '/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/new'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -336,6 +360,8 @@ export interface FileRouteTypes {
     | '/$orgSlug/c/$connectionId/queues/$queueName'
     | '/$orgSlug/c/$connectionId/alerts'
     | '/$orgSlug/c/$connectionId/queues/$queueName/jobs/$jobId'
+    | '/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/$schedulerId'
+    | '/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/new'
   id:
     | '__root__'
     | '/'
@@ -366,6 +392,8 @@ export interface FileRouteTypes {
     | '/$orgSlug/c/$connectionId/queues/$queueName'
     | '/$orgSlug/c/$connectionId/alerts/'
     | '/$orgSlug/c/$connectionId/queues/$queueName_/jobs/$jobId'
+    | '/$orgSlug/c/$connectionId/queues/$queueName_/scheduled-jobs/$schedulerId'
+    | '/$orgSlug/c/$connectionId/queues/$queueName_/scheduled-jobs/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -570,6 +598,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugCConnectionIdAlertsRuleIdRouteImport
       parentRoute: typeof OrgSlugCConnectionIdAlertsRoute
     }
+    '/$orgSlug/c/$connectionId/queues/$queueName_/scheduled-jobs/new': {
+      id: '/$orgSlug/c/$connectionId/queues/$queueName_/scheduled-jobs/new'
+      path: '/queues/$queueName/scheduled-jobs/new'
+      fullPath: '/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/new'
+      preLoaderRoute: typeof OrgSlugCConnectionIdQueuesQueueNameScheduledJobsNewRouteImport
+      parentRoute: typeof OrgSlugCConnectionIdRoute
+    }
+    '/$orgSlug/c/$connectionId/queues/$queueName_/scheduled-jobs/$schedulerId': {
+      id: '/$orgSlug/c/$connectionId/queues/$queueName_/scheduled-jobs/$schedulerId'
+      path: '/queues/$queueName/scheduled-jobs/$schedulerId'
+      fullPath: '/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/$schedulerId'
+      preLoaderRoute: typeof OrgSlugCConnectionIdQueuesQueueNameScheduledJobsSchedulerIdRouteImport
+      parentRoute: typeof OrgSlugCConnectionIdRoute
+    }
     '/$orgSlug/c/$connectionId/queues/$queueName_/jobs/$jobId': {
       id: '/$orgSlug/c/$connectionId/queues/$queueName_/jobs/$jobId'
       path: '/queues/$queueName/jobs/$jobId'
@@ -608,6 +650,8 @@ interface OrgSlugCConnectionIdRouteChildren {
   OrgSlugCConnectionIdIndexRoute: typeof OrgSlugCConnectionIdIndexRoute
   OrgSlugCConnectionIdQueuesQueueNameRoute: typeof OrgSlugCConnectionIdQueuesQueueNameRoute
   OrgSlugCConnectionIdQueuesQueueNameJobsJobIdRoute: typeof OrgSlugCConnectionIdQueuesQueueNameJobsJobIdRoute
+  OrgSlugCConnectionIdQueuesQueueNameScheduledJobsSchedulerIdRoute: typeof OrgSlugCConnectionIdQueuesQueueNameScheduledJobsSchedulerIdRoute
+  OrgSlugCConnectionIdQueuesQueueNameScheduledJobsNewRoute: typeof OrgSlugCConnectionIdQueuesQueueNameScheduledJobsNewRoute
 }
 
 const OrgSlugCConnectionIdRouteChildren: OrgSlugCConnectionIdRouteChildren = {
@@ -622,6 +666,10 @@ const OrgSlugCConnectionIdRouteChildren: OrgSlugCConnectionIdRouteChildren = {
     OrgSlugCConnectionIdQueuesQueueNameRoute,
   OrgSlugCConnectionIdQueuesQueueNameJobsJobIdRoute:
     OrgSlugCConnectionIdQueuesQueueNameJobsJobIdRoute,
+  OrgSlugCConnectionIdQueuesQueueNameScheduledJobsSchedulerIdRoute:
+    OrgSlugCConnectionIdQueuesQueueNameScheduledJobsSchedulerIdRoute,
+  OrgSlugCConnectionIdQueuesQueueNameScheduledJobsNewRoute:
+    OrgSlugCConnectionIdQueuesQueueNameScheduledJobsNewRoute,
 }
 
 const OrgSlugCConnectionIdRouteWithChildren =

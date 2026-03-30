@@ -1,6 +1,6 @@
 ---
 title: Scheduled Jobs
-description: Monitor and manage cron-based scheduled jobs across queues and remove schedulers safely.
+description: Create, inspect, and remove BullMQ scheduled jobs across queues with cron or interval-based schedules.
 ---
 
 ## Global Scheduled Jobs View
@@ -11,21 +11,46 @@ Route:
 
 This page aggregates scheduled jobs across discovered queues for the active connection.
 
+## Create a Scheduled Job from a Queue
+
+Queue detail now includes a first-class scheduler workspace.
+
+Route:
+
+- `/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/new`
+
+Use **Schedule Job** from a queue to open a dedicated page for creating the scheduler.
+
+The page supports:
+
+- stable scheduler IDs
+- job name and JSON payload
+- cron schedules with timezone support
+- fixed interval schedules (`every` in milliseconds)
+- optional start date, end date, and run limit
+- template job options such as attempts, priority, backoff, and retention
+- an editor-style JSON payload experience with formatting and indentation shortcuts
+- immediate handoff into an edit page after creation
+
 ## Queue-Level Scheduled Jobs
 
 Route tab under queue detail:
 
 - `/$orgSlug/c/$connectionId/queues/$queueName?tab=scheduled`
 
-Useful for queue-specific cleanup and scheduler ownership review.
+Useful for queue-specific cleanup and scheduler ownership review. Every scheduler listed here links
+to its own edit page:
+
+- `/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/$schedulerId`
 
 ## Data Included Per Scheduled Job
 
 - Scheduler ID
-- Cron pattern
+- Cron pattern or interval cadence
 - Queue name
 - Job name
 - Next run time (if available)
+- Timezone, start/end window, and limit (when configured)
 - Recent failed count
 - Last failed timestamp
 
@@ -35,8 +60,59 @@ Useful for queue-specific cleanup and scheduler ownership review.
   - `GET /api/c/:connectionId/scheduled-jobs`
 - List by queue:
   - `GET /api/c/:connectionId/scheduled-jobs/queue/:queueName`
+- Create scheduler:
+  - `POST /api/c/:connectionId/scheduled-jobs/queue/:queueName`
+- Load scheduler:
+  - `GET /api/c/:connectionId/scheduled-jobs/queue/:queueName/:schedulerId`
+- Update scheduler:
+  - `PUT /api/c/:connectionId/scheduled-jobs/queue/:queueName/:schedulerId`
 - Remove scheduler:
   - `DELETE /api/c/:connectionId/scheduled-jobs/queue/:queueName/:schedulerId`
+
+### Create Scheduler Request Shape
+
+```json
+{
+  "schedulerId": "billing-hourly",
+  "name": "reconcile-billing",
+  "data": {
+    "source": "dashboard"
+  },
+  "schedule": {
+    "type": "cron",
+    "pattern": "0 * * * *",
+    "timezone": "America/Los_Angeles",
+    "immediately": true,
+    "limit": 24
+  },
+  "options": {
+    "attempts": 3,
+    "priority": 5,
+    "backoff": {
+      "type": "fixed",
+      "delay": 5000
+    },
+    "removeOnComplete": 100,
+    "removeOnFail": false
+  }
+}
+```
+
+Rules:
+
+- `schedulerId` must be stable and unique within the queue
+- `schedule.type` is either `cron` or `every`
+- cron schedules can include `timezone` and `immediately`
+- interval schedules use `everyMs`
+- `startDate`, `endDate`, and `limit` are optional for either mode
+
+## Recommended Workflow
+
+1. Open the queue you want to schedule into.
+2. Use the top-bar **Schedule Job** action or the queue's **Scheduled Jobs** tab CTA.
+3. Enter a stable scheduler ID and worker-facing job name.
+4. Choose cron or interval mode, then set timezone/window/limit if needed.
+5. Add payload and job options, create the scheduler, then use the dedicated edit page for later changes.
 
 ## Failure Analysis Pattern
 

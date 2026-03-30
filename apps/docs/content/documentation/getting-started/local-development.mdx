@@ -11,6 +11,7 @@ This page is optimized for local contributor workflows.
 ## Prerequisites
 
 - Bun `1.3+`
+- Node.js `20.19+` or `22.12+` for the Vite web app
 - Redis (local or remote)
 - Optional: Docker (for Postgres + Redis local stack)
 
@@ -74,6 +75,19 @@ bun docker:seed:workers
 
 ```bash
 bun run dev
+```
+
+`bun run dev` starts the API and web app only. If you also want the synthetic ecommerce
+traffic generator, run it separately:
+
+```bash
+bun run workload:dev
+```
+
+Or run all three together:
+
+```bash
+bun run dev:demo
 ```
 
 ## Local Validation Checklist
