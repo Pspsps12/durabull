@@ -95,6 +95,7 @@ const queueSearchSchema = z.object({
   tab: z.enum(['jobs', 'scheduled']).catch('jobs'),
   status: z.enum(['', 'waiting', 'active', 'delayed', 'completed', 'failed']).catch(''),
   jobId: z.string().catch(''),
+  name: z.string().catch(''),
   hideScheduled: z
     .union([z.literal(0), z.literal(1), z.literal('0'), z.literal('1')])
     .transform((value) => (value === 1 || value === '1' ? 1 : 0))
@@ -145,11 +146,12 @@ export const Route = createFileRoute('/$orgSlug/c/$connectionId/queues/$queueNam
 
 function QueueDetailPage() {
   const { orgSlug, connectionId, queueName } = Route.useParams()
-  const { section, tab, status, jobId, hideScheduled, page } = Route.useSearch()
+  const { section, tab, status, jobId, name, hideScheduled, page } = Route.useSearch()
   const navigate = useNavigate()
   const matchRoute = useMatchRoute()
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set())
   const [jobIdInput, setJobIdInput] = useState(jobId)
+  const [nameInput, setNameInput] = useState(name)
   const [addJobDialogOpen, setAddJobDialogOpen] = useState(false)
   const [retryDialogOpen, setRetryDialogOpen] = useState(false)
   const [purgeDialogOpen, setPurgeDialogOpen] = useState(false)
@@ -183,6 +185,7 @@ function QueueDetailPage() {
   } = useJobs(queueName, {
     status: status || undefined,
     jobId: jobId || undefined,
+    name: name || undefined,
     pageSize: 20,
   })
   const {
@@ -280,6 +283,10 @@ function QueueDetailPage() {
     setJobIdInput(jobId)
   }, [jobId])
 
+  useEffect(() => {
+    setNameInput(name)
+  }, [name])
+
   const handleCopyPrometheus = useCallback(async () => {
     if (!prometheusText || typeof navigator === 'undefined' || !navigator.clipboard) {
       return
@@ -300,13 +307,31 @@ function QueueDetailPage() {
     const timer = setTimeout(() => {
       navigate({
         to: '.',
-        search: { section, tab, status, jobId: normalizedJobId, hideScheduled, page: 1 },
+        search: { section, tab, status, jobId: normalizedJobId, name, hideScheduled, page: 1 },
         replace: true,
       })
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [jobIdInput, jobId, section, tab, status, hideScheduled, navigate])
+  }, [jobIdInput, jobId, section, tab, status, name, hideScheduled, navigate])
+
+  useEffect(() => {
+    const normalizedName = nameInput.trim()
+
+    if (normalizedName === name) {
+      return
+    }
+
+    const timer = setTimeout(() => {
+      navigate({
+        to: '.',
+        search: { section, tab, status, jobId, name: normalizedName, hideScheduled, page: 1 },
+        replace: true,
+      })
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [nameInput, name, section, tab, status, jobId, hideScheduled, navigate])
 
   useEffect(() => {
     const container = jobsScrollRef.current
@@ -565,6 +590,7 @@ function QueueDetailPage() {
               tab,
               status,
               jobId,
+              name,
               hideScheduled,
               page,
             },
@@ -1295,7 +1321,7 @@ function QueueDetailPage() {
           onValueChange={(newTab) =>
             navigate({
               to: '.',
-              search: { section, tab: newTab as typeof tab, status, jobId, hideScheduled, page },
+              search: { section, tab: newTab as typeof tab, status, jobId, name, hideScheduled, page },
               replace: true,
             })
           }
@@ -1315,7 +1341,7 @@ function QueueDetailPage() {
                       })
                       navigate({
                         to: '.',
-                        search: { section, tab, status: newStatus, jobId, hideScheduled, page: 1 },
+                        search: { section, tab, status: newStatus, jobId, name, hideScheduled, page: 1 },
                         replace: true,
                       })
                     }}
@@ -1332,8 +1358,15 @@ function QueueDetailPage() {
                     value={jobIdInput}
                     onChange={(e) => setJobIdInput(e.target.value)}
                     placeholder="Search by job ID"
-                    className="w-64 max-w-full"
+                    className="w-48 max-w-full"
                     aria-label="Search jobs by ID"
+                  />
+                  <Input
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    placeholder="Search by job name"
+                    className="w-48 max-w-full"
+                    aria-label="Search jobs by name"
                   />
                   <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                     <input
@@ -1347,6 +1380,7 @@ function QueueDetailPage() {
                             tab,
                             status,
                             jobId,
+                            name,
                             hideScheduled: e.target.checked ? 1 : 0,
                             page: 1,
                           },

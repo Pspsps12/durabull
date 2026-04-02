@@ -168,7 +168,11 @@ const app = new Hono()
       jobs
         // Filter out undefined jobs (can happen when jobs are removed during listing)
         .filter((job): job is NonNullable<typeof job> => job != null)
-        .filter((job) => (name ? job.name === name : true))
+        .filter((job) =>
+          name
+            ? job.name.toLowerCase().includes(name.toLowerCase())
+            : true
+        )
         .filter((job) =>
           jobId
             ? String(job.id ?? '')
