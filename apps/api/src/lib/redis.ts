@@ -302,13 +302,35 @@ export async function getQueue(
   const cacheKey = `${connectionId}:${name}`
 
   if (!queues.has(cacheKey)) {
-    // Create a new queue with its own connection (BullMQ manages this internally)
     const queue = new Queue(name, {
       connection: {
         url: connectionUrl,
         maxRetriesPerRequest: null,
+        retryStrategy: (attempts: number) => {
+          if (attempts > REDIS_MAX_RECONNECT_ATTEMPTS) return null
+          return Math.min(attempts * REDIS_RECONNECT_BASE_DELAY_MS, REDIS_RECONNECT_MAX_DELAY_MS)
+        },
       },
     })
+
+    queue.on('error', (error) => {
+      const message = getSafeRedisErrorMessage(error)
+
+      if (shouldLogRedisError(`queue:${cacheKey}`, message)) {
+        console.error(`❌ Queue connection error (${name}): ${message}`)
+      }
+
+      if (isPermanentRedisConnectionError(message)) {
+        recentRedisConnectionFailures.set(connectionId, {
+          message,
+          at: Date.now(),
+          permanent: true,
+        })
+        queue.close().catch(() => {})
+        queues.delete(cacheKey)
+      }
+    })
+
     queues.set(cacheKey, queue)
   }
 
