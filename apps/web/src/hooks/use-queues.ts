@@ -19,6 +19,8 @@ type QueueEndpoint = (typeof api.c)[':connectionId']['queues'][':queueName']
 type QueueDiscoveryEndpoint = (typeof api.c)[':connectionId']['queues']['discovery']
 type JobEndpoint = (typeof api.c)[':connectionId']['queues'][':queueName']['jobs'][':jobId']
 type ScheduledJobsEndpoint = (typeof api.c)[':connectionId']['scheduled-jobs']
+type QueueScheduledJobsEndpoint = ScheduledJobsEndpoint['queue'][':queueName']
+type ScheduledJobEndpoint = QueueScheduledJobsEndpoint[':schedulerId']
 type MetricsEndpoint = (typeof api.c)[':connectionId']['metrics']
 type WorkersEndpoint = (typeof api.c)[':connectionId']['workers']
 type CanDeleteEndpoint = (typeof api.c)[':connectionId']['queues'][':queueName']['can-delete']
@@ -30,6 +32,7 @@ type GetQueueResponse = InferResponseType<QueueEndpoint['$get'], 200>
 type QueueDiscoveryStatusResponse = InferResponseType<QueueDiscoveryEndpoint['$get'], 200>
 type GetJobResponse = InferResponseType<JobEndpoint['$get'], 200>
 type ListScheduledJobsResponse = InferResponseType<ScheduledJobsEndpoint['$get'], 200>
+type GetScheduledJobResponse = InferResponseType<ScheduledJobEndpoint['$get'], 200>
 type ListMetricsResponse = InferResponseType<MetricsEndpoint['$get'], 200>
 type ListWorkersResponse = InferResponseType<WorkersEndpoint['$get'], 200>
 type CanDeleteQueueResponse = InferResponseType<CanDeleteEndpoint['$get'], 200>
@@ -190,6 +193,7 @@ export type {
   QueueDiscoveryStatusResponse,
   GetJobResponse,
   ListScheduledJobsResponse,
+  GetScheduledJobResponse,
   ListWorkersResponse,
 }
 
@@ -217,6 +221,8 @@ export const queryKeys = {
   scheduledJobs: (connectionId: string) => ['scheduledJobs', connectionId] as const,
   queueScheduledJobs: (connectionId: string, queueName: string) =>
     ['scheduledJobs', connectionId, queueName] as const,
+  queueScheduledJob: (connectionId: string, queueName: string, schedulerId: string) =>
+    ['scheduledJobs', connectionId, queueName, schedulerId] as const,
   allMetrics: (connectionId: string) => ['metrics', connectionId] as const,
   allWorkers: (connectionId: string) => ['workers', connectionId] as const,
 }
@@ -488,6 +494,23 @@ export function useQueueScheduledJobs(queueName: string) {
       return handleRes<ListScheduledJobsResponse>(res)
     },
     enabled: !!queueName && !!connectionId,
+  })
+}
+
+export function useScheduledJob(queueName: string, schedulerId: string) {
+  const connectionId = useConnectionIdFromContextOrRoute()
+
+  return useQuery({
+    queryKey: queryKeys.queueScheduledJob(connectionId ?? '', queueName, schedulerId),
+    queryFn: async () => {
+      const res = await api.c[':connectionId']['scheduled-jobs'].queue[':queueName'][
+        ':schedulerId'
+      ].$get({
+        param: { connectionId: connectionId!, queueName, schedulerId },
+      })
+      return handleRes<GetScheduledJobResponse>(res)
+    },
+    enabled: !!queueName && !!schedulerId && !!connectionId,
   })
 }
 
@@ -989,10 +1012,159 @@ export function useRemoveScheduledJob() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.queueScheduledJobs(connectionId ?? '', queueName),
       })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.queueScheduledJob(connectionId ?? '', queueName, schedulerId),
+      })
       queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
     },
     onError: (_, { queueName, schedulerId }) => {
       trackEvent(AnalyticsEvents.SCHEDULED_JOB_REMOVED, {
+        queue_name: queueName,
+        scheduler_id: schedulerId,
+        success: false,
+      })
+    },
+  })
+}
+
+export type ScheduledJobScheduleInput =
+  | {
+      type: 'cron'
+      pattern: string
+      timezone?: string
+      immediately?: boolean
+      startDate?: string
+      endDate?: string
+      limit?: number
+    }
+  | {
+      type: 'every'
+      everyMs: number
+      startDate?: string
+      endDate?: string
+      limit?: number
+    }
+
+export interface ScheduledJobTemplateOptionsInput {
+  attempts?: number
+  priority?: number
+  backoff?: { type: 'fixed' | 'exponential'; delay: number }
+  removeOnComplete?: boolean | number
+  removeOnFail?: boolean | number
+}
+
+export interface ScheduledJobMutationInput {
+  queueName: string
+  schedulerId: string
+  name: string
+  data: unknown
+  schedule: ScheduledJobScheduleInput
+  options?: ScheduledJobTemplateOptionsInput
+}
+
+export interface ScheduledJobMutationResponse {
+  success: boolean
+  scheduler: {
+    schedulerId: string
+    pattern?: string
+    every?: number
+    queueName: string
+    jobName: string
+    nextRun?: number
+    enabled: boolean
+    data?: unknown
+    templateOptions?: Record<string, unknown>
+    timezone?: string
+    startDate?: number
+    endDate?: number
+    limit?: number
+    iterationCount?: number
+    recentFailedCount: number
+    lastFailedAt?: number
+  }
+}
+
+export function useCreateScheduledJob() {
+  const queryClient = useQueryClient()
+  const connectionId = useConnectionIdFromContextOrRoute()
+
+  return useMutation({
+    mutationFn: async ({
+      queueName,
+      schedulerId,
+      name,
+      data,
+      schedule,
+      options,
+    }: ScheduledJobMutationInput) => {
+      const res = await api.c[':connectionId']['scheduled-jobs'].queue[':queueName'].$post({
+        param: { connectionId: connectionId!, queueName },
+        json: { schedulerId, name, data, schedule, options },
+      })
+      return handleRes<ScheduledJobMutationResponse>(res)
+    },
+    onSuccess: (data, { queueName }) => {
+      trackEvent(AnalyticsEvents.SCHEDULED_JOB_CREATED, {
+        queue_name: queueName,
+        scheduler_id: data.scheduler.schedulerId,
+        success: true,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.scheduledJobs(connectionId ?? '') })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.queueScheduledJobs(connectionId ?? '', queueName),
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues(connectionId ?? '') })
+    },
+    onError: (_, { queueName, schedulerId }) => {
+      trackEvent(AnalyticsEvents.SCHEDULED_JOB_CREATED, {
+        queue_name: queueName,
+        scheduler_id: schedulerId,
+        success: false,
+      })
+    },
+  })
+}
+
+export function useUpdateScheduledJob() {
+  const queryClient = useQueryClient()
+  const connectionId = useConnectionIdFromContextOrRoute()
+
+  return useMutation({
+    mutationFn: async ({
+      queueName,
+      schedulerId,
+      name,
+      data,
+      schedule,
+      options,
+    }: ScheduledJobMutationInput) => {
+      const res = await api.c[':connectionId']['scheduled-jobs'].queue[':queueName'][
+        ':schedulerId'
+      ].$put({
+        param: { connectionId: connectionId!, queueName, schedulerId },
+        json: { name, data, schedule, options },
+      })
+      return handleRes<ScheduledJobMutationResponse>(res)
+    },
+    onSuccess: (_data, { queueName, schedulerId }) => {
+      trackEvent(AnalyticsEvents.SCHEDULED_JOB_UPDATED, {
+        queue_name: queueName,
+        scheduler_id: schedulerId,
+        success: true,
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.scheduledJobs(connectionId ?? '') })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.queueScheduledJobs(connectionId ?? '', queueName),
+      })
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.queueScheduledJob(connectionId ?? '', queueName, schedulerId),
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queue(connectionId ?? '', queueName) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.queues(connectionId ?? '') })
+    },
+    onError: (_, { queueName, schedulerId }) => {
+      trackEvent(AnalyticsEvents.SCHEDULED_JOB_UPDATED, {
         queue_name: queueName,
         scheduler_id: schedulerId,
         success: false,

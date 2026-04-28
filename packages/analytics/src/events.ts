@@ -69,6 +69,8 @@ export const AnalyticsEvents = {
   JOB_STATUS_FILTERED: 'job_status_filtered',
 
   // Scheduled Job Events
+  SCHEDULED_JOB_CREATED: 'scheduled_job_created',
+  SCHEDULED_JOB_UPDATED: 'scheduled_job_updated',
   SCHEDULED_JOB_REMOVED: 'scheduled_job_removed',
   SCHEDULED_JOBS_VIEWED: 'scheduled_jobs_viewed',
   SCHEDULED_JOBS_EXPANDED: 'scheduled_jobs_expanded',
@@ -208,6 +210,7 @@ export const DialogType = {
   INVOKE_JOB: 'invoke_job',
   DUPLICATE_JOB: 'duplicate_job',
   ADD_JOB: 'add_job',
+  ADD_SCHEDULED_JOB: 'add_scheduled_job',
   DELETE_JOB_LOGS: 'delete_job_logs',
 } as const
 

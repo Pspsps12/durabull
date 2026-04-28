@@ -32,6 +32,7 @@ Durabull is an open-source BullMQ operations platform built for teams that need 
 ### Prerequisites
 
 - Bun `1.3+`
+- Node.js `20.19+` or `22.12+` for the Vite web app
 - Redis (local or remote)
 
 ### Fastest path (authless)
@@ -54,6 +55,18 @@ Open:
 bun docker
 bun docker:seed
 bun run dev
+```
+
+Optional demo traffic generator:
+
+```bash
+bun run workload:dev
+```
+
+If you want API + web + workload in one terminal, use:
+
+```bash
+bun run dev:demo
 ```
 
 ## Helpful links

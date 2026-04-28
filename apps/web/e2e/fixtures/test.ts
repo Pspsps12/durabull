@@ -45,6 +45,8 @@ type ScheduledJobsResponse = {
     queueName: string
     jobName: string
     schedulerId: string
+    pattern?: string
+    every?: number
   }>
   total: number
 }
@@ -146,6 +148,20 @@ export async function getScheduledJobs(
 ): Promise<ScheduledJobsResponse> {
   const response = await page.request.get(`/api/c/${connectionId}/scheduled-jobs`)
   return apiJson<ScheduledJobsResponse>(response, `GET /api/c/${connectionId}/scheduled-jobs`)
+}
+
+export async function removeScheduledJob(
+  page: Page,
+  options: { connectionId: string; queueName: string; schedulerId: string }
+): Promise<void> {
+  const response = await page.request.delete(
+    `/api/c/${options.connectionId}/scheduled-jobs/queue/${encodeURIComponent(options.queueName)}/${encodeURIComponent(options.schedulerId)}`
+  )
+
+  await apiJson(
+    response,
+    `DELETE /api/c/${options.connectionId}/scheduled-jobs/queue/${options.queueName}/${options.schedulerId}`
+  )
 }
 
 export async function getJobs(

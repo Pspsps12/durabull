@@ -88,6 +88,7 @@ import {
   useResumeQueue,
   useRetryJobs,
 } from '@/hooks/use-queues'
+import { getScheduleExpression, getScheduleSummary } from '@/lib/scheduled-jobs'
 import { formatDate, formatNumber, getTimezoneAbbreviation } from '@/lib/utils'
 
 const queueSearchSchema = z.object({
@@ -167,11 +168,19 @@ function QueueDetailPage() {
   const metricsWindowMinutes = selectedMetricsWindow.minutes
   const usingAllRetainedWindow = metricsWindowValue === 'all'
 
-  // Check if we're on a child route (job detail page)
-  const isOnJobDetailRoute = matchRoute({
-    to: '/$orgSlug/c/$connectionId/queues/$queueName/jobs/$jobId',
-    fuzzy: true,
-  })
+  const isOnChildRoute =
+    matchRoute({
+      to: '/$orgSlug/c/$connectionId/queues/$queueName/jobs/$jobId',
+      fuzzy: true,
+    }) ||
+    matchRoute({
+      to: '/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/new',
+      fuzzy: true,
+    }) ||
+    matchRoute({
+      to: '/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/$schedulerId',
+      fuzzy: true,
+    })
 
   const { data: queue, isLoading: queueLoading, error: queueError } = useQueue(queueName)
   const {
@@ -347,6 +356,13 @@ function QueueDetailPage() {
     }
   }
 
+  const handleOpenScheduledJobCreate = useCallback(() => {
+    navigate({
+      to: '/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/new',
+      params: { orgSlug, connectionId, queueName },
+    })
+  }, [connectionId, navigate, orgSlug, queueName])
+
   const topBarConfig = useMemo(
     () => ({
       left: (
@@ -377,6 +393,10 @@ function QueueDetailPage() {
           <Button variant="outline" size="xs" onClick={() => setAddJobDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Job
+          </Button>
+          <Button variant="outline" size="xs" onClick={handleOpenScheduledJobCreate}>
+            <Repeat className="mr-2 h-4 w-4" />
+            Schedule Job
           </Button>
           <Button
             variant="outline"
@@ -434,6 +454,10 @@ function QueueDetailPage() {
             <Plus className="mr-2 h-4 w-4" />
             Add Job
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={handleOpenScheduledJobCreate}>
+            <Repeat className="mr-2 h-4 w-4" />
+            Schedule Job
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={handleTogglePause}
@@ -478,6 +502,7 @@ function QueueDetailPage() {
       queueLoading,
       queueName,
       resumeMutation.isPending,
+      handleOpenScheduledJobCreate,
       handleTogglePause,
     ]
   )
@@ -541,7 +566,7 @@ function QueueDetailPage() {
   }
 
   // If we're on a child route (job detail), render the child via Outlet
-  if (isOnJobDetailRoute) {
+  if (isOnChildRoute) {
     return <Outlet />
   }
 
@@ -1506,16 +1531,22 @@ function QueueDetailPage() {
           <TabsContent value="scheduled">
             <Card>
               <CardHeader className="border-b bg-muted/30 py-3">
-                <CardTitle className="text-base font-medium flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  Scheduled Jobs
-                </CardTitle>
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="text-base font-medium flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    Scheduled Jobs
+                  </CardTitle>
+                  <Button variant="outline" size="xs" onClick={handleOpenScheduledJobCreate}>
+                    <Repeat className="mr-2 h-4 w-4" />
+                    Schedule Job
+                  </Button>
+                </div>
               </CardHeader>
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead>Job Name</TableHead>
-                    <TableHead>Pattern</TableHead>
+                    <TableHead>Job</TableHead>
+                    <TableHead>Schedule</TableHead>
                     <TableHead>Next Run ({getTimezoneAbbreviation()})</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
@@ -1526,26 +1557,88 @@ function QueueDetailPage() {
                       <TableCell colSpan={4} className="text-center py-12">
                         <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                         <p className="text-muted-foreground">No scheduled jobs</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-4"
+                          onClick={handleOpenScheduledJobCreate}
+                        >
+                          <Repeat className="mr-2 h-4 w-4" />
+                          Create the first scheduler
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ) : (
                     scheduledJobs.scheduledJobs.map(
                       (job: ListScheduledJobsResponse['scheduledJobs'][number]) => (
                         <TableRow key={job.schedulerId}>
-                          <TableCell className="text-sm">{job.jobName}</TableCell>
                           <TableCell>
-                            <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">
-                              {job.pattern}
-                            </code>
+                            <div className="space-y-1">
+                              <Link
+                                to="/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/$schedulerId"
+                                params={{
+                                  orgSlug,
+                                  connectionId,
+                                  queueName,
+                                  schedulerId: job.schedulerId,
+                                }}
+                                className="text-sm font-medium text-foreground transition-colors hover:text-primary hover:underline underline-offset-2"
+                              >
+                                {job.jobName}
+                              </Link>
+                              <div className="text-xs text-muted-foreground">
+                                <Link
+                                  to="/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/$schedulerId"
+                                  params={{
+                                    orgSlug,
+                                    connectionId,
+                                    queueName,
+                                    schedulerId: job.schedulerId,
+                                  }}
+                                  className="font-mono transition-colors hover:text-foreground"
+                                >
+                                  {job.schedulerId}
+                                </Link>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <div className="text-sm">{getScheduleSummary(job)}</div>
+                              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                <code className="rounded bg-muted px-1.5 py-0.5 font-mono">
+                                  {getScheduleExpression(job)}
+                                </code>
+                                {job.timezone ? <span>{job.timezone}</span> : null}
+                                {typeof job.limit === 'number' ? (
+                                  <span>limit {job.limit}</span>
+                                ) : null}
+                              </div>
+                            </div>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {job.nextRun ? formatDate(job.nextRun) : '—'}
+                            <div className="space-y-1">
+                              <div>{job.nextRun ? formatDate(job.nextRun) : '—'}</div>
+                              {job.startDate ? (
+                                <div className="text-xs">Starts {formatDate(job.startDate)}</div>
+                              ) : null}
+                              {job.endDate ? (
+                                <div className="text-xs">Ends {formatDate(job.endDate)}</div>
+                              ) : null}
+                            </div>
                           </TableCell>
                           <TableCell>
-                            <StatusIndicator
-                              status={job.enabled ? 'enabled' : 'disabled'}
-                              showPulse={false}
-                            />
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusIndicator
+                                status={job.enabled ? 'enabled' : 'disabled'}
+                                showPulse={false}
+                              />
+                              {(job.recentFailedCount ?? 0) > 0 ? (
+                                <Badge variant="warning">
+                                  {formatNumber(job.recentFailedCount ?? 0)} failed recently
+                                </Badge>
+                              ) : null}
+                            </div>
                           </TableCell>
                         </TableRow>
                       )

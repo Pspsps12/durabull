@@ -1,20 +1,5 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-
-// Scheduled job type - matches API response
-interface ScheduledJob {
-  schedulerId: string
-  pattern: string
-  queueName: string
-  jobName: string
-  nextRun?: number
-  enabled: boolean
-  data?: Record<string, unknown>
-  recentFailedCount?: number
-  lastFailedAt?: number
-}
-
 import { AnalyticsEvents, trackEvent } from '@durabull/analytics'
-import cronstrue from 'cronstrue'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import {
   AlertCircle,
   AlertTriangle,
@@ -38,15 +23,10 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { type ListScheduledJobsResponse, useScheduledJobs } from '@/hooks/use-queues'
+import { getCronDescription, getScheduleExpression, getScheduleSummary } from '@/lib/scheduled-jobs'
 import { cn, formatDate, getTimezoneAbbreviation } from '@/lib/utils'
 
-function getCronDescription(pattern: string): string {
-  try {
-    return cronstrue.toString(pattern)
-  } catch {
-    return 'Invalid cron pattern'
-  }
-}
+type ScheduledJob = ListScheduledJobsResponse['scheduledJobs'][number]
 
 function getLocalTimeFromUTC(pattern: string): string {
   try {
@@ -102,26 +82,25 @@ function getLocalTimeFromUTC(pattern: string): string {
   }
 }
 
-function CronPatternTooltip({ pattern }: { pattern: string }) {
-  const utcDescription = getCronDescription(pattern)
-  const localTime = getLocalTimeFromUTC(pattern)
-  const hasSpecificTime = !localTime.startsWith('UTC')
+function CronPatternTooltip({ pattern, timezone }: { pattern: string; timezone?: string }) {
+  const description = getCronDescription(pattern)
+  const localTime = !timezone || timezone === 'UTC' ? getLocalTimeFromUTC(pattern) : null
+  const hasLocalPreview = localTime !== null && !localTime.startsWith('UTC')
 
   return (
     <div className="space-y-3 py-1">
-      {/* UTC Time */}
       <div className="flex items-start gap-2">
         <Globe className="h-4 w-4 text-blue-400 mt-0.5 shrink-0" />
         <div>
           <div className="text-[10px] uppercase tracking-wider text-blue-400 font-medium">
-            Server Time (UTC)
+            Configured Schedule
           </div>
-          <div className="text-sm font-medium text-primary-foreground">{utcDescription}</div>
+          <div className="text-sm font-medium text-primary-foreground">{description}</div>
+          <div className="text-xs text-primary-foreground/70 mt-1">{timezone ?? 'UTC'}</div>
         </div>
       </div>
 
-      {/* Local Time */}
-      {hasSpecificTime && (
+      {hasLocalPreview && (
         <>
           <div className="border-t border-primary-foreground/20" />
           <div className="flex items-start gap-2">
@@ -317,7 +296,8 @@ function ScheduledJobsPage() {
               <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">No scheduled jobs found</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Scheduled jobs are defined in your worker service using the factory pattern
+                Open any queue to create one from the web UI, or keep discovering schedulers your
+                workers already define.
               </p>
             </div>
           ) : (
@@ -338,7 +318,7 @@ function ScheduledJobsPage() {
 
       {/* Pattern reference */}
       <Card className="p-6">
-        <h3 className="font-semibold mb-4">Cron Pattern Reference</h3>
+        <h3 className="font-semibold mb-4">Schedule Reference</h3>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 text-sm">
           <div>
             <code className="bg-muted px-2 py-1 rounded text-xs font-mono">* * * * *</code>
@@ -364,10 +344,14 @@ function ScheduledJobsPage() {
             <code className="bg-muted px-2 py-1 rounded text-xs font-mono">0 0 1 * *</code>
             <p className="text-muted-foreground mt-1">First of each month</p>
           </div>
+          <div>
+            <code className="bg-muted px-2 py-1 rounded text-xs font-mono">every 5 minutes</code>
+            <p className="text-muted-foreground mt-1">Fixed interval scheduler</p>
+          </div>
         </div>
         <p className="text-xs text-muted-foreground mt-4">
-          Format: minute hour day-of-month month day-of-week (5-field) or second minute hour
-          day-of-month month day-of-week (6-field)
+          Cron format: minute hour day-of-month month day-of-week (5-field) or second minute hour
+          day-of-month month day-of-week (6-field). Interval schedules are shown as “every X”.
         </p>
       </Card>
     </div>
@@ -463,10 +447,7 @@ interface JobRowProps {
 }
 
 function JobRow({ job, isLast, orgSlug, connectionId }: JobRowProps) {
-  // Construct the job ID for the next scheduled run
-  // Format: repeat:<schedulerKey>:<timestamp>
   const nextRunJobId = job.nextRun ? `repeat:${job.schedulerId}:${job.nextRun}` : null
-  const canNavigate = nextRunJobId !== null
 
   return (
     <div className="flex items-center gap-4 pl-6 pr-4 py-2.5 hover:bg-muted/40 transition-colors group">
@@ -485,9 +466,22 @@ function JobRow({ job, isLast, orgSlug, connectionId }: JobRowProps) {
         <div className="absolute left-[calc(0.75rem+1rem-0.25rem)] w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-background shadow-sm shadow-emerald-500/50" />
       </div>
 
-      {/* Job name - clickable link to next run */}
+      {/* Job name - clickable link to scheduler editor */}
       <div className="min-w-[200px] shrink-0">
-        {canNavigate ? (
+        <Link
+          to="/$orgSlug/c/$connectionId/queues/$queueName/scheduled-jobs/$schedulerId"
+          params={{
+            orgSlug,
+            connectionId,
+            queueName: job.queueName,
+            schedulerId: job.schedulerId,
+          }}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground/90 hover:text-primary hover:underline underline-offset-2 transition-colors"
+        >
+          {job.jobName}
+          <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+        </Link>
+        {nextRunJobId ? (
           <Link
             to="/$orgSlug/c/$connectionId/queues/$queueName/jobs/$jobId"
             params={{
@@ -497,32 +491,39 @@ function JobRow({ job, isLast, orgSlug, connectionId }: JobRowProps) {
               jobId: nextRunJobId,
             }}
             search={{ tab: 'data' }}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground/90 hover:text-primary hover:underline underline-offset-2 transition-colors"
+            className="mt-1 inline-flex text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
-            {job.jobName}
-            <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+            Inspect next queued run
           </Link>
-        ) : (
-          <span className="text-sm font-medium text-foreground/90 group-hover:text-foreground transition-colors">
-            {job.jobName}
-          </span>
-        )}
+        ) : null}
       </div>
 
-      {/* Cron pattern */}
+      {/* Schedule */}
       <div className="min-w-[140px]">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <code className="text-xs bg-muted/80 px-2 py-1 rounded font-mono cursor-help text-muted-foreground hover:text-foreground transition-colors">
-                {job.pattern}
-              </code>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-xs">
-              <CronPatternTooltip pattern={job.pattern} />
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <div className="space-y-1">
+          {job.pattern ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <code className="text-xs bg-muted/80 px-2 py-1 rounded font-mono cursor-help text-muted-foreground hover:text-foreground transition-colors">
+                    {job.pattern}
+                  </code>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs">
+                  <CronPatternTooltip pattern={job.pattern} timezone={job.timezone} />
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <code className="text-xs bg-muted/80 px-2 py-1 rounded font-mono text-muted-foreground">
+              {getScheduleExpression(job)}
+            </code>
+          )}
+          <div className="text-xs text-muted-foreground">{getScheduleSummary(job)}</div>
+          {job.timezone ? (
+            <div className="text-xs text-muted-foreground">{job.timezone}</div>
+          ) : null}
+        </div>
       </div>
 
       {/* Next run */}

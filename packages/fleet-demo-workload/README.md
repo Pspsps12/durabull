@@ -64,3 +64,9 @@ bun run start
 cd packages/fleet-demo-workload
 bun run dev
 ```
+
+Prerequisites:
+
+- Redis reachable at `WORKLOAD_REDIS_URL` (defaults to `redis://localhost:6379`)
+- If you start Durabull with root `bun run dev`, this workload is not included by default.
+  Use `bun run workload:dev` or `bun run dev:demo` from the repo root when you want it.
