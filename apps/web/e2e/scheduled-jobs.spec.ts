@@ -10,9 +10,7 @@ import {
 } from './fixtures/test'
 
 test.describe('Scheduled Jobs', () => {
-  test('creates a recurring job from queue detail and lands on its edit page', async ({
-    page,
-  }) => {
+  test('creates a recurring job from queue detail and lands on its edit page', async ({ page }) => {
     await ensureActiveOrg(page)
     const connectionId = await getDefaultConnectionId(page)
     const queueName = await getTestQueueName(page, connectionId)
@@ -45,7 +43,8 @@ test.describe('Scheduled Jobs', () => {
         { timeout: 15000 }
       )
 
-      await expect(page.getByText(jobName)).toBeVisible({ timeout: 15000 })
+      const editPageTitle = page.getByRole('heading', { name: jobName, exact: true, level: 1 })
+      await expect(editPageTitle).toBeVisible({ timeout: 15000 })
 
       await expect
         .poll(
