@@ -11,9 +11,14 @@
     "./client": {
       "types": "./src/client.ts",
       "import": "./src/client.ts"
+    },
+    "./sanitizer": {
+      "types": "./src/sanitizer.ts",
+      "import": "./src/sanitizer.ts"
     }
   },
   "scripts": {
+    "test": "bun test ./src",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint ./src",
     "lint:fix": "biome lint --write ./src",

@@ -14,6 +14,8 @@ Bootstrap and health:
 - `GET /api/health`
 - `GET /api/app/config`
 - `GET /api/mode`
+- `GET /api/telemetry/status`
+- `POST /api/telemetry/events`
 
 ## Authentication and Session
 
@@ -47,6 +49,11 @@ Response shape:
     "key": "phc_***",
     "host": "/ingest",
     "uiHost": "https://us.posthog.com"
+  },
+  "telemetry": {
+    "enabled": true,
+    "collectionRequired": true,
+    "disclosureUrl": "https://durabull.io/privacy"
   }
 }
 ```
@@ -62,6 +69,23 @@ Field notes:
 - `posthog.key`: PostHog project key (or `null` when disabled).
 - `posthog.host`: always `/ingest` (Durabull's reverse-proxied analytics endpoint).
 - `posthog.uiHost`: PostHog UI host used by the frontend.
+- `telemetry.enabled`: whether Durabull anonymous/pseudonymous telemetry is active for this runtime.
+- `telemetry.collectionRequired`: always `true` for production/self-hosted usage.
+- `telemetry.disclosureUrl`: public documentation for Durabull telemetry collection.
+
+## Anonymous Telemetry
+
+Durabull routes sanitized product analytics through `POST /api/telemetry/events`. Event names remain
+the same canonical names used by the app, such as `queue_paused`, `connection_created`, and
+`$pageview`. The API re-sanitizes payloads before forwarding them to Durabull's collector.
+
+`POSTHOG_KEY` only configures an instance owner's own PostHog destination. It does not disable
+Durabull anonymous telemetry, and Durabull does not provide a product-level telemetry opt-out.
+
+Durabull telemetry includes feature and route usage, safe runtime context, booleans, enums, and
+aggregate buckets. It does not include Redis URLs, queue names, Redis key names, job data, logs,
+emails, names, organizations, hostnames, raw URLs, search patterns, stack traces, or raw error
+messages.
 
 ## Connection Management
 

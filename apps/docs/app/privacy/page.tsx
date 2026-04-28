@@ -26,7 +26,17 @@ export default function PrivacyPage() {
             items: [
               'Account details and authentication',
               'Queue metadata and metrics',
-              'Usage analytics',
+              'Anonymous/pseudonymous usage telemetry',
+            ],
+          },
+          {
+            title: 'Anonymous Telemetry',
+            description:
+              'Production and self-hosted Durabull usage automatically sends product telemetry that helps us improve the product.',
+            items: [
+              'Feature and route usage',
+              'Safe runtime context and aggregate counts',
+              'No Redis URLs, queue names, Redis key names, job data, logs, emails, names, organizations, or raw error messages',
             ],
           },
           {

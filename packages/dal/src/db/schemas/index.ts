@@ -1,15 +1,14 @@
 // Relations (consolidated to avoid circular dependencies)
 
-// Alert Rule schema exports
-export { alertRule, type AlertRuleType, alertRuleTypes } from './alert-rule/schema'
-export type { AlertRule, NewAlertRule } from './alert-rule/types'
-// Alert Event schema exports
-export { alertEvent, type AlertEventStatus, alertEventStatuses } from './alert-event/schema'
-export type { AlertEvent, NewAlertEvent } from './alert-event/types'
 // Alert Check Cursor schema exports
 export { alertCheckCursor } from './alert-check-cursor/schema'
 export type { AlertCheckCursor, NewAlertCheckCursor } from './alert-check-cursor/types'
-
+// Alert Event schema exports
+export { type AlertEventStatus, alertEvent, alertEventStatuses } from './alert-event/schema'
+export type { AlertEvent, NewAlertEvent } from './alert-event/types'
+// Alert Rule schema exports
+export { type AlertRuleType, alertRule, alertRuleTypes } from './alert-rule/schema'
+export type { AlertRule, NewAlertRule } from './alert-rule/types'
 // Auth schema exports
 export { authAccount, authSession, authVerification } from './auth/schema'
 export type {
@@ -48,6 +47,12 @@ export type {
 } from './redis-discovered-queue/types'
 // Relations v2 - single consolidated relations object
 export { relations } from './relations'
+// Telemetry installation schema exports
+export { telemetryInstallation } from './telemetry-installation/schema'
+export type {
+  NewTelemetryInstallation,
+  TelemetryInstallation,
+} from './telemetry-installation/types'
 // User schema exports
 export { user } from './user/schema'
 export type { NewUser, User } from './user/types'

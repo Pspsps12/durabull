@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 
+import { configureDurabullTelemetry } from '@durabull/analytics'
 import type { QueryClient } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import {
@@ -23,19 +24,19 @@ import {
   Users,
 } from 'lucide-react'
 import { PostHogProvider } from 'posthog-js/react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { APP_TOP_BAR_HEIGHT_CLASS, AppTopBar, AppTopBarProvider } from '@/components/app-top-bar'
-import { ElectronTitleBarDragStrip } from '@/components/electron-title-bar-drag-strip'
-import { MacDesktopSidebarControls } from '@/components/mac-desktop-sidebar-controls'
 import { ConnectionProvider, useConnection } from '@/components/connection-provider'
 import { ConnectionSelector } from '@/components/connection-selector'
 import { DurabullLogo } from '@/components/durabull-logo'
+import { ElectronTitleBarDragStrip } from '@/components/electron-title-bar-drag-strip'
+import { MacDesktopSidebarControls } from '@/components/mac-desktop-sidebar-controls'
 import { NavUser } from '@/components/nav-user'
 import { OrganizationSelector } from '@/components/organization-selector'
 import { ThemeProvider } from '@/components/theme-provider'
+import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Toaster } from '@/components/ui/sonner'
-import { Badge } from '@/components/ui/badge'
 import { useAlertSummary } from '@/hooks/use-alerts'
 import { useAppConfig } from '@/hooks/use-app-config'
 import { useAppMode } from '@/hooks/use-app-mode'
@@ -90,6 +91,22 @@ export const Route = createRootRouteWithContext<{
 function RootComponent() {
   const { config, isLoading } = useAppConfig()
 
+  useEffect(() => {
+    configureDurabullTelemetry({
+      enabled: config.telemetry.enabled,
+      collectionRequired: config.telemetry.collectionRequired,
+      disclosureUrl: config.telemetry.disclosureUrl,
+      runtimeContext: {
+        authless: config.authless,
+        env_connections: config.envConnections,
+        environment: config.environment,
+        persistence: config.persistence,
+        runtime: 'web',
+        stateless: config.stateless,
+      },
+    })
+  }, [config])
+
   // Render children without PostHog if config is missing
   const content = (
     <ThemeProvider defaultTheme="dark" storageKey="durabull-theme">
@@ -120,7 +137,13 @@ function RootComponent() {
         // like the toolbar work correctly
         ui_host: config.posthog.uiHost,
         defaults: '2025-05-24',
+        autocapture: false,
         capture_exceptions: true, // This enables capturing exceptions using Error Tracking
+        capture_pageview: false,
+        capture_pageleave: false,
+        capture_dead_clicks: false,
+        disable_session_recording: true,
+        enable_heatmaps: false,
         persistence: 'localStorage+cookie',
         cross_subdomain_cookie: true,
         debug: config.environment === 'development',

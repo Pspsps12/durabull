@@ -1,4 +1,6 @@
 import posthog from 'posthog-js'
+import { AnalyticsEvents } from './events'
+import { isKnownDurabullTelemetryEvent, PAGEVIEW_EVENT, sanitizeTelemetryEvent } from './sanitizer'
 
 /**
  * User properties for identification
@@ -21,6 +23,87 @@ export interface OrganizationProperties {
   slug: string
   logo?: string | null
   createdAt?: Date
+}
+
+interface DurabullTelemetryConfig {
+  enabled: boolean
+  collectionRequired: boolean
+  endpoint?: string
+  disclosureUrl?: string
+  runtimeContext?: Record<string, unknown>
+}
+
+const DEFAULT_TELEMETRY_ENDPOINT = '/api/telemetry/events'
+
+let durabullTelemetryConfig: DurabullTelemetryConfig = {
+  enabled: false,
+  collectionRequired: true,
+  endpoint: DEFAULT_TELEMETRY_ENDPOINT,
+}
+let sessionId: string | null = null
+
+function getSessionId(): string {
+  if (sessionId) return sessionId
+
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    sessionId = crypto.randomUUID()
+    return sessionId
+  }
+
+  sessionId = `session-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`
+  return sessionId
+}
+
+function sendDurabullTelemetry(eventName: string, properties?: Record<string, unknown>) {
+  if (typeof window === 'undefined') return
+  if (!durabullTelemetryConfig.enabled) return
+  if (!isKnownDurabullTelemetryEvent(eventName)) return
+
+  const endpoint = durabullTelemetryConfig.endpoint ?? DEFAULT_TELEMETRY_ENDPOINT
+  const runtimeContext = durabullTelemetryConfig.runtimeContext ?? {}
+  const sanitized = sanitizeTelemetryEvent(eventName, {
+    ...runtimeContext,
+    ...(properties ?? {}),
+  })
+
+  const body = JSON.stringify({
+    event: sanitized.event,
+    properties: sanitized.properties,
+    sessionId: getSessionId(),
+    timestamp: new Date().toISOString(),
+  })
+
+  try {
+    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      const blob = new Blob([body], { type: 'application/json' })
+      if (navigator.sendBeacon(endpoint, blob)) return
+    }
+
+    void fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      credentials: 'include',
+      keepalive: true,
+    }).catch(() => {
+      // Telemetry must never affect product behavior.
+    })
+  } catch {
+    // Telemetry must never affect product behavior.
+  }
+}
+
+/**
+ * Configure Durabull-owned anonymous telemetry.
+ *
+ * This is intentionally separate from a user's optional PostHog project key:
+ * POSTHOG_KEY controls their own analytics destination, not Durabull telemetry.
+ */
+export function configureDurabullTelemetry(config: DurabullTelemetryConfig) {
+  durabullTelemetryConfig = {
+    ...config,
+    endpoint: config.endpoint ?? DEFAULT_TELEMETRY_ENDPOINT,
+  }
 }
 
 /**
@@ -46,10 +129,15 @@ export function initAnalytics(
     // like the toolbar work correctly
     ui_host: options?.uiHost ?? 'https://us.posthog.com',
     defaults: '2025-05-24',
+    autocapture: false,
     capture_exceptions: true,
     debug: options?.debug ?? false,
     // Disable automatic pageview capture - we'll handle this with the router
     capture_pageview: false,
+    capture_pageleave: false,
+    capture_dead_clicks: false,
+    disable_session_recording: true,
+    enable_heatmaps: false,
     // Persist user identity across sessions
     persistence: 'localStorage+cookie',
   })
@@ -102,7 +190,7 @@ export function trackUserCreated(user: UserProperties) {
   identifyUser(user)
 
   // Then track the signup event
-  posthog.capture('user_created', {
+  trackEvent(AnalyticsEvents.USER_CREATED, {
     userId: user.id,
     email: user.email,
     name: user.name,
@@ -124,7 +212,7 @@ export function trackOrganizationCreated(
   identifyOrganization(organization)
 
   // Track the organization creation event
-  posthog.capture('organization_created', {
+  trackEvent(AnalyticsEvents.ORGANIZATION_CREATED, {
     organizationId: organization.id,
     organizationName: organization.name,
     organizationSlug: organization.slug,
@@ -140,7 +228,10 @@ export function trackEvent(eventName: string, properties?: Record<string, unknow
     return
   }
 
-  posthog.capture(eventName, properties)
+  sendDurabullTelemetry(eventName, properties)
+
+  const sanitized = sanitizeTelemetryEvent(eventName, properties ?? {})
+  posthog.capture(eventName, sanitized.properties)
 }
 
 /**
@@ -151,10 +242,15 @@ export function trackPageView(path: string, properties?: Record<string, unknown>
     return
   }
 
-  posthog.capture('$pageview', {
+  const pageViewProperties = {
     $current_url: path,
     ...properties,
-  })
+  }
+
+  sendDurabullTelemetry(PAGEVIEW_EVENT, pageViewProperties)
+
+  const sanitized = sanitizeTelemetryEvent(PAGEVIEW_EVENT, pageViewProperties)
+  posthog.capture(PAGEVIEW_EVENT, sanitized.properties)
 }
 
 /**

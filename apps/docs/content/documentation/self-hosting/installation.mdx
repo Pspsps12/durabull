@@ -41,6 +41,10 @@ docker run --rm -p 3000:3000 --network durabull \
 For a full Compose setup and persistence notes, see
 [Docker Image and Compose](/documentation/deployment/docker).
 
+Production and self-hosted Durabull automatically collects anonymous/pseudonymous usage telemetry
+to understand feature usage and improve the product. Durabull does not collect Redis URLs, queue
+names, Redis key names, job data, logs, emails, names, organizations, or raw error messages.
+
 ## Option B: Install from Source
 
 1. Install dependencies:

@@ -13,10 +13,14 @@ import { isAuthlessMode } from './lib/authless'
 import { RedisUnavailableError } from './lib/redis'
 import { createSessionMiddleware } from './middleware/auth'
 import { createConnectionMiddleware } from './middleware/connection'
-import { apiRateLimiter, authRateLimiter } from './middleware/rate-limit'
-import authRoutes from './routes/auth'
-import alertsGlobalRoutes from './routes/alerts-global'
+import {
+  apiRateLimiter,
+  authRateLimiter,
+  telemetryCollectorRateLimiter,
+} from './middleware/rate-limit'
 import alertsRoutes from './routes/alerts'
+import alertsGlobalRoutes from './routes/alerts-global'
+import authRoutes from './routes/auth'
 import connectionsRoutes from './routes/connections'
 import invitationsRoutes from './routes/invitations'
 import jobsRoutes from './routes/jobs'
@@ -25,6 +29,10 @@ import queuesRoutes from './routes/queues'
 import redisKeysRoutes from './routes/redis-keys'
 import scheduledJobsRoutes from './routes/scheduled-jobs'
 import teamRoutes from './routes/team'
+import telemetryRoutes, { getTelemetryStatus } from './routes/telemetry'
+import telemetryCollectorRoutes, {
+  isDurabullTelemetryCollectorEnabled,
+} from './routes/telemetry-collector'
 import userSettingsRoutes from './routes/user-settings'
 import workersRoutes from './routes/workers'
 
@@ -136,6 +144,7 @@ function getAppConfig() {
       host: '/ingest',
       uiHost: DEFAULT_POSTHOG_UI_HOST,
     },
+    telemetry: getTelemetryStatus(),
   }
 }
 
@@ -174,6 +183,7 @@ const apiRoutes = new Hono()
   .get('/app/config', (c) => c.json(getAppConfig()))
   // Backward-compatible app mode subset
   .get('/mode', (c) => c.json(getAppMode()))
+  .route('/telemetry', telemetryRoutes)
   // Session endpoint - middleware applied at runtime, types inferred here
   .get('/session', (c) => {
     const user = c.get('user')
@@ -322,6 +332,19 @@ export async function createApiApp(options: CreateApiAppOptions = {}) {
     })
   )
 
+  if (isDurabullTelemetryCollectorEnabled()) {
+    app.use('/v1/*', telemetryCollectorRateLimiter)
+    app.use(
+      '/v1/*',
+      bodyLimit({
+        maxSize: 128 * 1024,
+        onError: (c) =>
+          c.json({ error: 'Payload Too Large', message: 'Telemetry batch exceeds 128KB' }, 413),
+      })
+    )
+    app.route('/v1', telemetryCollectorRoutes)
+  }
+
   // Initialize auth and create middleware
   const auth = isAuthlessMode() ? undefined : await getAuth()
   const sessionMiddleware = createSessionMiddleware(auth)
@@ -334,6 +357,7 @@ export async function createApiApp(options: CreateApiAppOptions = {}) {
     .route('/invitations', invitationsRoutes)
     .get('/health', (c) => c.json({ status: 'ok', timestamp: Date.now() }))
     .get('/mode', (c) => c.json(getAppMode()))
+    .route('/telemetry', telemetryRoutes)
 
   // Apply session middleware to routes that need it
   api.use('/session', sessionMiddleware)
