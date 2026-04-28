@@ -2,48 +2,54 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { env } from '@durabull/env'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
-import { hashTelemetryIdentifier, default as telemetryCollectorRoutes } from './telemetry-collector'
+import telemetryRoutes, { hashTelemetryIdentifier } from './telemetry'
 
 const INSTANCE_ID = '41111111-1111-4111-8111-111111111111'
 const SESSION_ID = 'ephemeral-session'
-const HMAC_SECRET = 'test-collector-hmac-secret'
+const HMAC_SECRET = 'test-telemetry-collect-hmac-secret'
 const POSTHOG_KEY = 'phc_test_project_key'
 
 const mutableEnv = env as {
+  APP_BASE_URL?: string
+  BETTER_AUTH_SECRET?: string
   CI?: boolean
-  DURABULL_TELEMETRY_COLLECTOR?: boolean
+  DURABULL_CLOUD?: boolean
   DURABULL_TELEMETRY_HMAC_SECRET?: string
   DURABULL_TELEMETRY_POSTHOG_HOST?: string
   DURABULL_TELEMETRY_POSTHOG_KEY?: string
   NODE_ENV?: 'development' | 'test' | 'production'
+  POSTHOG_KEY?: string
 }
 
+const originalAppBaseUrl = mutableEnv.APP_BASE_URL
+const originalBetterAuthSecret = mutableEnv.BETTER_AUTH_SECRET
 const originalCi = mutableEnv.CI
-const originalCollectorEnabled = mutableEnv.DURABULL_TELEMETRY_COLLECTOR
+const originalDurabullCloud = mutableEnv.DURABULL_CLOUD
 const originalHmacSecret = mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET
 const originalNodeEnv = mutableEnv.NODE_ENV
 const originalPosthogHost = mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST
 const originalPosthogKey = mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY
+const originalPublicPosthogKey = mutableEnv.POSTHOG_KEY
 const originalFetch = globalThis.fetch
 
-function createCollectorApp(options: { bodyLimit?: boolean } = {}) {
+function createTelemetryRouteApp(options: { bodyLimit?: boolean } = {}) {
   const app = new Hono()
 
   if (options.bodyLimit) {
     app.use(
-      '/v1/*',
+      '/api/telemetry/collect',
       bodyLimit({
         maxSize: 128 * 1024,
         onError: (c) => c.json({ error: 'Payload Too Large' }, 413),
       })
     )
-    return app.route('/v1', telemetryCollectorRoutes)
+    return app.route('/api/telemetry', telemetryRoutes)
   }
 
-  return app.route('/', telemetryCollectorRoutes)
+  return app.route('/', telemetryRoutes)
 }
 
-function collectorPayload(properties: Record<string, unknown> = { success: true }) {
+function collectPayload(properties: Record<string, unknown> = { success: true }) {
   return JSON.stringify({
     instanceId: INSTANCE_ID,
     sentAt: '2026-04-28T12:00:00.000Z',
@@ -58,32 +64,66 @@ function collectorPayload(properties: Record<string, unknown> = { success: true 
   })
 }
 
-describe('telemetry collector routes', () => {
+describe('telemetry collect route', () => {
   beforeEach(() => {
+    mutableEnv.APP_BASE_URL = 'https://app.durabull.io'
+    mutableEnv.BETTER_AUTH_SECRET = undefined
     mutableEnv.CI = false
+    mutableEnv.DURABULL_CLOUD = true
     mutableEnv.NODE_ENV = 'production'
-    mutableEnv.DURABULL_TELEMETRY_COLLECTOR = true
+    mutableEnv.POSTHOG_KEY = undefined
     mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = HMAC_SECRET
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = 'https://us.i.posthog.com'
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = POSTHOG_KEY
   })
 
   afterEach(() => {
+    mutableEnv.APP_BASE_URL = originalAppBaseUrl
+    mutableEnv.BETTER_AUTH_SECRET = originalBetterAuthSecret
     mutableEnv.CI = originalCi
+    mutableEnv.DURABULL_CLOUD = originalDurabullCloud
     mutableEnv.NODE_ENV = originalNodeEnv
-    mutableEnv.DURABULL_TELEMETRY_COLLECTOR = originalCollectorEnabled
+    mutableEnv.POSTHOG_KEY = originalPublicPosthogKey
     mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = originalHmacSecret
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = originalPosthogHost
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = originalPosthogKey
     globalThis.fetch = originalFetch
   })
 
+  it('can use the existing cloud API PostHog and auth secrets without extra telemetry setup', async () => {
+    mutableEnv.BETTER_AUTH_SECRET = HMAC_SECRET
+    mutableEnv.POSTHOG_KEY = POSTHOG_KEY
+    mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = undefined
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = undefined
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload(),
+    })
+
+    expect(response.status).toBe(202)
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    const body = JSON.parse(String(init.body)) as {
+      api_key: string
+      batch: Array<{ properties: Record<string, unknown> }>
+    }
+
+    expect(body.api_key).toBe(POSTHOG_KEY)
+    expect(body.batch[0].properties.instance_key).toBe(
+      hashTelemetryIdentifier(INSTANCE_ID, HMAC_SECRET)
+    )
+  })
+
   it('forwards canonical sanitized events to PostHog batch with HMAC identifiers', async () => {
     const fetchMock = mock(async () => new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
-    const app = createCollectorApp()
+    const app = createTelemetryRouteApp()
 
-    const response = await app.request('/batch', {
+    const response = await app.request('/collect', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -92,7 +132,7 @@ describe('telemetry collector routes', () => {
         'X-Forwarded-For': '203.0.113.10',
         'User-Agent': 'should-not-forward',
       },
-      body: collectorPayload({
+      body: collectPayload({
         authless: true,
         environment: 'production',
         persistence: 'pglite',
@@ -133,15 +173,32 @@ describe('telemetry collector routes', () => {
     expect(properties.instance_key).not.toContain(INSTANCE_ID)
   })
 
+  it('rejects collect requests on non-Durabull API deployments', async () => {
+    mutableEnv.APP_BASE_URL = 'https://self-hosted.example.com'
+    mutableEnv.DURABULL_CLOUD = false
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload(),
+    })
+
+    expect(response.status).toBe(404)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('rejects forbidden or unknown properties before forwarding', async () => {
     const fetchMock = mock(async () => new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
-    const app = createCollectorApp()
+    const app = createTelemetryRouteApp()
 
-    const response = await app.request('/batch', {
+    const response = await app.request('/collect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: collectorPayload({ queue_name: 'billing-production', success: true }),
+      body: collectPayload({ queue_name: 'billing-production', success: true }),
     })
 
     expect(response.status).toBe(400)
@@ -151,9 +208,9 @@ describe('telemetry collector routes', () => {
   it('rejects unknown events before forwarding', async () => {
     const fetchMock = mock(async () => new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
-    const app = createCollectorApp()
+    const app = createTelemetryRouteApp()
 
-    const response = await app.request('/batch', {
+    const response = await app.request('/collect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -172,24 +229,43 @@ describe('telemetry collector routes', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('fails closed when collector secrets are missing', async () => {
+  it('fails closed when collection secrets are missing', async () => {
+    mutableEnv.BETTER_AUTH_SECRET = undefined
+    mutableEnv.POSTHOG_KEY = undefined
     mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = undefined
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = undefined
     const fetchMock = mock(async () => new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
-    const app = createCollectorApp()
+    const app = createTelemetryRouteApp()
 
-    const response = await app.request('/batch', {
+    const response = await app.request('/collect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: collectorPayload(),
+      body: collectPayload(),
     })
 
     expect(response.status).toBe(503)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('rejects oversized public collector payloads', async () => {
-    const app = createCollectorApp({ bodyLimit: true })
+  it('fails closed when the configured PostHog batch host is invalid', async () => {
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = 'http://[::1'
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload(),
+    })
+
+    expect(response.status).toBe(503)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects oversized public collect payloads on the existing API route', async () => {
+    const app = createTelemetryRouteApp({ bodyLimit: true })
     const body = JSON.stringify({
       instanceId: INSTANCE_ID,
       events: [
@@ -201,7 +277,7 @@ describe('telemetry collector routes', () => {
       ],
     })
 
-    const response = await app.request('/v1/batch', {
+    const response = await app.request('/api/telemetry/collect', {
       method: 'POST',
       headers: { 'Content-Length': String(body.length), 'Content-Type': 'application/json' },
       body,

@@ -106,12 +106,13 @@ describe('telemetry routes', () => {
     expect(await response.json()).toEqual({ accepted: true })
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     const body = JSON.parse(String(init.body)) as {
       events: Array<{ event: string; properties: Record<string, unknown> }>
       instanceId: string
     }
 
+    expect(url).toBe('https://app.durabull.io/api/telemetry/collect')
     expect(body.instanceId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     )
@@ -137,10 +138,10 @@ describe('telemetry routes', () => {
     expect(response.status).toBe(400)
   })
 
-  it('keeps local telemetry non-blocking when collector forwarding fails', async () => {
+  it('keeps local telemetry non-blocking when Durabull API forwarding fails', async () => {
     mutableEnv.NODE_ENV = 'production'
     const fetchMock = mock(async () => {
-      throw new Error('collector unavailable')
+      throw new Error('Durabull API unavailable')
     })
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = await createTelemetryRouteApp()

@@ -65,6 +65,9 @@ values such as job status or theme, and aggregate count/duration buckets. Durabu
 Redis URLs, queue names, Redis key names, job data, logs, emails, names, organizations, hostnames,
 raw URLs, search patterns, stack traces, or raw error messages.
 
+Self-hosted deployments do not need a separate collector service or telemetry hostname. The app
+forwards sanitized telemetry to Durabull's existing cloud API.
+
 ## Optional Runtime Toggles
 
 | Variable | Required | Purpose |

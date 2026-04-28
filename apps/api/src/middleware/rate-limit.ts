@@ -212,13 +212,13 @@ export const apiRateLimiter = rateLimiter({
 })
 
 /**
- * Public collector limiter for Durabull-owned telemetry ingestion.
- * Keeps the hosted collector bounded without affecting local product behavior.
+ * Public limiter for Durabull-owned telemetry collection on the existing API.
+ * Keeps the cloud API ingestion route bounded without affecting local product behavior.
  */
-export const telemetryCollectorRateLimiter = rateLimiter({
+export const telemetryCollectRateLimiter = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
   limit: 120, // 120 batches per minute per client
-  keyPrefix: 'rl:telemetry-collector',
+  keyPrefix: 'rl:telemetry-collect',
   onRateLimit: (c) =>
     c.json(
       {

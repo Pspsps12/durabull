@@ -12,6 +12,7 @@ const mutableEnv = env as {
   DATABASE_URL?: string
   DURABULL_AUTHLESS?: boolean
   DURABULL_CLOUD?: boolean
+  DURABULL_TELEMETRY_POSTHOG_KEY?: string
   NODE_ENV?: 'development' | 'test' | 'production'
   POSTHOG_KEY?: string
 }
@@ -21,6 +22,7 @@ const originalAuthless = mutableEnv.DURABULL_AUTHLESS
 const originalCi = mutableEnv.CI
 const originalDatabaseUrl = mutableEnv.DATABASE_URL
 const originalDurabullCloud = mutableEnv.DURABULL_CLOUD
+const originalDurabullTelemetryPosthogKey = mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY
 const originalNodeEnv = mutableEnv.NODE_ENV
 const originalPosthogKey = mutableEnv.POSTHOG_KEY
 const originalPgliteDir = process.env.DURABULL_PGLITE_DIR
@@ -36,6 +38,7 @@ describe('api app config', () => {
     mutableEnv.DATABASE_URL = undefined
     mutableEnv.DURABULL_AUTHLESS = true
     mutableEnv.DURABULL_CLOUD = false
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = undefined
     await closeDb()
   })
 
@@ -46,6 +49,7 @@ describe('api app config', () => {
     mutableEnv.DATABASE_URL = originalDatabaseUrl
     mutableEnv.DURABULL_AUTHLESS = originalAuthless
     mutableEnv.DURABULL_CLOUD = originalDurabullCloud
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = originalDurabullTelemetryPosthogKey
     mutableEnv.NODE_ENV = originalNodeEnv
     mutableEnv.POSTHOG_KEY = originalPosthogKey
 
@@ -99,6 +103,25 @@ describe('api app config', () => {
       telemetry: {
         collectionRequired: true,
         dedupeIdentifiedPosthogEvents: true,
+        enabled: true,
+      },
+    })
+  })
+
+  it('does not dedupe cloud telemetry when an internal telemetry PostHog override uses a separate project', async () => {
+    mutableEnv.APP_BASE_URL = 'https://app.durabull.io'
+    mutableEnv.NODE_ENV = 'production'
+    mutableEnv.POSTHOG_KEY = 'phc_durabull_cloud_native_project'
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = 'phc_durabull_separate_telemetry_project'
+    const { app } = await createApiApp({ enableLogging: false })
+
+    const response = await app.request('/api/app/config')
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      telemetry: {
+        collectionRequired: true,
+        dedupeIdentifiedPosthogEvents: false,
         enabled: true,
       },
     })

@@ -16,7 +16,7 @@ import { createConnectionMiddleware } from './middleware/connection'
 import {
   apiRateLimiter,
   authRateLimiter,
-  telemetryCollectorRateLimiter,
+  telemetryCollectRateLimiter,
 } from './middleware/rate-limit'
 import alertsRoutes from './routes/alerts'
 import alertsGlobalRoutes from './routes/alerts-global'
@@ -30,9 +30,6 @@ import redisKeysRoutes from './routes/redis-keys'
 import scheduledJobsRoutes from './routes/scheduled-jobs'
 import teamRoutes from './routes/team'
 import telemetryRoutes, { getTelemetryStatus } from './routes/telemetry'
-import telemetryCollectorRoutes, {
-  isDurabullTelemetryCollectorEnabled,
-} from './routes/telemetry-collector'
 import userSettingsRoutes from './routes/user-settings'
 import workersRoutes from './routes/workers'
 
@@ -332,18 +329,15 @@ export async function createApiApp(options: CreateApiAppOptions = {}) {
     })
   )
 
-  if (isDurabullTelemetryCollectorEnabled()) {
-    app.use('/v1/*', telemetryCollectorRateLimiter)
-    app.use(
-      '/v1/*',
-      bodyLimit({
-        maxSize: 128 * 1024,
-        onError: (c) =>
-          c.json({ error: 'Payload Too Large', message: 'Telemetry batch exceeds 128KB' }, 413),
-      })
-    )
-    app.route('/v1', telemetryCollectorRoutes)
-  }
+  app.use('/api/telemetry/collect', telemetryCollectRateLimiter)
+  app.use(
+    '/api/telemetry/collect',
+    bodyLimit({
+      maxSize: 128 * 1024,
+      onError: (c) =>
+        c.json({ error: 'Payload Too Large', message: 'Telemetry batch exceeds 128KB' }, 413),
+    })
+  )
 
   // Initialize auth and create middleware
   const auth = isAuthlessMode() ? undefined : await getAuth()

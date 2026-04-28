@@ -83,7 +83,8 @@ Field notes:
 
 Durabull routes sanitized product analytics through `POST /api/telemetry/events`. Event names remain
 the same canonical names used by the app, such as `queue_paused`, `connection_created`, and
-`$pageview`. The API re-sanitizes payloads before forwarding them to Durabull's collector.
+`$pageview`. Self-hosted instances re-sanitize payloads before forwarding them to Durabull's
+existing cloud API at `POST /api/telemetry/collect`.
 
 `POSTHOG_KEY` configures a PostHog destination for the cloud product or instance owner. It does not
 disable Durabull anonymous telemetry, and Durabull does not provide a product-level telemetry

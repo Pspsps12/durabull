@@ -75,7 +75,6 @@ const envSchema = z.object({
   VITE_PUBLIC_APP_URL: optionalString,
   POSTHOG_KEY: optionalString,
   POSTHOG_HOST: optionalString,
-  DURABULL_TELEMETRY_COLLECTOR: optionalBoolean,
   DURABULL_TELEMETRY_HMAC_SECRET: optionalString,
   DURABULL_TELEMETRY_POSTHOG_HOST: optionalString,
   DURABULL_TELEMETRY_POSTHOG_KEY: optionalString,
