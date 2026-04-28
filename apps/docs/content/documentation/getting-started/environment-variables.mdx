@@ -57,7 +57,8 @@ description: Complete runtime environment variable reference for local and produ
 Durabull collects anonymous/pseudonymous usage telemetry in production and self-hosted usage to
 understand feature adoption and improve the product. Configuring `POSTHOG_KEY` for your own PostHog
 project does not disable Durabull telemetry, and Durabull does not provide a product-level telemetry
-opt-out.
+opt-out. When `POSTHOG_KEY` is set, the configured PostHog project receives the full PostHog
+browser analytics stream.
 
 Telemetry includes feature and route usage, safe runtime context, success/failure booleans, enum
 values such as job status or theme, and aggregate count/duration buckets. Durabull does not collect

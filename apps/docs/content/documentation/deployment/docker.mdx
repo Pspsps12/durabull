@@ -7,8 +7,9 @@ Docker is the fastest way to get a self-hosted Durabull instance running.
 
 Production Docker images collect anonymous/pseudonymous usage telemetry to understand feature usage
 and improve Durabull. Configuring `POSTHOG_KEY` for your own PostHog project does not disable
-Durabull telemetry. Durabull does not collect Redis URLs, queue names, Redis key names, job data,
-logs, emails, names, organizations, or raw error messages.
+Durabull telemetry; your project still receives the full PostHog browser analytics stream. Durabull
+does not collect Redis URLs, queue names, Redis key names, job data, logs, emails, names,
+organizations, or raw error messages.
 
 ## 1) Choose an Image Tag
 

@@ -28,10 +28,21 @@ export function isDurabullTelemetryEnabled(): boolean {
   return env.NODE_ENV === 'production'
 }
 
+export function isDurabullManagedPosthogProject(): boolean {
+  if (env.DURABULL_CLOUD === true) return true
+
+  try {
+    return new URL(env.APP_BASE_URL).hostname === 'app.durabull.io'
+  } catch {
+    return false
+  }
+}
+
 export function getTelemetryStatus() {
   return {
     enabled: isDurabullTelemetryEnabled(),
     collectionRequired: true as const,
+    dedupeIdentifiedPosthogEvents: !!env.POSTHOG_KEY && isDurabullManagedPosthogProject(),
     disclosureUrl: TELEMETRY_DISCLOSURE_URL,
   }
 }

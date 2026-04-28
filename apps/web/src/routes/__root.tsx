@@ -95,6 +95,7 @@ function RootComponent() {
     configureDurabullTelemetry({
       enabled: config.telemetry.enabled,
       collectionRequired: config.telemetry.collectionRequired,
+      dedupeIdentifiedPosthogEvents: config.telemetry.dedupeIdentifiedPosthogEvents,
       disclosureUrl: config.telemetry.disclosureUrl,
       runtimeContext: {
         authless: config.authless,
@@ -137,13 +138,7 @@ function RootComponent() {
         // like the toolbar work correctly
         ui_host: config.posthog.uiHost,
         defaults: '2025-05-24',
-        autocapture: false,
         capture_exceptions: true, // This enables capturing exceptions using Error Tracking
-        capture_pageview: false,
-        capture_pageleave: false,
-        capture_dead_clicks: false,
-        disable_session_recording: true,
-        enable_heatmaps: false,
         persistence: 'localStorage+cookie',
         cross_subdomain_cookie: true,
         debug: config.environment === 'development',

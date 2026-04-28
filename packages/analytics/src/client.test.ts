@@ -70,6 +70,7 @@ describe('analytics client telemetry fanout', () => {
   })
 
   afterEach(() => {
+    analytics.resetIdentity()
     analytics.configureDurabullTelemetry({
       enabled: false,
       collectionRequired: true,
@@ -97,14 +98,17 @@ describe('analytics client telemetry fanout', () => {
     expect(durabullEvent.properties).not.toHaveProperty('queue_name')
 
     expect(captureMock).toHaveBeenCalledWith(AnalyticsEvents.QUEUE_PAUSED, {
+      queue_name: 'billing-production',
       success: true,
     })
   })
 
-  it('keeps pageviews canonical and sends route templates instead of raw URLs', () => {
-    analytics.trackPageView(
-      'https://app.example.com/acme/c/conn-1/queues/billing/jobs/job-1?token=secret'
-    )
+  it('keeps Durabull pageviews canonical while preserving raw PostHog pageview properties', () => {
+    const rawUrl = 'https://app.example.com/acme/c/conn-1/queues/billing/jobs/job-1?token=secret'
+
+    analytics.trackPageView(rawUrl, {
+      path: '/acme/c/conn-1/queues/billing/jobs/job-1',
+    })
 
     const durabullEvent = lastFetchBody(fetchMock)
     expect(durabullEvent.event).toBe('$pageview')
@@ -112,7 +116,8 @@ describe('analytics client telemetry fanout', () => {
       '/$orgSlug/c/$connectionId/queues/$queueName/jobs/$jobId'
     )
     expect(captureMock).toHaveBeenCalledWith('$pageview', {
-      path: '/$orgSlug/c/$connectionId/queues/$queueName/jobs/$jobId',
+      $current_url: rawUrl,
+      path: '/acme/c/conn-1/queues/billing/jobs/job-1',
     })
   })
 
@@ -130,5 +135,45 @@ describe('analytics client telemetry fanout', () => {
       environment: 'production',
       runtime: 'web',
     })
+  })
+
+  it('dedupes Durabull telemetry after PostHog identity is known when configured', () => {
+    analytics.configureDurabullTelemetry({
+      enabled: true,
+      collectionRequired: true,
+      dedupeIdentifiedPosthogEvents: true,
+      endpoint: '/api/telemetry/events',
+    })
+
+    analytics.identifyUser({
+      email: 'person@example.com',
+      id: 'user-123',
+      name: 'Person Example',
+    })
+    analytics.trackEvent(AnalyticsEvents.QUEUE_PAUSED, { queue_name: 'billing-production' })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(captureMock).toHaveBeenCalledWith(AnalyticsEvents.QUEUE_PAUSED, {
+      queue_name: 'billing-production',
+    })
+  })
+
+  it('keeps full PostHog default capture settings available when analytics initializes', () => {
+    analytics.initAnalytics('phc_project', '/ingest', {
+      debug: true,
+      uiHost: 'https://us.posthog.com',
+    })
+
+    expect(initMock).toHaveBeenCalledWith(
+      'phc_project',
+      expect.not.objectContaining({
+        autocapture: false,
+        capture_dead_clicks: false,
+        capture_pageleave: false,
+        capture_pageview: false,
+        disable_session_recording: true,
+        enable_heatmaps: false,
+      })
+    )
   })
 })

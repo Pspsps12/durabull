@@ -24,6 +24,7 @@ const FALLBACK_APP_CONFIG: AppConfigResponse = {
   telemetry: {
     enabled: false,
     collectionRequired: true,
+    dedupeIdentifiedPosthogEvents: false,
     disclosureUrl: 'https://durabull.io/privacy',
   },
 }
