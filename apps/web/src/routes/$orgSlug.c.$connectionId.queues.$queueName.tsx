@@ -146,7 +146,7 @@ export const Route = createFileRoute('/$orgSlug/c/$connectionId/queues/$queueNam
 
 function QueueDetailPage() {
   const { orgSlug, connectionId, queueName } = Route.useParams()
-  const { section, tab, status, jobId, name, hideScheduled, page } = Route.useSearch()
+  const { section, tab, status, jobId, name = '', hideScheduled, page } = Route.useSearch()
   const navigate = useNavigate()
   const matchRoute = useMatchRoute()
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set())
@@ -208,14 +208,30 @@ function QueueDetailPage() {
   const removeMutation = useRemoveJobs()
   const invokeMutation = useInvokeJobs()
   const hideScheduledJobs = hideScheduled === 1
+  const hasClientSideJobFilter = Boolean(jobId || name)
+  const [visibleJobCount, setVisibleJobCount] = useState(20)
   const allJobs = useMemo(
     () => jobsData?.pages.flatMap((pageData) => pageData.jobs) ?? [],
     [jobsData]
   )
-  const visibleJobs = useMemo(
+  const filteredVisibleJobs = useMemo(
     () => allJobs.filter((job) => (hideScheduledJobs ? !job.id.startsWith('repeat:') : true)) ?? [],
     [allJobs, hideScheduledJobs]
   )
+  const visibleJobs = useMemo(
+    () =>
+      hasClientSideJobFilter
+        ? filteredVisibleJobs.slice(0, visibleJobCount)
+        : filteredVisibleJobs,
+    [filteredVisibleJobs, hasClientSideJobFilter, visibleJobCount]
+  )
+  const hasMoreVisibleJobs = hasClientSideJobFilter
+    ? visibleJobs.length < filteredVisibleJobs.length
+    : hasMoreJobs
+
+  useEffect(() => {
+    setVisibleJobCount(20)
+  }, [jobId, name, status, hideScheduled, queueName])
   const jobsScrollRef = useRef<HTMLDivElement | null>(null)
   const metricsPoints = metrics?.series.points ?? []
   const metricsTotals = metrics?.series.totals
@@ -340,20 +356,39 @@ function QueueDetailPage() {
     }
 
     const onScroll = () => {
+      const nearBottom =
+        container.scrollTop + container.clientHeight >= container.scrollHeight - 240
+      if (!nearBottom) {
+        return
+      }
+
+      if (hasClientSideJobFilter) {
+        if (visibleJobs.length >= filteredVisibleJobs.length) {
+          return
+        }
+        setVisibleJobCount((current) => Math.min(current + 20, filteredVisibleJobs.length))
+        return
+      }
+
       if (!hasMoreJobs || jobsFetchingNextPage) {
         return
       }
 
-      const nearBottom =
-        container.scrollTop + container.clientHeight >= container.scrollHeight - 240
-      if (nearBottom) {
-        void fetchNextJobsPage()
-      }
+      void fetchNextJobsPage()
     }
 
     container.addEventListener('scroll', onScroll)
     return () => container.removeEventListener('scroll', onScroll)
-  }, [fetchNextJobsPage, hasMoreJobs, jobsFetchingNextPage, section, tab])
+  }, [
+    fetchNextJobsPage,
+    hasMoreJobs,
+    jobsFetchingNextPage,
+    section,
+    tab,
+    hasClientSideJobFilter,
+    filteredVisibleJobs.length,
+    visibleJobs.length,
+  ])
 
   const handleTogglePause = useCallback(() => {
     if (queue?.isPaused) {
@@ -1533,7 +1568,7 @@ function QueueDetailPage() {
             </Card>
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span>{jobsData?.pages[0]?.total ?? 0} total</span>
-              <span>{hasMoreJobs ? 'Scroll to load more' : 'All jobs loaded'}</span>
+              <span>{hasMoreVisibleJobs ? 'Scroll to load more' : 'All jobs loaded'}</span>
             </div>
           </TabsContent>
 
