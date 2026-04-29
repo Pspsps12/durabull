@@ -52,6 +52,22 @@ description: Complete runtime environment variable reference for local and produ
 
 > **Note:** The web app receives PostHog configuration from the API at `/api/app/config`. You only need to set the server-side `POSTHOG_KEY` and `POSTHOG_HOST` variables — no `VITE_` prefix is required. Set `POSTHOG_HOST` to PostHog's ingestion domain (for example `https://us.i.posthog.com`), not your own app `/ingest` URL. The API reverse-proxies analytics traffic through `/ingest` to bypass ad blockers.
 
+## Anonymous Usage Telemetry
+
+Durabull collects anonymous/pseudonymous usage telemetry in production and self-hosted usage to
+understand feature adoption and improve the product. Configuring `POSTHOG_KEY` for your own PostHog
+project does not disable Durabull telemetry, and Durabull does not provide a product-level telemetry
+opt-out. When `POSTHOG_KEY` is set, the configured PostHog project receives the full PostHog
+browser analytics stream.
+
+Telemetry includes feature and route usage, safe runtime context, success/failure booleans, enum
+values such as job status or theme, and aggregate count/duration buckets. Durabull does not collect
+Redis URLs, queue names, Redis key names, job data, logs, emails, names, organizations, hostnames,
+raw URLs, search patterns, stack traces, or raw error messages.
+
+Self-hosted deployments do not need a separate collector service or telemetry hostname. The app
+forwards sanitized telemetry to Durabull's existing cloud API.
+
 ## Optional Runtime Toggles
 
 | Variable | Required | Purpose |

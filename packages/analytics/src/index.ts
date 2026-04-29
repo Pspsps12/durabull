@@ -13,6 +13,7 @@
 
 // Re-export all client functions and types
 export {
+  configureDurabullTelemetry,
   getPostHog,
   identifyOrganization,
   identifyUser,
@@ -25,7 +26,6 @@ export {
   trackUserCreated,
   type UserProperties,
 } from './client'
-
 // Re-export all event constants and types
 export {
   type AccountLinkEventProperties,
@@ -65,3 +65,13 @@ export {
   type ThemeChangedProperties,
   ThemeValue,
 } from './events'
+export {
+  categorizeErrorMessage,
+  getForbiddenTelemetryPropertyKeys,
+  isKnownDurabullTelemetryEvent,
+  normalizeRoutePath,
+  PAGEVIEW_EVENT,
+  type SanitizedTelemetryEvent,
+  sanitizeTelemetryEvent,
+  type TelemetryEventName,
+} from './sanitizer'

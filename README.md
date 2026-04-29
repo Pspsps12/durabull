@@ -77,6 +77,17 @@ bun run dev:demo
 - Environment variables: [`/documentation/getting-started/environment-variables`](https://durabull.io/documentation/getting-started/environment-variables)
 - HTTP API reference: [`/documentation/reference/http-api`](https://durabull.io/documentation/reference/http-api)
 
+## Anonymous usage telemetry
+
+Production and self-hosted Durabull collects anonymous/pseudonymous usage telemetry to understand
+feature usage and improve the product. Configuring `POSTHOG_KEY` for your own PostHog project does
+not disable Durabull telemetry, and Durabull does not provide a product-level telemetry opt-out.
+When `POSTHOG_KEY` is set, the configured PostHog project still receives the full PostHog browser
+analytics stream.
+
+Durabull does not collect Redis URLs, queue names, Redis key names, job data, logs, emails, names,
+organizations, hostnames, raw URLs, search patterns, stack traces, or raw error messages.
+
 ## Useful repo guides
 
 - Desktop build and release guide: [`apps/desktop/README.md`](apps/desktop/README.md)

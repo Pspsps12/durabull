@@ -212,6 +212,26 @@ export const apiRateLimiter = rateLimiter({
 })
 
 /**
+ * Public limiter for Durabull-owned telemetry collection on the existing API.
+ * Keeps the cloud API ingestion route bounded without affecting local product behavior.
+ */
+export const telemetryCollectRateLimiter = rateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  limit: 120, // 120 batches per minute per client
+  keyPrefix: 'rl:telemetry-collect',
+  onRateLimit: (c) =>
+    c.json(
+      {
+        error: 'Too Many Requests',
+        code: 'RATE_LIMITED',
+        message: 'Telemetry rate limit exceeded.',
+        retryAfter: 60,
+      },
+      429
+    ),
+})
+
+/**
  * Stricter rate limiter for connection testing.
  * Prevents SSRF scanning attacks.
  */

@@ -2,6 +2,11 @@
 
 Durabull's Electron app is a thin native shell around the existing production web and Bun API builds.
 
+The packaged desktop app uses the same production telemetry policy as self-hosted Durabull:
+anonymous/pseudonymous usage telemetry is collected to understand feature usage and improve the
+product. Durabull does not collect Redis URLs, queue names, Redis key names, job data, logs, emails,
+names, organizations, or raw error messages.
+
 ## Installing on macOS
 
 Durabull is distributed outside the Mac App Store and is not signed with an Apple Developer ID certificate. macOS will block the app on first launch with a "cannot be verified" warning.

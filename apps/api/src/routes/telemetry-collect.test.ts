@@ -1,0 +1,288 @@
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { env } from '@durabull/env'
+import { Hono } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
+import telemetryRoutes, { hashTelemetryIdentifier } from './telemetry'
+
+const INSTANCE_ID = '41111111-1111-4111-8111-111111111111'
+const SESSION_ID = 'ephemeral-session'
+const HMAC_SECRET = 'test-telemetry-collect-hmac-secret'
+const POSTHOG_KEY = 'phc_test_project_key'
+
+const mutableEnv = env as {
+  APP_BASE_URL?: string
+  BETTER_AUTH_SECRET?: string
+  CI?: boolean
+  DURABULL_CLOUD?: boolean
+  DURABULL_TELEMETRY_HMAC_SECRET?: string
+  DURABULL_TELEMETRY_POSTHOG_HOST?: string
+  DURABULL_TELEMETRY_POSTHOG_KEY?: string
+  NODE_ENV?: 'development' | 'test' | 'production'
+  POSTHOG_KEY?: string
+}
+
+const originalAppBaseUrl = mutableEnv.APP_BASE_URL
+const originalBetterAuthSecret = mutableEnv.BETTER_AUTH_SECRET
+const originalCi = mutableEnv.CI
+const originalDurabullCloud = mutableEnv.DURABULL_CLOUD
+const originalHmacSecret = mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET
+const originalNodeEnv = mutableEnv.NODE_ENV
+const originalPosthogHost = mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST
+const originalPosthogKey = mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY
+const originalPublicPosthogKey = mutableEnv.POSTHOG_KEY
+const originalFetch = globalThis.fetch
+
+function createTelemetryRouteApp(options: { bodyLimit?: boolean } = {}) {
+  const app = new Hono()
+
+  if (options.bodyLimit) {
+    app.use(
+      '/api/telemetry/collect',
+      bodyLimit({
+        maxSize: 128 * 1024,
+        onError: (c) => c.json({ error: 'Payload Too Large' }, 413),
+      })
+    )
+    return app.route('/api/telemetry', telemetryRoutes)
+  }
+
+  return app.route('/', telemetryRoutes)
+}
+
+function collectPayload(properties: Record<string, unknown> = { success: true }) {
+  return JSON.stringify({
+    instanceId: INSTANCE_ID,
+    sentAt: '2026-04-28T12:00:00.000Z',
+    events: [
+      {
+        event: 'queue_paused',
+        properties,
+        sessionId: SESSION_ID,
+        timestamp: '2026-04-28T12:00:01.000Z',
+      },
+    ],
+  })
+}
+
+describe('telemetry collect route', () => {
+  beforeEach(() => {
+    mutableEnv.APP_BASE_URL = 'https://app.durabull.io'
+    mutableEnv.BETTER_AUTH_SECRET = undefined
+    mutableEnv.CI = false
+    mutableEnv.DURABULL_CLOUD = true
+    mutableEnv.NODE_ENV = 'production'
+    mutableEnv.POSTHOG_KEY = undefined
+    mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = HMAC_SECRET
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = 'https://us.i.posthog.com'
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = POSTHOG_KEY
+  })
+
+  afterEach(() => {
+    mutableEnv.APP_BASE_URL = originalAppBaseUrl
+    mutableEnv.BETTER_AUTH_SECRET = originalBetterAuthSecret
+    mutableEnv.CI = originalCi
+    mutableEnv.DURABULL_CLOUD = originalDurabullCloud
+    mutableEnv.NODE_ENV = originalNodeEnv
+    mutableEnv.POSTHOG_KEY = originalPublicPosthogKey
+    mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = originalHmacSecret
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = originalPosthogHost
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = originalPosthogKey
+    globalThis.fetch = originalFetch
+  })
+
+  it('can use the existing cloud API PostHog and auth secrets without extra telemetry setup', async () => {
+    mutableEnv.BETTER_AUTH_SECRET = HMAC_SECRET
+    mutableEnv.POSTHOG_KEY = POSTHOG_KEY
+    mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = undefined
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = undefined
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload(),
+    })
+
+    expect(response.status).toBe(202)
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    const body = JSON.parse(String(init.body)) as {
+      api_key: string
+      batch: Array<{ properties: Record<string, unknown> }>
+    }
+
+    expect(body.api_key).toBe(POSTHOG_KEY)
+    expect(body.batch[0].properties.instance_key).toBe(
+      hashTelemetryIdentifier(INSTANCE_ID, HMAC_SECRET)
+    )
+  })
+
+  it('forwards canonical sanitized events to PostHog batch with HMAC identifiers', async () => {
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer should-not-forward',
+        Cookie: 'session=should-not-forward',
+        'X-Forwarded-For': '203.0.113.10',
+        'User-Agent': 'should-not-forward',
+      },
+      body: collectPayload({
+        authless: true,
+        environment: 'production',
+        persistence: 'pglite',
+        stateless: true,
+        success: true,
+      }),
+    })
+
+    expect(response.status).toBe(202)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://us.i.posthog.com/batch/')
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' })
+
+    const body = JSON.parse(String(init.body)) as {
+      api_key: string
+      batch: Array<{
+        event: string
+        properties: Record<string, unknown>
+        timestamp: string
+      }>
+    }
+    const properties = body.batch[0].properties
+
+    expect(body.api_key).toBe(POSTHOG_KEY)
+    expect(body.batch[0].event).toBe('queue_paused')
+    expect(body.batch[0].timestamp).toBe('2026-04-28T12:00:01.000Z')
+    expect(properties.success).toBe(true)
+    expect(properties.$process_person_profile).toBe(false)
+    expect(properties.$geoip_disable).toBe(true)
+    expect(properties.distinct_id).toBe(
+      hashTelemetryIdentifier(`${INSTANCE_ID}:${SESSION_ID}`, HMAC_SECRET)
+    )
+    expect(properties.instance_key).toBe(hashTelemetryIdentifier(INSTANCE_ID, HMAC_SECRET))
+    expect(properties.distinct_id).not.toContain(INSTANCE_ID)
+    expect(properties.distinct_id).not.toContain(SESSION_ID)
+    expect(properties.instance_key).not.toContain(INSTANCE_ID)
+  })
+
+  it('rejects collect requests on non-Durabull API deployments', async () => {
+    mutableEnv.APP_BASE_URL = 'https://self-hosted.example.com'
+    mutableEnv.DURABULL_CLOUD = false
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload(),
+    })
+
+    expect(response.status).toBe(404)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects forbidden or unknown properties before forwarding', async () => {
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload({ queue_name: 'billing-production', success: true }),
+    })
+
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects unknown events before forwarding', async () => {
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        instanceId: INSTANCE_ID,
+        events: [
+          {
+            event: 'oss_queue_paused',
+            properties: {},
+            sessionId: SESSION_ID,
+          },
+        ],
+      }),
+    })
+
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when collection secrets are missing', async () => {
+    mutableEnv.BETTER_AUTH_SECRET = undefined
+    mutableEnv.POSTHOG_KEY = undefined
+    mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = undefined
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = undefined
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload(),
+    })
+
+    expect(response.status).toBe(503)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when the configured PostHog batch host is invalid', async () => {
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = 'http://[::1'
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload(),
+    })
+
+    expect(response.status).toBe(503)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects oversized public collect payloads on the existing API route', async () => {
+    const app = createTelemetryRouteApp({ bodyLimit: true })
+    const body = JSON.stringify({
+      instanceId: INSTANCE_ID,
+      events: [
+        {
+          event: 'queue_paused',
+          properties: { action: 'x'.repeat(129 * 1024) },
+          sessionId: SESSION_ID,
+        },
+      ],
+    })
+
+    const response = await app.request('/api/telemetry/collect', {
+      method: 'POST',
+      headers: { 'Content-Length': String(body.length), 'Content-Type': 'application/json' },
+      body,
+    })
+
+    expect(response.status).toBe(413)
+  })
+})

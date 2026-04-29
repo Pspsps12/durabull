@@ -2,7 +2,9 @@ import { AnalyticsEvents, DialogType, trackEvent } from '@durabull/analytics'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   AlertCircle,
+  BarChart3,
   Check,
+  ExternalLink,
   Github,
   KeyRound,
   Link2,
@@ -26,6 +28,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useAppConfig } from '@/hooks/use-app-config'
 import { linkSocial, listAccounts, unlinkAccount, useAuth } from '@/hooks/use-auth'
 import { cn } from '@/lib/utils'
 
@@ -71,6 +74,7 @@ interface LinkedAccount {
 
 function SettingsPage() {
   const { user, isLoading: sessionLoading } = useAuth()
+  const { config } = useAppConfig()
   const [accounts, setAccounts] = useState<LinkedAccount[]>([])
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true)
   const [linkingProvider, setLinkingProvider] = useState<ProviderId | null>(null)
@@ -297,6 +301,36 @@ function SettingsPage() {
               Linking accounts allows you to sign in using different methods. You can link multiple
               providers to the same account, and sign in using any of them.
             </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-muted bg-muted/20">
+        <CardContent className="flex items-start gap-3 p-4">
+          <BarChart3 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-medium">Anonymous usage telemetry</p>
+              {config.telemetry.collectionRequired ? (
+                <Badge variant="outline" className="text-[10px]">
+                  Required
+                </Badge>
+              ) : null}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Durabull collects anonymous usage telemetry to understand feature usage and improve
+              the product. We do not collect Redis URLs, queue names, Redis key names, job data,
+              logs, emails, names, organizations, or raw error messages.
+            </p>
+            <a
+              href={config.telemetry.disclosureUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              Privacy details
+              <ExternalLink className="h-3 w-3" />
+            </a>
           </div>
         </CardContent>
       </Card>

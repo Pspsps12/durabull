@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@durabull/auth": "workspace:*",
+    "@durabull/analytics": "workspace:*",
     "@durabull/dal": "workspace:*",
     "@durabull/env": "workspace:*",
     "@durabull/email": "workspace:*",

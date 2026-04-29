@@ -19,6 +19,7 @@
       "name": "@durabull/api",
       "version": "1.0.0",
       "dependencies": {
+        "@durabull/analytics": "workspace:*",
         "@durabull/auth": "workspace:*",
         "@durabull/dal": "workspace:*",
         "@durabull/email": "workspace:*",

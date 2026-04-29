@@ -21,6 +21,12 @@ const FALLBACK_APP_CONFIG: AppConfigResponse = {
     host: '/ingest',
     uiHost: 'https://us.posthog.com',
   },
+  telemetry: {
+    enabled: false,
+    collectionRequired: true,
+    dedupeIdentifiedPosthogEvents: false,
+    disclosureUrl: 'https://durabull.io/privacy',
+  },
 }
 
 export const appConfigQueryKey = ['app-config'] as const

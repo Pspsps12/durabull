@@ -14,6 +14,8 @@ Bootstrap and health:
 - `GET /api/health`
 - `GET /api/app/config`
 - `GET /api/mode`
+- `GET /api/telemetry/status`
+- `POST /api/telemetry/events`
 
 ## Authentication and Session
 
@@ -47,6 +49,12 @@ Response shape:
     "key": "phc_***",
     "host": "/ingest",
     "uiHost": "https://us.posthog.com"
+  },
+  "telemetry": {
+    "enabled": true,
+    "collectionRequired": true,
+    "dedupeIdentifiedPosthogEvents": false,
+    "disclosureUrl": "https://durabull.io/privacy"
   }
 }
 ```
@@ -59,9 +67,34 @@ Field notes:
 - `stateless`: `true` when running in `pglite` mode.
 - `environment`: `NODE_ENV` (`development`, `test`, or `production`; defaults to `development`).
 - `posthog.enabled`: `true` when `POSTHOG_KEY` is set.
-- `posthog.key`: PostHog project key (or `null` when disabled).
+- `posthog.key`: PostHog project key (or `null` when disabled). When set, Durabull preserves
+  PostHog's native browser collection and sends manual analytics calls with their original
+  properties to that project.
 - `posthog.host`: always `/ingest` (Durabull's reverse-proxied analytics endpoint).
 - `posthog.uiHost`: PostHog UI host used by the frontend.
+- `telemetry.enabled`: whether Durabull anonymous/pseudonymous telemetry is active for this runtime.
+- `telemetry.collectionRequired`: always `true` for production/self-hosted usage.
+- `telemetry.dedupeIdentifiedPosthogEvents`: `true` only when the configured PostHog project is
+  Durabull-managed, so anonymous Durabull telemetry can be deduplicated once a user has been
+  identified in the same Durabull-owned PostHog stream.
+- `telemetry.disclosureUrl`: public documentation for Durabull telemetry collection.
+
+## Anonymous Telemetry
+
+Durabull routes sanitized product analytics through `POST /api/telemetry/events`. Event names remain
+the same canonical names used by the app, such as `queue_paused`, `connection_created`, and
+`$pageview`. Self-hosted instances re-sanitize payloads before forwarding them to Durabull's
+existing cloud API at `POST /api/telemetry/collect`.
+
+`POSTHOG_KEY` configures a PostHog destination for the cloud product or instance owner. It does not
+disable Durabull anonymous telemetry, and Durabull does not provide a product-level telemetry
+opt-out. When a self-hosted owner provides `POSTHOG_KEY`, they receive the full PostHog browser
+stream for their project while Durabull still receives independently sanitized anonymous telemetry.
+
+Durabull telemetry includes feature and route usage, safe runtime context, booleans, enums, and
+aggregate buckets. It does not include Redis URLs, queue names, Redis key names, job data, logs,
+emails, names, organizations, hostnames, raw URLs, search patterns, stack traces, or raw error
+messages.
 
 ## Connection Management
 
