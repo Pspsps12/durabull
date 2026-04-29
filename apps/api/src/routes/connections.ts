@@ -23,6 +23,7 @@ const app = new Hono()
       name: conn.name,
       isDefault: conn.isDefault,
       environment: conn.environment,
+      prefix: conn.prefix,
     }))
 
     return c.json({ connections })
@@ -45,6 +46,7 @@ const app = new Hono()
         url: conn.url,
         isDefault: conn.isDefault,
         environment: conn.environment,
+        prefix: conn.prefix,
         createdAt: conn.createdAt.toISOString(),
         updatedAt: conn.updatedAt.toISOString(),
       },
@@ -114,6 +116,7 @@ const app = new Hono()
             name: conn.name,
             isDefault: conn.isDefault,
             environment: conn.environment,
+            prefix: conn.prefix,
           },
         },
         201
@@ -192,6 +195,7 @@ const app = new Hono()
           name: conn.name,
           isDefault: conn.isDefault,
           environment: conn.environment,
+          prefix: conn.prefix,
         },
       })
     }

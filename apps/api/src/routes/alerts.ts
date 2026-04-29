@@ -133,6 +133,7 @@ const app = new Hono()
     const { ruleId } = c.req.param()
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
+    const connectionPrefix = c.get('connectionPrefix')
     const connectionName = c.get('connectionName')
     const organizationId = c.get('organizationId')
     if (!organizationId) {
@@ -156,7 +157,7 @@ const app = new Hono()
       return c.json({ error: 'No queue available to test this rule yet' }, 400)
     }
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
     const [jobCountsRaw, failedMetricsRaw, completedMetricsRaw] = await Promise.all([
       queue.getJobCounts('failed', 'waiting', 'active', 'completed'),
       queue.getMetrics('failed', 0, 60),

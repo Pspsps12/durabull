@@ -11,6 +11,7 @@ const app = new Hono()
   .get('/', async (c) => {
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
+    const connectionPrefix = c.get('connectionPrefix')
     const pageStr = c.req.query('page')
     const pageSizeStr = c.req.query('pageSize')
 
@@ -20,7 +21,7 @@ const app = new Hono()
       MAX_PAGE_SIZE
     )
 
-    const allQueueNames = await discoverQueues(connectionId, connectionUrl)
+    const allQueueNames = await discoverQueues(connectionId, connectionUrl, connectionPrefix)
     const totalQueues = allQueueNames.length
 
     // Paginate the queue names BEFORE fetching worker details
@@ -45,7 +46,7 @@ const app = new Hono()
 
     await Promise.all(
       paginatedQueueNames.map(async (queueName) => {
-        const queue = await getQueue(connectionId, connectionUrl, queueName)
+        const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
         const [workers, isPaused, counts] = await Promise.all([
           queue.getWorkers(),
           queue.isPaused(),

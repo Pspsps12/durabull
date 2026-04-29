@@ -79,6 +79,7 @@ const app = new Hono()
   .get('/:queueName/jobs', async (c) => {
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
+    const connectionPrefix = c.get('connectionPrefix')
     const queueName = c.req.param('queueName')
     const status = c.req.query('status')
     const name = c.req.query('name')
@@ -94,7 +95,7 @@ const app = new Hono()
       Number.isInteger(cursor) && cursor !== null ? Math.max(0, cursor) : (page - 1) * pageSize
     const end = start + pageSize - 1
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
 
     if (jobId) {
       const job = await queue.getJob(jobId)
@@ -216,10 +217,11 @@ const app = new Hono()
   .get('/:queueName/jobs/:jobId', async (c) => {
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
+    const connectionPrefix = c.get('connectionPrefix')
     const queueName = c.req.param('queueName')
     const jobId = c.req.param('jobId')
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
     const job = await queue.getJob(jobId)
 
     if (!job) {
@@ -260,6 +262,7 @@ const app = new Hono()
   .get('/:queueName/jobs/:jobId/stacktraces', async (c) => {
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
+    const connectionPrefix = c.get('connectionPrefix')
     const queueName = c.req.param('queueName')
     const jobId = c.req.param('jobId')
     const pageStr = c.req.query('page')
@@ -271,7 +274,7 @@ const app = new Hono()
       MAX_PAGE_SIZE
     )
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
     const job = await queue.getJob(jobId)
 
     if (!job) {
@@ -308,6 +311,7 @@ const app = new Hono()
   .get('/:queueName/jobs/:jobId/logs', async (c) => {
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
+    const connectionPrefix = c.get('connectionPrefix')
     const queueName = c.req.param('queueName')
     const jobId = c.req.param('jobId')
     const pageStr = c.req.query('page')
@@ -321,7 +325,7 @@ const app = new Hono()
     const start = (page - 1) * pageSize
     const end = start + pageSize - 1
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
     // BullMQ getJobLogs accepts start and end parameters for pagination
     const logs = await queue.getJobLogs(jobId, start, end)
 
@@ -338,11 +342,12 @@ const app = new Hono()
   .delete('/:queueName/jobs/:jobId/logs', async (c) => {
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
+    const connectionPrefix = c.get('connectionPrefix')
     const queueName = c.req.param('queueName')
     const jobId = c.req.param('jobId')
     const keepMostRecent = 0
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
     const job = await queue.getJob(jobId)
 
     if (!job) {
@@ -411,11 +416,12 @@ const app = new Hono()
     async (c) => {
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
+      const connectionPrefix = c.get('connectionPrefix')
       const queueName = c.req.param('queueName')
       const jobId = c.req.param('jobId')
       const { keepMostRecent } = c.req.valid('json')
 
-      const queue = await getQueue(connectionId, connectionUrl, queueName)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
       const job = await queue.getJob(jobId)
 
       if (!job) {
@@ -481,11 +487,12 @@ const app = new Hono()
     async (c) => {
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
+      const connectionPrefix = c.get('connectionPrefix')
       const queueName = c.req.param('queueName')
       const jobId = c.req.param('jobId')
       const { keepMostRecent } = c.req.valid('json')
 
-      const queue = await getQueue(connectionId, connectionUrl, queueName)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
       const job = await queue.getJob(jobId)
 
       if (!job) {
@@ -553,10 +560,11 @@ const app = new Hono()
     async (c) => {
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
+      const connectionPrefix = c.get('connectionPrefix')
       const queueName = c.req.param('queueName')
       const { jobIds, statuses } = c.req.valid('json')
 
-      const queue = await getQueue(connectionId, connectionUrl, queueName)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
       let success = 0
       let failed = 0
       const errors: Array<{ jobId: string; error: string }> = []
@@ -681,10 +689,11 @@ const app = new Hono()
     async (c) => {
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
+      const connectionPrefix = c.get('connectionPrefix')
       const queueName = c.req.param('queueName')
       const { jobIds, removeScheduler } = c.req.valid('json')
 
-      const queue = await getQueue(connectionId, connectionUrl, queueName)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
       let success = 0
       let schedulersRemoved = 0
       const errors: Array<{ jobId: string; error: string }> = []
@@ -784,10 +793,11 @@ const app = new Hono()
     async (c) => {
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
+      const connectionPrefix = c.get('connectionPrefix')
       const queueName = c.req.param('queueName')
       const { jobIds, jobData } = c.req.valid('json')
 
-      const queue = await getQueue(connectionId, connectionUrl, queueName)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
       let success = 0
       const errors: Array<{ jobId: string; error: string }> = []
 
@@ -826,10 +836,11 @@ const app = new Hono()
     async (c) => {
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
+      const connectionPrefix = c.get('connectionPrefix')
       const queueName = c.req.param('queueName')
       const { name, data, delay, priority, attempts } = c.req.valid('json')
 
-      const queue = await getQueue(connectionId, connectionUrl, queueName)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
       const job = await queue.add(name, data, { delay, priority, attempts })
 
       return c.json({
