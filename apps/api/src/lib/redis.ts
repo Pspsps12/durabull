@@ -220,13 +220,20 @@ export async function getRedis(
  */
 export async function discoverQueues(
   connectionId: string,
-  connectionUrl: string
+  connectionUrl: string,
+  prefix = 'bull'
 ): Promise<Array<string>> {
   const queueNames = new Set<string>()
   let cursor = '0'
 
   do {
-    const page = await scanQueuesPage(connectionId, connectionUrl, cursor, DEFAULT_QUEUE_SCAN_COUNT)
+    const page = await scanQueuesPage(
+      connectionId,
+      connectionUrl,
+      cursor,
+      DEFAULT_QUEUE_SCAN_COUNT,
+      prefix
+    )
     cursor = page.cursor
     for (const queueName of page.queueNames) {
       queueNames.add(queueName)
@@ -245,14 +252,15 @@ export async function scanQueuesPage(
   connectionId: string,
   connectionUrl: string,
   cursor = '0',
-  count = DEFAULT_QUEUE_SCAN_COUNT
+  count = DEFAULT_QUEUE_SCAN_COUNT,
+  prefix = 'bull'
 ): Promise<QueueScanPage> {
   const redisClient = await getRedis(connectionId, connectionUrl)
   const scanCount = Math.max(100, count)
   const [nextCursor, keys] = await redisClient.scan(
     cursor,
     'MATCH',
-    'bull:*:meta',
+    `${prefix}:*:meta`,
     'COUNT',
     scanCount
   )
@@ -272,18 +280,25 @@ export async function scanQueuesPage(
 }
 
 /**
- * Debug: Get all bull:* keys to understand the Redis structure.
+ * Debug: Get all prefix:* keys to understand the Redis structure.
  */
 export async function debugGetBullKeys(
   connectionId: string,
-  connectionUrl: string
+  connectionUrl: string,
+  prefix = 'bull'
 ): Promise<string[]> {
   const redisClient = await getRedis(connectionId, connectionUrl)
   const keys: string[] = []
   let cursor = '0'
 
   do {
-    const [nextCursor, foundKeys] = await redisClient.scan(cursor, 'MATCH', 'bull:*', 'COUNT', 100)
+    const [nextCursor, foundKeys] = await redisClient.scan(
+      cursor,
+      'MATCH',
+      `${prefix}:*`,
+      'COUNT',
+      100
+    )
     cursor = nextCursor
     keys.push(...foundKeys)
   } while (cursor !== '0')
@@ -297,7 +312,8 @@ export async function debugGetBullKeys(
 export async function getQueue(
   connectionId: string,
   connectionUrl: string,
-  name: string
+  name: string,
+  prefix = 'bull'
 ): Promise<Queue> {
   const cacheKey = `${connectionId}:${name}`
 
@@ -311,6 +327,7 @@ export async function getQueue(
           return Math.min(attempts * REDIS_RECONNECT_BASE_DELAY_MS, REDIS_RECONNECT_MAX_DELAY_MS)
         },
       },
+      prefix,
     })
 
     queue.on('error', (error) => {

@@ -4,13 +4,14 @@ import { eq } from 'drizzle-orm'
 import type { Database } from './client'
 import { encryptRedisUrl } from './redis-url-encryption'
 import { validateRedisUrlForEnvironment } from './redis-url-validation'
-import { redisConnection } from './schemas/redis-connection/schema'
 import type { ConnectionEnvironment } from './schemas/redis-connection/schema'
+import { redisConnection } from './schemas/redis-connection/schema'
 
 const ENV_PREFIX = 'DURABULL_REDIS_URL_'
 const ENV_DEFAULT_KEY = 'DURABULL_REDIS_URL_DEFAULT'
 const ENV_ENCRYPTION_KEY = 'DURABULL_REDIS_URL_ENCRYPTION_KEY'
 const ENVIRONMENT_SUFFIX = '_ENVIRONMENT'
+const PREFIX_SUFFIX = '_PREFIX'
 const ENV_NAMESPACE_UUID = '2a48b9e7-32fa-4d5a-8f61-7e7a2f6c3f0b'
 
 export interface EnvRedisConnection {
@@ -18,6 +19,7 @@ export interface EnvRedisConnection {
   name: string
   url: string
   environment: ConnectionEnvironment
+  prefix: string
   isDefault: boolean
 }
 
@@ -67,7 +69,12 @@ export function getEnvRedisConnections(): EnvRedisConnection[] {
 
   for (const [key, value] of Object.entries(process.env)) {
     if (!key.startsWith(ENV_PREFIX)) continue
-    if (key === ENV_DEFAULT_KEY || key === ENV_ENCRYPTION_KEY || key.endsWith(ENVIRONMENT_SUFFIX)) {
+    if (
+      key === ENV_DEFAULT_KEY ||
+      key === ENV_ENCRYPTION_KEY ||
+      key.endsWith(ENVIRONMENT_SUFFIX) ||
+      key.endsWith(PREFIX_SUFFIX)
+    ) {
       continue
     }
 
@@ -87,12 +94,14 @@ export function getEnvRedisConnections(): EnvRedisConnection[] {
 
     const envName = match[1]
     const environment = parseEnvironment(process.env[`${key}${ENVIRONMENT_SUFFIX}`])
+    const prefix = process.env[`${key}${PREFIX_SUFFIX}`]?.trim() || 'bull'
 
     connections.push({
       envName,
       name: toDisplayName(envName),
       url,
       environment,
+      prefix,
       isDefault: false,
     })
   }
@@ -192,12 +201,14 @@ export async function syncEnvConnectionsForOrganization(
       name: string
       url: string
       environment: ConnectionEnvironment
+      prefix: string
       isDefault: boolean
       updatedAt: Date
     }> = {
       name: connection.name,
       url: encryptRedisUrl(connection.url),
       environment: connection.environment,
+      prefix: connection.prefix,
       isDefault,
       updatedAt: now,
     }
@@ -209,6 +220,7 @@ export async function syncEnvConnectionsForOrganization(
         name: connection.name,
         url: encryptRedisUrl(connection.url),
         environment: connection.environment,
+        prefix: connection.prefix,
         isDefault,
         organizationId,
         createdAt: now,
