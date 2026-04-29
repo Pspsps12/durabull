@@ -167,13 +167,14 @@ export const redisConnectionRepository = {
   async update(
     id: string,
     organizationId: string,
-    data: Partial<Pick<RedisConnection, 'name' | 'url' | 'isDefault' | 'environment'>>
+    data: Partial<Pick<RedisConnection, 'name' | 'url' | 'isDefault' | 'environment' | 'prefix'>>
   ): Promise<RedisConnection | null> {
     assertConnectionWritesEnabled()
     const db = await getDbForOrganization(organizationId)
 
-    const updateData: Partial<Pick<RedisConnection, 'name' | 'url' | 'isDefault' | 'environment'>> =
-      { ...data }
+    const updateData: Partial<
+      Pick<RedisConnection, 'name' | 'url' | 'isDefault' | 'environment' | 'prefix'>
+    > = { ...data }
     if (updateData.url !== undefined) {
       updateData.url = encryptRedisUrl(updateData.url)
     }

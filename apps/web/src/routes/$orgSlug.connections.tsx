@@ -9,6 +9,7 @@ interface RedisConnection {
   name: string
   isDefault: boolean
   environment: ConnectionEnvironment | null
+  prefix: string
 }
 
 import { AnalyticsEvents, trackEvent } from '@durabull/analytics'
@@ -541,6 +542,7 @@ function ConnectionFormDialog({
   const { orgSlug } = useParams({ strict: false }) as { orgSlug?: string }
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
+  const [prefix, setPrefix] = useState('bull')
   const [showUrl, setShowUrl] = useState(false)
   const [environment, setEnvironment] = useState<ConnectionEnvironment>('development')
   const [isDefault, setIsDefault] = useState(false)
@@ -574,11 +576,13 @@ function ConnectionFormDialog({
     if (mode === 'edit' && existingConnection) {
       setName(existingConnection.name)
       setUrl(existingConnection.url)
+      setPrefix(existingConnection.prefix ?? 'bull')
       setEnvironment(existingConnection.environment ?? 'development')
       setIsDefault(existingConnection.isDefault)
     } else if (mode === 'create' && open) {
       setName('')
       setUrl('')
+      setPrefix('bull')
       setEnvironment('development')
       setIsDefault(false)
       setDiscoveryConnectionId(null)
@@ -596,6 +600,7 @@ function ConnectionFormDialog({
           url,
           environment,
           isDefault,
+          prefix,
         })
         setDiscoveryConnectionId(created.connection.id)
         await runQueueDiscoveryMutation.mutateAsync(created.connection.id)
@@ -607,6 +612,7 @@ function ConnectionFormDialog({
             url,
             environment,
             isDefault,
+            prefix,
           },
         })
         onOpenChange(false)
@@ -817,6 +823,22 @@ function ConnectionFormDialog({
               )}
             </div>
 
+            {/* Prefix */}
+            <div className="space-y-2">
+              <Label htmlFor="prefix">BullMQ Prefix</Label>
+              <Input
+                id="prefix"
+                value={prefix}
+                onChange={(e) => setPrefix(e.target.value)}
+                placeholder="bull"
+                required
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Use the same prefix configured by your BullMQ producers and workers.
+              </p>
+            </div>
+
             {/* Environment */}
             <div className="space-y-2">
               <Label>Environment</Label>
@@ -885,7 +907,7 @@ function ConnectionFormDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={isLoading || !name || !url}
+                disabled={isLoading || !name || !url || !prefix.trim()}
                 data-testid="connection-form-submit"
               >
                 {isLoading ? (

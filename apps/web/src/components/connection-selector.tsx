@@ -13,13 +13,6 @@ import {
 // Connection types - matches API response
 type ConnectionEnvironment = 'development' | 'staging' | 'production'
 
-interface RedisConnection {
-  id: string
-  name: string
-  isDefault: boolean
-  environment: ConnectionEnvironment | null
-}
-
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -114,7 +107,7 @@ export function ConnectionSelector() {
       }
       return acc
     },
-    {} as Record<ConnectionEnvironment, RedisConnection[]>
+    {} as Partial<Record<ConnectionEnvironment, typeof connections>>
   )
 
   // If only one connection, show it without dropdown

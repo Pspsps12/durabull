@@ -1,12 +1,18 @@
-import { redisConnectionRepository, shouldUseEnvConnections } from '@durabull/dal'
+import {
+  redisConnectionRepository,
+  redisDiscoveredQueueRepository,
+  shouldUseEnvConnections,
+} from '@durabull/dal'
 import { env } from '@durabull/env'
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { Redis } from 'ioredis'
 import { z } from 'zod'
+import { validateRedisUrlForEnvironment } from '../lib/url-validation'
 import { requireOrganization } from '../middleware/auth'
 import { connectionTestRateLimiter } from '../middleware/rate-limit'
-import { validateRedisUrlForEnvironment } from '../lib/url-validation'
+
+const connectionPrefixSchema = z.string().trim().min(1)
 
 const app = new Hono()
   // Apply organization middleware to all routes
@@ -63,6 +69,7 @@ const app = new Hono()
         url: z.string().min(1),
         environment: z.enum(['development', 'staging', 'production']).optional(),
         isDefault: z.boolean().optional(),
+        prefix: connectionPrefixSchema.default('bull'),
       })
     ),
     async (c) => {
@@ -106,6 +113,7 @@ const app = new Hono()
         url: body.url,
         environment: body.environment ?? 'development',
         isDefault: body.isDefault ?? false,
+        prefix: body.prefix,
         organizationId,
       })
 
@@ -134,6 +142,7 @@ const app = new Hono()
         url: z.string().min(1).optional(),
         environment: z.enum(['development', 'staging', 'production']).optional(),
         isDefault: z.boolean().optional(),
+        prefix: connectionPrefixSchema.optional(),
       })
     ),
     async (c) => {
@@ -177,16 +186,25 @@ const app = new Hono()
         await redisConnectionRepository.setDefault(id, organizationId)
       }
 
+      const shouldClearDiscoveredQueues =
+        (body.url !== undefined && body.url !== existing.url) ||
+        (body.prefix !== undefined && body.prefix !== existing.prefix)
+
       // Update other fields
       const updateData: Parameters<typeof redisConnectionRepository.update>[2] = {}
       if (body.name !== undefined) updateData.name = body.name
       if (body.url !== undefined) updateData.url = body.url
       if (body.environment !== undefined) updateData.environment = body.environment
       if (body.isDefault === false) updateData.isDefault = false
+      if (body.prefix !== undefined) updateData.prefix = body.prefix
 
       const conn = await redisConnectionRepository.update(id, organizationId, updateData)
       if (!conn) {
         return c.json({ error: 'Failed to update connection' }, 500)
+      }
+
+      if (shouldClearDiscoveredQueues) {
+        await redisDiscoveredQueueRepository.deleteByConnection(id)
       }
 
       return c.json({

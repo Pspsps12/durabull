@@ -53,6 +53,7 @@ export function useCreateConnection() {
       url: string
       environment?: 'development' | 'staging' | 'production'
       isDefault?: boolean
+      prefix?: string
     }) => {
       const res = await api.connections.$post({
         json: data,
@@ -97,6 +98,7 @@ export function useUpdateConnection() {
         url?: string
         environment?: 'development' | 'staging' | 'production'
         isDefault?: boolean
+        prefix?: string
       }
     }) => {
       const res = await api.connections[':id'].$patch({

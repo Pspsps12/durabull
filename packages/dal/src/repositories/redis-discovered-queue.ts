@@ -141,6 +141,16 @@ export const redisDiscoveredQueueRepository = {
     return rows.length
   },
 
+  async deleteByConnection(connectionId: string): Promise<number> {
+    const db = await getDb()
+    const rows = await db
+      .delete(redisDiscoveredQueue)
+      .where(eq(redisDiscoveredQueue.connectionId, connectionId))
+      .returning({ id: redisDiscoveredQueue.id })
+
+    return rows.length
+  },
+
   async syncConnectionSnapshot(
     connectionId: string,
     queueNames: string[],
