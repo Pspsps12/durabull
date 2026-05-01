@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
   and,
   closeDb,
@@ -25,6 +25,23 @@ const originalDatabaseUrl = mutableEnv.DATABASE_URL
 const originalPgliteDir = process.env.DURABULL_PGLITE_DIR
 
 let tempPgliteDir = ''
+let redisSnapshotQueueNames = ['fresh-queue']
+let scanQueuesPageCalls = 0
+
+mock.module('./redis', () => ({
+  RedisUnavailableError: class RedisUnavailableError extends Error {},
+  debugGetBullKeys: async () => [],
+  discoverQueues: async () => [],
+  getQueue: async () => ({}),
+  getRedis: async () => ({}),
+  scanQueuesPage: async () => {
+    scanQueuesPageCalls += 1
+    return {
+      cursor: '0',
+      queueNames: redisSnapshotQueueNames,
+    }
+  },
+}))
 
 async function seedConnection() {
   const db = await getDb()
@@ -80,6 +97,8 @@ describe('redisDiscoveredQueueRepository.syncConnectionSnapshot', () => {
     process.env.DURABULL_PGLITE_DIR = tempPgliteDir
     delete process.env.DATABASE_URL
     mutableEnv.DATABASE_URL = undefined
+    redisSnapshotQueueNames = ['fresh-queue']
+    scanQueuesPageCalls = 0
     await closeDb()
     await seedConnection()
   })
@@ -140,5 +159,31 @@ describe('redisDiscoveredQueueRepository.syncConnectionSnapshot', () => {
     ).rejects.toThrow('snapshot sync failed')
 
     expect(await listQueueNames()).toEqual([{ name: 'conversation-message', state: 'confirmed' }])
+  })
+
+  it('clears completed runtime state so empty indexes can rediscover after connection changes', async () => {
+    const {
+      getQueueDiscoveryStatus,
+      resetQueueDiscoveryState,
+      startQueueDiscovery,
+      waitForQueueDiscovery,
+    } = await import('./queue-discovery')
+
+    await startQueueDiscovery(TEST_CONNECTION_ID, 'redis://localhost:6379/0')
+    await waitForQueueDiscovery(TEST_CONNECTION_ID)
+
+    const completedStatus = await getQueueDiscoveryStatus(TEST_CONNECTION_ID)
+    expect(completedStatus.completedAt).not.toBeNull()
+    expect(completedStatus.indexed.total).toBe(1)
+    expect(scanQueuesPageCalls).toBe(1)
+
+    await redisDiscoveredQueueRepository.deleteByConnection(TEST_CONNECTION_ID)
+    resetQueueDiscoveryState(TEST_CONNECTION_ID)
+
+    const resetStatus = await getQueueDiscoveryStatus(TEST_CONNECTION_ID)
+    expect(resetStatus.startedAt).toBeNull()
+    expect(resetStatus.completedAt).toBeNull()
+    expect(resetStatus.lastError).toBeNull()
+    expect(resetStatus.indexed.total).toBe(0)
   })
 })

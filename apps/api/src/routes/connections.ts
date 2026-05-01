@@ -8,6 +8,7 @@ import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { Redis } from 'ioredis'
 import { z } from 'zod'
+import { resetQueueDiscoveryState } from '../lib/queue-discovery'
 import { validateRedisUrlForEnvironment } from '../lib/url-validation'
 import { requireOrganization } from '../middleware/auth'
 import { connectionTestRateLimiter } from '../middleware/rate-limit'
@@ -205,6 +206,7 @@ const app = new Hono()
 
       if (shouldClearDiscoveredQueues) {
         await redisDiscoveredQueueRepository.deleteByConnection(id)
+        resetQueueDiscoveryState(id)
       }
 
       return c.json({

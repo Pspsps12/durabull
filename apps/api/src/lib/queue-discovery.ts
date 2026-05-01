@@ -81,6 +81,8 @@ async function runQueueDiscovery(
   const discoveredQueueNames = new Set<string>()
 
   do {
+    if (discoveryStateByConnection.get(connectionId) !== runtime) return
+
     const page = await scanQueuesPage(connectionId, connectionUrl, cursor, scanCount, prefix)
     cursor = page.cursor
     runtime.scannedPages += 1
@@ -91,6 +93,8 @@ async function runQueueDiscovery(
 
     runtime.confirmedThisRun = discoveredQueueNames.size
   } while (cursor !== '0')
+
+  if (discoveryStateByConnection.get(connectionId) !== runtime) return
 
   const syncResult = await redisDiscoveredQueueRepository.syncConnectionSnapshot(
     connectionId,
@@ -105,6 +109,11 @@ export async function getQueueDiscoveryStatus(connectionId: string): Promise<Que
   const runtime = discoveryStateByConnection.get(connectionId)
   const snapshot = await getIndexedSnapshot(connectionId)
   return toDiscoveryStatus(runtime, snapshot)
+}
+
+export function resetQueueDiscoveryState(connectionId: string): void {
+  discoveryStateByConnection.delete(connectionId)
+  activeDiscoveryRuns.delete(connectionId)
 }
 
 export async function startQueueDiscovery(
@@ -136,13 +145,19 @@ export async function startQueueDiscovery(
 
   const runPromise = runQueueDiscovery(connectionId, connectionUrl, scanCount, prefix)
     .catch((error) => {
-      runtime.lastError = error instanceof Error ? error.message : String(error)
+      if (discoveryStateByConnection.get(connectionId) === runtime) {
+        runtime.lastError = error instanceof Error ? error.message : String(error)
+      }
       throw error
     })
     .finally(() => {
-      runtime.running = false
-      runtime.completedAt = Date.now()
-      activeDiscoveryRuns.delete(connectionId)
+      if (discoveryStateByConnection.get(connectionId) === runtime) {
+        runtime.running = false
+        runtime.completedAt = Date.now()
+      }
+      if (activeDiscoveryRuns.get(connectionId) === runPromise) {
+        activeDiscoveryRuns.delete(connectionId)
+      }
     })
 
   activeDiscoveryRuns.set(connectionId, runPromise)
