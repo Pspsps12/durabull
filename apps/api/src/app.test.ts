@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { closeDb } from '@durabull/dal'
 import { env } from '@durabull/env'
 import { createApiApp } from './app'
+import { APP_BUILD_ID, APP_VERSION } from './lib/build-info'
 
 const mutableEnv = env as {
   APP_BASE_URL?: string
@@ -123,6 +124,38 @@ describe('api app config', () => {
         collectionRequired: true,
         dedupeIdentifiedPosthogEvents: false,
         enabled: true,
+      },
+    })
+  })
+
+  it('exposes no-store app version checks without session state', async () => {
+    const { app } = await createApiApp({ enableLogging: false })
+
+    const staleResponse = await app.request(
+      '/api/app/version?clientVersion=0.0.0&clientBuildId=old-build'
+    )
+    const currentResponse = await app.request(
+      `/api/app/version?clientVersion=${APP_VERSION}&clientBuildId=${APP_BUILD_ID}`
+    )
+
+    expect(staleResponse.status).toBe(200)
+    expect(staleResponse.headers.get('Cache-Control')).toBe(
+      'no-store, no-cache, must-revalidate, max-age=0'
+    )
+    expect(await staleResponse.json()).toMatchObject({
+      version: APP_VERSION,
+      buildId: APP_BUILD_ID,
+      update: {
+        required: true,
+        reason: APP_BUILD_ID === APP_VERSION ? 'version_mismatch' : 'build_mismatch',
+      },
+    })
+
+    expect(currentResponse.status).toBe(200)
+    expect(await currentResponse.json()).toMatchObject({
+      update: {
+        required: false,
+        reason: 'up_to_date',
       },
     })
   })

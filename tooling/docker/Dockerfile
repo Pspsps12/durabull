@@ -34,6 +34,14 @@ RUN bun install --omit=dev --no-save --ignore-scripts
 # Build: Build the web app
 # -----------------------------------------------------------------------------
 FROM deps AS build
+ARG DURABULL_APP_VERSION
+ARG DURABULL_BUILD_ID
+ARG DURABULL_BUILD_TIME
+ARG DURABULL_RELEASE_CHANNEL=stable
+ENV DURABULL_APP_VERSION=$DURABULL_APP_VERSION
+ENV DURABULL_BUILD_ID=$DURABULL_BUILD_ID
+ENV DURABULL_BUILD_TIME=$DURABULL_BUILD_TIME
+ENV DURABULL_RELEASE_CHANNEL=$DURABULL_RELEASE_CHANNEL
 COPY --from=prune /app/out/full/ .
 # Run vite build directly (skip tsc typecheck - it runs in CI separately)
 RUN cd apps/web && bun x vite build
@@ -43,8 +51,16 @@ RUN cd apps/web && bun x vite build
 # -----------------------------------------------------------------------------
 FROM base AS release
 
+ARG DURABULL_APP_VERSION
+ARG DURABULL_BUILD_ID
+ARG DURABULL_BUILD_TIME
+ARG DURABULL_RELEASE_CHANNEL=stable
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV DURABULL_APP_VERSION=$DURABULL_APP_VERSION
+ENV DURABULL_BUILD_ID=$DURABULL_BUILD_ID
+ENV DURABULL_BUILD_TIME=$DURABULL_BUILD_TIME
+ENV DURABULL_RELEASE_CHANNEL=$DURABULL_RELEASE_CHANNEL
 
 # Production deps only (smaller image)
 COPY --from=prod-deps /app/node_modules ./node_modules

@@ -24,7 +24,8 @@ import {
   Users,
 } from 'lucide-react'
 import { PostHogProvider } from 'posthog-js/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { AppUpdateBanner } from '@/components/app-update-banner'
 import { APP_TOP_BAR_HEIGHT_CLASS, AppTopBar, AppTopBarProvider } from '@/components/app-top-bar'
 import { ConnectionProvider, useConnection } from '@/components/connection-provider'
 import { ConnectionSelector } from '@/components/connection-selector'
@@ -44,6 +45,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useIsElectronShell } from '@/hooks/use-electron-shell'
 import { type Organization, useOrganizations } from '@/hooks/use-organization'
 import { usePageViewTracking } from '@/hooks/use-page-view-tracking'
+import { APP_BUILD_INFO } from '@/lib/app-version'
 import { cn } from '@/lib/utils'
 
 /**
@@ -90,6 +92,33 @@ export const Route = createRootRouteWithContext<{
 
 function RootComponent() {
   const { config, isLoading } = useAppConfig()
+  const isElectronShell = useIsElectronShell()
+  const telemetryRuntimeContext = useMemo(
+    () => ({
+      authless: config.authless,
+      env_connections: config.envConnections,
+      environment: config.environment,
+      persistence: config.persistence,
+      runtime: isElectronShell ? 'electron' : 'web',
+      stateless: config.stateless,
+      app_version: APP_BUILD_INFO.version,
+      app_build_id: APP_BUILD_INFO.buildId,
+      api_version: config.version.version,
+      api_build_id: config.version.buildId,
+      release_channel: config.version.releaseChannel,
+    }),
+    [
+      config.authless,
+      config.envConnections,
+      config.environment,
+      config.persistence,
+      config.stateless,
+      config.version.version,
+      config.version.buildId,
+      config.version.releaseChannel,
+      isElectronShell,
+    ]
+  )
 
   useEffect(() => {
     configureDurabullTelemetry({
@@ -97,16 +126,15 @@ function RootComponent() {
       collectionRequired: config.telemetry.collectionRequired,
       dedupeIdentifiedPosthogEvents: config.telemetry.dedupeIdentifiedPosthogEvents,
       disclosureUrl: config.telemetry.disclosureUrl,
-      runtimeContext: {
-        authless: config.authless,
-        env_connections: config.envConnections,
-        environment: config.environment,
-        persistence: config.persistence,
-        runtime: 'web',
-        stateless: config.stateless,
-      },
+      runtimeContext: telemetryRuntimeContext,
     })
-  }, [config])
+  }, [
+    config.telemetry.enabled,
+    config.telemetry.collectionRequired,
+    config.telemetry.dedupeIdentifiedPosthogEvents,
+    config.telemetry.disclosureUrl,
+    telemetryRuntimeContext,
+  ])
 
   // Render children without PostHog if config is missing
   const content = (
@@ -114,6 +142,7 @@ function RootComponent() {
       <ConnectionProvider>
         <RootLayout />
       </ConnectionProvider>
+      <AppUpdateBanner />
       <Toaster />
       {USE_DEVTOOLS && <TanStackRouterDevtools position="bottom-right" />}
       {USE_DEVTOOLS && <ReactQueryDevtools buttonPosition="bottom-left" />}
@@ -142,6 +171,13 @@ function RootComponent() {
         persistence: 'localStorage+cookie',
         cross_subdomain_cookie: true,
         debug: config.environment === 'development',
+        loaded: (posthog) => {
+          try {
+            posthog.register(telemetryRuntimeContext)
+          } catch {
+            // PostHog setup must never block application startup.
+          }
+        },
       }}
     >
       {content}

@@ -39,7 +39,7 @@ const { routeState, topBarState, scheduledJobsState, navigateMock, trackEventMoc
 )
 
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
+  Link: ({ children }: { children: React.ReactNode }) => <a href="/">{children}</a>,
   Outlet: () => null,
   createFileRoute: () => (options: unknown) => ({
     useParams: () => routeState.params,
@@ -207,7 +207,7 @@ describe('queue detail scheduled job creation', () => {
     const Component = Route.options.component as () => React.ReactNode
 
     render(<Component />)
-    render(<>{topBarState.config?.actions}</>)
+    render(<div>{topBarState.config?.actions}</div>)
 
     await user.click(screen.getByRole('button', { name: 'Schedule Job' }))
 

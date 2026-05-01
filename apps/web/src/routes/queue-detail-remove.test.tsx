@@ -37,7 +37,7 @@ const {
 }))
 
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
+  Link: ({ children }: { children: React.ReactNode }) => <a href="/">{children}</a>,
   Outlet: () => null,
   createFileRoute: () => (options: unknown) => ({
     useParams: () => routeState.params,

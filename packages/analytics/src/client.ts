@@ -44,6 +44,15 @@ let durabullTelemetryConfig: DurabullTelemetryConfig = {
 let sessionId: string | null = null
 let hasIdentifiedPosthogUser = false
 
+type AnalyticsPropertyValue = string | number | boolean | null
+
+function isAnalyticsPropertyValue(value: unknown): value is AnalyticsPropertyValue {
+  if (value === null) return true
+  if (typeof value === 'string') return true
+  if (typeof value === 'boolean') return true
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
 function getSessionId(): string {
   if (sessionId) return sessionId
 
@@ -96,6 +105,46 @@ function sendDurabullTelemetry(eventName: string, properties?: Record<string, un
   }
 }
 
+function getRuntimeContextProperties(): Record<string, AnalyticsPropertyValue> {
+  const runtimeContext = durabullTelemetryConfig.runtimeContext ?? {}
+  const properties: Record<string, AnalyticsPropertyValue> = {}
+
+  for (const [key, value] of Object.entries(runtimeContext)) {
+    if (isAnalyticsPropertyValue(value)) {
+      properties[key] = value
+    }
+  }
+
+  return properties
+}
+
+function withRuntimeContext(
+  properties?: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  const runtimeContext = getRuntimeContextProperties()
+  if (Object.keys(runtimeContext).length === 0) {
+    return properties
+  }
+
+  return {
+    ...runtimeContext,
+    ...(properties ?? {}),
+  }
+}
+
+function registerPosthogRuntimeContext() {
+  if (typeof window === 'undefined') return
+
+  const runtimeContext = getRuntimeContextProperties()
+  if (Object.keys(runtimeContext).length === 0) return
+
+  try {
+    posthog.register(runtimeContext)
+  } catch {
+    // Analytics setup must never block product runtime.
+  }
+}
+
 /**
  * Configure Durabull-owned anonymous telemetry.
  *
@@ -107,6 +156,7 @@ export function configureDurabullTelemetry(config: DurabullTelemetryConfig) {
     ...config,
     endpoint: config.endpoint ?? DEFAULT_TELEMETRY_ENDPOINT,
   }
+  registerPosthogRuntimeContext()
 }
 
 /**
@@ -137,6 +187,7 @@ export function initAnalytics(
     // Persist user identity across sessions
     persistence: 'localStorage+cookie',
   })
+  registerPosthogRuntimeContext()
 }
 
 /**
@@ -227,7 +278,11 @@ export function trackEvent(eventName: string, properties?: Record<string, unknow
 
   sendDurabullTelemetry(eventName, properties)
 
-  posthog.capture(eventName, properties)
+  try {
+    posthog.capture(eventName, withRuntimeContext(properties))
+  } catch {
+    // Analytics must never affect product behavior.
+  }
 }
 
 /**
@@ -245,7 +300,11 @@ export function trackPageView(path: string, properties?: Record<string, unknown>
 
   sendDurabullTelemetry(PAGEVIEW_EVENT, pageViewProperties)
 
-  posthog.capture(PAGEVIEW_EVENT, pageViewProperties)
+  try {
+    posthog.capture(PAGEVIEW_EVENT, withRuntimeContext(pageViewProperties))
+  } catch {
+    // Analytics must never affect product behavior.
+  }
 }
 
 /**

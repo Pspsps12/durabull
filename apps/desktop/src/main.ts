@@ -164,6 +164,7 @@ function buildServerEnvironment(
   env.APP_BASE_URL = baseUrl
   env.VITE_PUBLIC_APP_URL = baseUrl
   env.PORT = String(port)
+  env.DURABULL_RELEASE_CHANNEL = app.isPackaged ? 'desktop' : 'desktop-dev'
   env.DURABULL_AUTHLESS = 'true'
   env.DURABULL_ENV_CONNECTIONS = 'false'
   env.DURABULL_PGLITE_DIR = join(app.getPath('userData'), 'pglite')

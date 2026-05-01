@@ -105,6 +105,9 @@ export const AnalyticsEvents = {
 
   // Settings Events
   SETTINGS_VIEWED: 'settings_viewed',
+
+  // App Lifecycle Events
+  APP_UPDATE_CLICKED: 'app_update_clicked',
 } as const
 
 /**
@@ -177,8 +180,18 @@ export const AnalyticsProperties = {
   SCHEDULER_ID: 'scheduler_id',
 
   // Metadata
+  API_BUILD_ID: 'api_build_id',
+  API_VERSION: 'api_version',
+  APP_BUILD_ID: 'app_build_id',
+  APP_VERSION: 'app_version',
+  CLIENT_BUILD_ID: 'client_build_id',
+  CLIENT_VERSION: 'client_version',
   PAGE: 'page',
+  RELEASE_CHANNEL: 'release_channel',
+  SERVER_BUILD_ID: 'server_build_id',
+  SERVER_VERSION: 'server_version',
   TAB: 'tab',
+  UPDATE_REASON: 'update_reason',
   VISIBLE: 'visible',
 } as const
 

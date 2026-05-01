@@ -5,6 +5,7 @@ const captureMock = mock(() => {})
 const groupMock = mock(() => {})
 const identifyMock = mock(() => {})
 const initMock = mock(() => {})
+const registerMock = mock(() => {})
 const resetMock = mock(() => {})
 
 mock.module('posthog-js', () => ({
@@ -13,6 +14,7 @@ mock.module('posthog-js', () => ({
     group: groupMock,
     identify: identifyMock,
     init: initMock,
+    register: registerMock,
     reset: resetMock,
   },
 }))
@@ -48,6 +50,7 @@ describe('analytics client telemetry fanout', () => {
     groupMock.mockClear()
     identifyMock.mockClear()
     initMock.mockClear()
+    registerMock.mockClear()
     resetMock.mockClear()
 
     fetchMock = mock(async () => new Response(null, { status: 202 }))
@@ -63,6 +66,8 @@ describe('analytics client telemetry fanout', () => {
       collectionRequired: true,
       endpoint: '/api/telemetry/events',
       runtimeContext: {
+        app_build_id: 'build-123',
+        app_version: '1.4.0',
         environment: 'production',
         runtime: 'web',
       },
@@ -91,6 +96,8 @@ describe('analytics client telemetry fanout', () => {
     const durabullEvent = lastFetchBody(fetchMock)
     expect(durabullEvent.event).toBe(AnalyticsEvents.QUEUE_PAUSED)
     expect(durabullEvent.properties).toEqual({
+      app_build_id: 'build-123',
+      app_version: '1.4.0',
       environment: 'production',
       runtime: 'web',
       success: true,
@@ -98,8 +105,18 @@ describe('analytics client telemetry fanout', () => {
     expect(durabullEvent.properties).not.toHaveProperty('queue_name')
 
     expect(captureMock).toHaveBeenCalledWith(AnalyticsEvents.QUEUE_PAUSED, {
+      app_build_id: 'build-123',
+      app_version: '1.4.0',
+      environment: 'production',
       queue_name: 'billing-production',
+      runtime: 'web',
       success: true,
+    })
+    expect(registerMock).toHaveBeenCalledWith({
+      app_build_id: 'build-123',
+      app_version: '1.4.0',
+      environment: 'production',
+      runtime: 'web',
     })
   })
 
@@ -117,7 +134,11 @@ describe('analytics client telemetry fanout', () => {
     )
     expect(captureMock).toHaveBeenCalledWith('$pageview', {
       $current_url: rawUrl,
+      app_build_id: 'build-123',
+      app_version: '1.4.0',
+      environment: 'production',
       path: '/acme/c/conn-1/queues/billing/jobs/job-1',
+      runtime: 'web',
     })
   })
 
@@ -132,6 +153,8 @@ describe('analytics client telemetry fanout', () => {
     const durabullEvent = lastFetchBody(fetchMock)
     expect(durabullEvent.event).toBe(AnalyticsEvents.USER_CREATED)
     expect(durabullEvent.properties).toEqual({
+      app_build_id: 'build-123',
+      app_version: '1.4.0',
       environment: 'production',
       runtime: 'web',
     })

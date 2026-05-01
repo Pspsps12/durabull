@@ -59,9 +59,14 @@ const FORBIDDEN_PROPERTY_KEYS = new Set([
 
 const ALLOWED_PROPERTY_KEYS = new Set([
   'action',
+  'api_build_id',
+  'api_version',
+  'app_build_id',
   'app_version',
   'auth_method',
   'authless',
+  'client_build_id',
+  'client_version',
   'connection_environment',
   'dialog_type',
   'duration_bucket',
@@ -85,11 +90,15 @@ const ALLOWED_PROPERTY_KEYS = new Set([
   'provider',
   'queue_count_bucket',
   'queue_status',
+  'release_channel',
   'runtime',
+  'server_build_id',
+  'server_version',
   'stateless',
   'success',
   'tab',
   'theme',
+  'update_reason',
   'visible',
 ])
 
