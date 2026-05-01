@@ -15,7 +15,7 @@ import {
   waitForQueueDiscovery,
 } from '../lib/queue-discovery'
 import { deleteQueueWithDiscoveryCleanup } from '../lib/delete-queue'
-import { debugGetBullKeys, getQueue } from '../lib/redis'
+import { debugGetBullKeys, getQueue, safeGetWorkers } from '../lib/redis'
 
 // Default and max page sizes for pagination
 const DEFAULT_PAGE_SIZE = 50
@@ -321,7 +321,7 @@ const app = new Hono()
     const [counts, isPaused, workers, schedulers] = await Promise.all([
       queue.getJobCounts(),
       queue.isPaused(),
-      queue.getWorkers(),
+      safeGetWorkers(queue),
       queue.getJobSchedulers(),
     ])
 

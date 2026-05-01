@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { discoverQueues, getQueue } from '../lib/redis'
+import { discoverQueues, getQueue, safeGetWorkers } from '../lib/redis'
 
 // Default and max page sizes for pagination
 const DEFAULT_PAGE_SIZE = 50
@@ -48,7 +48,7 @@ const app = new Hono()
       paginatedQueueNames.map(async (queueName) => {
         const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
         const [workers, isPaused, counts] = await Promise.all([
-          queue.getWorkers(),
+          safeGetWorkers(queue),
           queue.isPaused(),
           queue.getJobCounts(),
         ])
