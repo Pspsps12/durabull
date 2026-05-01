@@ -1,5 +1,5 @@
-import { redisDiscoveredQueueRepository } from '@durabull/dal'
 import { randomUUID } from 'node:crypto'
+import { redisDiscoveredQueueRepository } from '@durabull/dal'
 import { scanQueuesPage } from './redis'
 
 const DEFAULT_DISCOVERY_SCAN_COUNT = 1000
@@ -71,7 +71,8 @@ async function getIndexedSnapshot(connectionId: string): Promise<QueueDiscoveryS
 async function runQueueDiscovery(
   connectionId: string,
   connectionUrl: string,
-  scanCount: number
+  scanCount: number,
+  prefix = 'bull'
 ): Promise<void> {
   const runtime = discoveryStateByConnection.get(connectionId)
   if (!runtime) return
@@ -80,7 +81,7 @@ async function runQueueDiscovery(
   const discoveredQueueNames = new Set<string>()
 
   do {
-    const page = await scanQueuesPage(connectionId, connectionUrl, cursor, scanCount)
+    const page = await scanQueuesPage(connectionId, connectionUrl, cursor, scanCount, prefix)
     cursor = page.cursor
     runtime.scannedPages += 1
 
@@ -109,7 +110,7 @@ export async function getQueueDiscoveryStatus(connectionId: string): Promise<Que
 export async function startQueueDiscovery(
   connectionId: string,
   connectionUrl: string,
-  options?: { scanCount?: number }
+  options?: { scanCount?: number; prefix?: string }
 ): Promise<QueueDiscoveryStatus> {
   const existingRun = activeDiscoveryRuns.get(connectionId)
   if (existingRun) {
@@ -117,6 +118,7 @@ export async function startQueueDiscovery(
   }
 
   const scanCount = Math.max(100, options?.scanCount ?? DEFAULT_DISCOVERY_SCAN_COUNT)
+  const prefix = options?.prefix ?? 'bull'
   const runtime: QueueDiscoveryRuntime = {
     runId: randomUUID(),
     connectionId,
@@ -132,7 +134,7 @@ export async function startQueueDiscovery(
 
   discoveryStateByConnection.set(connectionId, runtime)
 
-  const runPromise = runQueueDiscovery(connectionId, connectionUrl, scanCount)
+  const runPromise = runQueueDiscovery(connectionId, connectionUrl, scanCount, prefix)
     .catch((error) => {
       runtime.lastError = error instanceof Error ? error.message : String(error)
       throw error

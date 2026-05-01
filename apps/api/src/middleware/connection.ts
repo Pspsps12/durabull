@@ -10,6 +10,7 @@ declare module 'hono' {
     connectionId: string
     connectionUrl: string
     connectionName: string
+    connectionPrefix: string
   }
 }
 
@@ -145,6 +146,7 @@ export function createConnectionMiddleware(auth?: Auth) {
     c.set('connectionId', connection.id)
     c.set('connectionUrl', connection.url)
     c.set('connectionName', connection.name)
+    c.set('connectionPrefix', connection.prefix ?? 'bull')
 
     await next()
   })

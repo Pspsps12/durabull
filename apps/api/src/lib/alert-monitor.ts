@@ -206,7 +206,7 @@ async function processConnection(connectionId: string, rules: AlertRule[]): Prom
     const cursorMap = new Map(cursors.map((cursor) => [cursor.queueName, cursor]))
 
     await processWithConcurrency(queueNames, MAX_CONCURRENT_QUEUES, async (queueName) => {
-      const queue = await getQueue(connectionId, connection.url, queueName)
+      const queue = await getQueue(connectionId, connection.url, queueName, connection.prefix)
 
       const [jobCountsRaw, failedMetricsRaw, completedMetricsRaw] = await Promise.all([
         queue.getJobCounts('failed', 'waiting', 'active', 'completed'),

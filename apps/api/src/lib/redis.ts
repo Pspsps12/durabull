@@ -14,7 +14,7 @@ export class RedisUnavailableError extends Error {
   }
 }
 
-// Cache for Redis connections keyed by connection ID
+// Cache for Redis connections keyed by connection ID and URL
 const redisConnections = new Map<string, Redis>()
 // Cache in-flight connection attempts to prevent creating duplicate clients concurrently
 const redisConnectionPromises = new Map<string, Promise<Redis>>()
@@ -25,7 +25,7 @@ const recentRedisConnectionFailures = new Map<
 >()
 // Cache recent log lines to dedupe noisy repeated errors
 const recentRedisErrorLogs = new Map<string, { message: string; at: number }>()
-// Cache for queues keyed by "connectionId:queueName"
+// Cache for queues keyed by connection ID, connection URL, prefix, and queue name
 const queues = new Map<string, Queue>()
 
 const REDIS_RECONNECT_BASE_DELAY_MS = 200
@@ -114,11 +114,7 @@ function shouldLogRedisError(connectionId: string, message: string): boolean {
   return true
 }
 
-function buildRedisClient(
-  connectionId: string,
-  connectionUrl: string,
-  connectionName?: string
-): Redis {
+function buildRedisClient(connectionUrl: string, cacheKey: string, label: string): Redis {
   const redis = new Redis(connectionUrl, {
     maxRetriesPerRequest: null,
     lazyConnect: true,
@@ -128,17 +124,15 @@ function buildRedisClient(
     },
   })
 
-  const label = connectionName ?? connectionId
-
   redis.on('error', (error) => {
     const message = getSafeRedisErrorMessage(error)
 
-    if (shouldLogRedisError(connectionId, message)) {
+    if (shouldLogRedisError(cacheKey, message)) {
       console.error(`❌ Redis error (${label}): ${message}`)
     }
 
     if (isPermanentRedisConnectionError(message)) {
-      recentRedisConnectionFailures.set(connectionId, {
+      recentRedisConnectionFailures.set(cacheKey, {
         message,
         at: Date.now(),
         permanent: true,
@@ -148,7 +142,7 @@ function buildRedisClient(
   })
 
   redis.on('end', () => {
-    redisConnections.delete(connectionId)
+    redisConnections.delete(cacheKey)
   })
 
   return redis
@@ -156,50 +150,50 @@ function buildRedisClient(
 
 /**
  * Get or create a Redis connection for the given connection ID and URL.
- * The connection ID is used for caching, the URL is the actual Redis connection string.
  */
 export async function getRedis(
   connectionId: string,
   connectionUrl: string,
   connectionName?: string
 ): Promise<Redis> {
-  const existingConnection = redisConnections.get(connectionId)
+  const cacheKey = JSON.stringify([connectionId, connectionUrl])
+  const existingConnection = redisConnections.get(cacheKey)
   if (existingConnection) {
     if (existingConnection.status !== 'end') {
       return existingConnection
     }
-    redisConnections.delete(connectionId)
+    redisConnections.delete(cacheKey)
   }
 
-  const recentFailure = recentRedisConnectionFailures.get(connectionId)
+  const recentFailure = recentRedisConnectionFailures.get(cacheKey)
   if (recentFailure) {
     const elapsed = Date.now() - recentFailure.at
     if (recentFailure.permanent && elapsed < REDIS_FAILURE_COOLDOWN_MS) {
       throw toRedisUnavailableError(connectionId, connectionName, recentFailure.message)
     }
-    recentRedisConnectionFailures.delete(connectionId)
+    recentRedisConnectionFailures.delete(cacheKey)
   }
 
-  const inFlightConnection = redisConnectionPromises.get(connectionId)
+  const inFlightConnection = redisConnectionPromises.get(cacheKey)
   if (inFlightConnection) {
     return inFlightConnection
   }
 
   const connectPromise = (async () => {
-    const redis = buildRedisClient(connectionId, connectionUrl, connectionName)
+    const redis = buildRedisClient(connectionUrl, cacheKey, connectionName ?? connectionId)
 
     try {
       await redis.connect()
-      redisConnections.set(connectionId, redis)
-      recentRedisConnectionFailures.delete(connectionId)
+      redisConnections.set(cacheKey, redis)
+      recentRedisConnectionFailures.delete(cacheKey)
       console.log(`✅ Connected to Redis: ${connectionName ?? connectionId}`)
       return redis
     } catch (error) {
       const message = getSafeRedisErrorMessage(error)
-      const existingFailure = recentRedisConnectionFailures.get(connectionId)
+      const existingFailure = recentRedisConnectionFailures.get(cacheKey)
       const permanent = existingFailure?.permanent ?? isPermanentRedisConnectionError(message)
       const failureMessage = existingFailure?.permanent ? existingFailure.message : message
-      recentRedisConnectionFailures.set(connectionId, {
+      recentRedisConnectionFailures.set(cacheKey, {
         message: failureMessage,
         at: Date.now(),
         permanent,
@@ -207,11 +201,11 @@ export async function getRedis(
       disconnectRedisClient(redis)
       throw toRedisUnavailableError(connectionId, connectionName, failureMessage)
     } finally {
-      redisConnectionPromises.delete(connectionId)
+      redisConnectionPromises.delete(cacheKey)
     }
   })()
 
-  redisConnectionPromises.set(connectionId, connectPromise)
+  redisConnectionPromises.set(cacheKey, connectPromise)
   return connectPromise
 }
 
@@ -220,13 +214,20 @@ export async function getRedis(
  */
 export async function discoverQueues(
   connectionId: string,
-  connectionUrl: string
+  connectionUrl: string,
+  prefix = 'bull'
 ): Promise<Array<string>> {
   const queueNames = new Set<string>()
   let cursor = '0'
 
   do {
-    const page = await scanQueuesPage(connectionId, connectionUrl, cursor, DEFAULT_QUEUE_SCAN_COUNT)
+    const page = await scanQueuesPage(
+      connectionId,
+      connectionUrl,
+      cursor,
+      DEFAULT_QUEUE_SCAN_COUNT,
+      prefix
+    )
     cursor = page.cursor
     for (const queueName of page.queueNames) {
       queueNames.add(queueName)
@@ -245,14 +246,16 @@ export async function scanQueuesPage(
   connectionId: string,
   connectionUrl: string,
   cursor = '0',
-  count = DEFAULT_QUEUE_SCAN_COUNT
+  count = DEFAULT_QUEUE_SCAN_COUNT,
+  prefix = 'bull'
 ): Promise<QueueScanPage> {
   const redisClient = await getRedis(connectionId, connectionUrl)
   const scanCount = Math.max(100, count)
+  const escapedPrefix = prefix.replace(/[\\*?[\]]/g, '\\$&')
   const [nextCursor, keys] = await redisClient.scan(
     cursor,
     'MATCH',
-    'bull:*:meta',
+    `${escapedPrefix}:*:meta`,
     'COUNT',
     scanCount
   )
@@ -272,18 +275,26 @@ export async function scanQueuesPage(
 }
 
 /**
- * Debug: Get all bull:* keys to understand the Redis structure.
+ * Debug: Get all prefix:* keys to understand the Redis structure.
  */
 export async function debugGetBullKeys(
   connectionId: string,
-  connectionUrl: string
+  connectionUrl: string,
+  prefix = 'bull'
 ): Promise<string[]> {
   const redisClient = await getRedis(connectionId, connectionUrl)
+  const escapedPrefix = prefix.replace(/[\\*?[\]]/g, '\\$&')
   const keys: string[] = []
   let cursor = '0'
 
   do {
-    const [nextCursor, foundKeys] = await redisClient.scan(cursor, 'MATCH', 'bull:*', 'COUNT', 100)
+    const [nextCursor, foundKeys] = await redisClient.scan(
+      cursor,
+      'MATCH',
+      `${escapedPrefix}:*`,
+      'COUNT',
+      100
+    )
     cursor = nextCursor
     keys.push(...foundKeys)
   } while (cursor !== '0')
@@ -297,9 +308,10 @@ export async function debugGetBullKeys(
 export async function getQueue(
   connectionId: string,
   connectionUrl: string,
-  name: string
+  name: string,
+  prefix = 'bull'
 ): Promise<Queue> {
-  const cacheKey = `${connectionId}:${name}`
+  const cacheKey = JSON.stringify([connectionId, connectionUrl, prefix, name])
 
   if (!queues.has(cacheKey)) {
     const queue = new Queue(name, {
@@ -311,6 +323,7 @@ export async function getQueue(
           return Math.min(attempts * REDIS_RECONNECT_BASE_DELAY_MS, REDIS_RECONNECT_MAX_DELAY_MS)
         },
       },
+      prefix,
     })
 
     queue.on('error', (error) => {
@@ -321,7 +334,7 @@ export async function getQueue(
       }
 
       if (isPermanentRedisConnectionError(message)) {
-        recentRedisConnectionFailures.set(connectionId, {
+        recentRedisConnectionFailures.set(JSON.stringify([connectionId, connectionUrl]), {
           message,
           at: Date.now(),
           permanent: true,

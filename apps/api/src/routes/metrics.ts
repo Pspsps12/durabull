@@ -49,6 +49,7 @@ const app = new Hono()
   .get('/', zValidator('query', metricsQuerySchema), async (c) => {
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
+    const connectionPrefix = c.get('connectionPrefix')
     const query = c.req.valid('query')
     const pageStr = c.req.query('page')
     const pageSizeStr = c.req.query('pageSize')
@@ -59,7 +60,7 @@ const app = new Hono()
       MAX_PAGE_SIZE
     )
 
-    const allQueueNames = await discoverQueues(connectionId, connectionUrl)
+    const allQueueNames = await discoverQueues(connectionId, connectionUrl, connectionPrefix)
     const total = allQueueNames.length
 
     // Paginate the queue names BEFORE fetching metrics
@@ -77,7 +78,7 @@ const app = new Hono()
 
     const metrics = await Promise.all(
       paginatedQueueNames.map(async (queueName) => {
-        const queue = await getQueue(connectionId, connectionUrl, queueName)
+        const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
         const nativeMetrics = await collectQueueNativeMetrics(queue, {
           queueName,
           start: 0,

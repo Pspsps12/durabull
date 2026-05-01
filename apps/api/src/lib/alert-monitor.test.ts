@@ -1,18 +1,18 @@
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
+  type AlertRule,
   alertCheckCursorRepository,
   alertEventRepository,
   alertRuleRepository,
   closeDb,
   getDb,
   organization,
-  redisDiscoveredQueue,
-  redisConnectionRepository,
-  type AlertRule,
   type RedisConnection,
+  redisConnectionRepository,
+  redisDiscoveredQueue,
 } from '@durabull/dal'
 import { env } from '@durabull/env'
 import type { CursorState, QueueSnapshot } from './alert-evaluator'
@@ -65,6 +65,7 @@ function createConnection(): RedisConnection {
     url: 'redis://localhost:6379/0',
     environment: 'development',
     isDefault: true,
+    prefix: 'bull',
     createdAt: now,
     updatedAt: now,
   }

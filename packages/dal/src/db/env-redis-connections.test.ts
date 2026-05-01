@@ -112,4 +112,25 @@ describe('env-redis-connections', () => {
     expect(first).toBe(second)
     expect(first).not.toBe(third)
   })
+
+  it('parses prefix from _PREFIX env suffix', () => {
+    process.env.DURABULL_REDIS_URL_MAIN = 'redis://localhost:6379'
+    process.env.DURABULL_REDIS_URL_MAIN_PREFIX = 'custom'
+    process.env.DURABULL_REDIS_URL_WORKERS = 'redis://localhost:6380'
+
+    const connections = getEnvRedisConnections()
+
+    expect(connections).toHaveLength(2)
+    expect(connections.find((c) => c.envName === 'MAIN')?.prefix).toBe('custom')
+    expect(connections.find((c) => c.envName === 'WORKERS')?.prefix).toBe('bull')
+  })
+
+  it('defaults to bull prefix when _PREFIX is not set', () => {
+    process.env.DURABULL_REDIS_URL_MAIN = 'redis://localhost:6379'
+
+    const connections = getEnvRedisConnections()
+
+    expect(connections).toHaveLength(1)
+    expect(connections[0]?.prefix).toBe('bull')
+  })
 })

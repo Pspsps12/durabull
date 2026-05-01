@@ -69,6 +69,7 @@ const app = new Hono()
   .get('/', async (c) => {
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
+    const connectionPrefix = c.get('connectionPrefix')
     const pageStr = c.req.query('page')
     const pageSizeStr = c.req.query('pageSize')
 
@@ -78,7 +79,7 @@ const app = new Hono()
       MAX_PAGE_SIZE
     )
 
-    const allQueueNames = await discoverQueues(connectionId, connectionUrl)
+    const allQueueNames = await discoverQueues(connectionId, connectionUrl, connectionPrefix)
     const totalQueues = allQueueNames.length
 
     // Paginate at the queue level to prevent loading scheduled jobs from thousands of queues
@@ -89,7 +90,7 @@ const app = new Hono()
     const allScheduledJobs: ScheduledJobSummary[] = []
 
     for (const queueName of paginatedQueueNames) {
-      const queue = await getQueue(connectionId, connectionUrl, queueName)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
       const schedulers = await queue.getJobSchedulers()
 
       // Get unique job names from schedulers
@@ -119,8 +120,9 @@ const app = new Hono()
   .get('/queue/:queueName', async (c) => {
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
+    const connectionPrefix = c.get('connectionPrefix')
     const queueName = c.req.param('queueName')
-    const queue = await getQueue(connectionId, connectionUrl, queueName)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
     const schedulers = await queue.getJobSchedulers()
 
     // Get unique job names from schedulers
@@ -141,10 +143,11 @@ const app = new Hono()
   .get('/queue/:queueName/:schedulerId', async (c) => {
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
+    const connectionPrefix = c.get('connectionPrefix')
     const queueName = c.req.param('queueName')
     const schedulerId = c.req.param('schedulerId')
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
     const scheduler = (await queue.getJobSchedulers()).find((item) => item.key === schedulerId)
 
     if (!scheduler) {
@@ -161,10 +164,11 @@ const app = new Hono()
   .post('/queue/:queueName', zValidator('json', createScheduledJobSchema), async (c) => {
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
+    const connectionPrefix = c.get('connectionPrefix')
     const queueName = c.req.param('queueName')
     const payload = c.req.valid('json')
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
     const existingSchedulers = await queue.getJobSchedulers()
     const existingScheduler = existingSchedulers.find(
       (scheduler) => scheduler.key === payload.schedulerId
@@ -215,11 +219,12 @@ const app = new Hono()
     async (c) => {
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
+      const connectionPrefix = c.get('connectionPrefix')
       const queueName = c.req.param('queueName')
       const schedulerId = c.req.param('schedulerId')
       const payload = c.req.valid('json')
 
-      const queue = await getQueue(connectionId, connectionUrl, queueName)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
       const existingScheduler = (await queue.getJobSchedulers()).find(
         (scheduler) => scheduler.key === schedulerId
       )
@@ -261,10 +266,11 @@ const app = new Hono()
   .delete('/queue/:queueName/:schedulerId', async (c) => {
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
+    const connectionPrefix = c.get('connectionPrefix')
     const queueName = c.req.param('queueName')
     const schedulerId = c.req.param('schedulerId')
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
     await queue.removeJobScheduler(schedulerId)
     return c.json({ success: true })
   })
