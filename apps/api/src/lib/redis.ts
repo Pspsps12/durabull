@@ -336,3 +336,18 @@ export async function getQueue(
 
   return queues.get(cacheKey)!
 }
+
+/**
+ * Safely fetch workers, returning empty array if CLIENT LIST permission is unavailable
+ */
+export async function safeGetWorkers(queue: Queue): Promise<Array<Record<string, string>>> {
+  try {
+    return await queue.getWorkers()
+  } catch (error) {
+    console.warn(
+      `❌ Could not fetch workers for queue ${queue.name}:`,
+      error instanceof Error ? error.message : 'unknown error'
+    )
+    return []
+  }
+}
