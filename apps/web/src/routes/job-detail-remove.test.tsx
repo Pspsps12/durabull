@@ -2,32 +2,26 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const {
-  routeState,
-  topBarState,
-  navigateMock,
-  removeMutateMock,
-  retryMutateMock,
-  trackEventMock,
-} = vi.hoisted(() => ({
-  routeState: {
-    params: {
-      orgSlug: 'acme',
-      connectionId: 'conn-1',
-      queueName: 'emails',
-      jobId: 'repeat:scheduler-key:123',
+const { routeState, topBarState, navigateMock, removeMutateMock, retryMutateMock, trackEventMock } =
+  vi.hoisted(() => ({
+    routeState: {
+      params: {
+        orgSlug: 'acme',
+        connectionId: 'conn-1',
+        queueName: 'emails',
+        jobId: 'repeat:scheduler-key:123',
+      },
+      search: { tab: 'data' as const },
     },
-    search: { tab: 'data' as const },
-  },
-  topBarState: { config: null as null | { actions?: React.ReactNode } },
-  navigateMock: vi.fn(),
-  removeMutateMock: vi.fn(),
-  retryMutateMock: vi.fn(),
-  trackEventMock: vi.fn(),
-}))
+    topBarState: { config: null as null | { actions?: React.ReactNode } },
+    navigateMock: vi.fn(),
+    removeMutateMock: vi.fn(),
+    retryMutateMock: vi.fn(),
+    trackEventMock: vi.fn(),
+  }))
 
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
+  Link: ({ children }: { children: React.ReactNode }) => <a href="/">{children}</a>,
   createFileRoute: () => (options: unknown) => ({
     useParams: () => routeState.params,
     useSearch: () => routeState.search,
@@ -136,7 +130,7 @@ describe('job detail scheduled removal', () => {
     const Component = Route.options.component as () => React.ReactNode
 
     render(<Component />)
-    render(<>{topBarState.config?.actions}</>)
+    render(<div>{topBarState.config?.actions}</div>)
 
     await user.click(screen.getByRole('button', { name: 'Remove' }))
     await user.click(screen.getByRole('menuitem', { name: /Remove Job & Stop Scheduler/i }))
@@ -162,7 +156,7 @@ describe('job detail scheduled removal', () => {
     const Component = Route.options.component as () => React.ReactNode
 
     render(<Component />)
-    render(<>{topBarState.config?.actions}</>)
+    render(<div>{topBarState.config?.actions}</div>)
 
     await user.click(screen.getByRole('button', { name: 'Remove' }))
     expect(screen.getByText('Remove Job?')).toBeInTheDocument()

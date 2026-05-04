@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api, type InferResponseType } from '@/lib/api'
+import { APP_BUILD_INFO } from '@/lib/app-version'
 
 type ServerAppConfigResponse = InferResponseType<(typeof api.app.config)['$get'], 200>
 
@@ -27,6 +28,16 @@ const FALLBACK_APP_CONFIG: AppConfigResponse = {
     dedupeIdentifiedPosthogEvents: false,
     disclosureUrl: 'https://durabull.io/privacy',
   },
+  version: {
+    version: APP_BUILD_INFO.version,
+    buildId: APP_BUILD_INFO.buildId,
+    buildTime: APP_BUILD_INFO.buildTime,
+    releaseChannel: 'development',
+    update: {
+      required: false,
+      reason: 'up_to_date',
+    },
+  },
 }
 
 export const appConfigQueryKey = ['app-config'] as const
@@ -47,7 +58,12 @@ export function useAppConfig() {
     retry: 3,
   })
 
-  const config = data ?? FALLBACK_APP_CONFIG
+  const config = data
+    ? {
+        ...data,
+        version: data.version ?? FALLBACK_APP_CONFIG.version,
+      }
+    : FALLBACK_APP_CONFIG
 
   return {
     config,

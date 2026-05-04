@@ -1,5 +1,5 @@
 import { uuidv7 } from '@durabull/utils/uuid'
-import { and, desc, eq, lt, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { getDb } from '../db/client'
 import { alertEvent, type AlertEventStatus } from '../db/schemas/alert-event/schema'
 import type { AlertEvent, NewAlertEvent } from '../db/schemas/alert-event/types'

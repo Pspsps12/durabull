@@ -3,6 +3,14 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
+      "env": [
+        "DURABULL_APP_VERSION",
+        "DURABULL_BUILD_ID",
+        "DURABULL_BUILD_TIME",
+        "DURABULL_RELEASE_CHANNEL",
+        "GITHUB_SHA",
+        "VERCEL_GIT_COMMIT_SHA"
+      ],
       "outputs": ["dist/**", ".output/**", ".next/**", "out/**", "release/**"],
       "passThroughEnv": [
         "DATABASE_URL",
@@ -11,7 +19,9 @@
         "MARKETPLACE_*",
         "RESEND_API_KEY",
         "DURABULL_*",
+        "GITHUB_SHA",
         "VITE_PUBLIC_APP_URL",
+        "VERCEL_GIT_COMMIT_SHA",
         "NEXT_PUBLIC_WEB_APP_URL",
         "NEXT_PUBLIC_POSTHOG_KEY",
         "POSTHOG_KEY",
@@ -32,7 +42,9 @@
         "GITHUB_CLIENT_ID",
         "GITHUB_CLIENT_SECRET",
         "DURABULL_*",
+        "GITHUB_SHA",
         "VITE_PUBLIC_APP_URL",
+        "VERCEL_GIT_COMMIT_SHA",
         "NEXT_PUBLIC_WEB_APP_URL",
         "NEXT_PUBLIC_POSTHOG_KEY",
         "POSTHOG_KEY",
@@ -41,6 +53,14 @@
     },
     "dist": {
       "dependsOn": ["build"],
+      "env": [
+        "DURABULL_APP_VERSION",
+        "DURABULL_BUILD_ID",
+        "DURABULL_BUILD_TIME",
+        "DURABULL_RELEASE_CHANNEL",
+        "GITHUB_SHA",
+        "VERCEL_GIT_COMMIT_SHA"
+      ],
       "outputs": ["release/**"],
       "passThroughEnv": [
         "DATABASE_URL",
@@ -49,7 +69,9 @@
         "MARKETPLACE_*",
         "RESEND_API_KEY",
         "DURABULL_*",
+        "GITHUB_SHA",
         "VITE_PUBLIC_APP_URL",
+        "VERCEL_GIT_COMMIT_SHA",
         "NEXT_PUBLIC_WEB_APP_URL",
         "NEXT_PUBLIC_POSTHOG_KEY",
         "POSTHOG_KEY",
@@ -58,6 +80,14 @@
     },
     "dist:dir": {
       "dependsOn": ["build"],
+      "env": [
+        "DURABULL_APP_VERSION",
+        "DURABULL_BUILD_ID",
+        "DURABULL_BUILD_TIME",
+        "DURABULL_RELEASE_CHANNEL",
+        "GITHUB_SHA",
+        "VERCEL_GIT_COMMIT_SHA"
+      ],
       "outputs": ["release/**"],
       "passThroughEnv": [
         "DATABASE_URL",
@@ -66,7 +96,9 @@
         "MARKETPLACE_*",
         "RESEND_API_KEY",
         "DURABULL_*",
+        "GITHUB_SHA",
         "VITE_PUBLIC_APP_URL",
+        "VERCEL_GIT_COMMIT_SHA",
         "NEXT_PUBLIC_WEB_APP_URL",
         "NEXT_PUBLIC_POSTHOG_KEY",
         "POSTHOG_KEY",
@@ -102,7 +134,9 @@
         "CI",
         "DURABULL_*",
         "APP_BASE_URL",
+        "GITHUB_SHA",
         "VITE_PUBLIC_APP_URL",
+        "VERCEL_GIT_COMMIT_SHA",
         "NEXT_PUBLIC_WEB_APP_URL",
         "NEXT_PUBLIC_POSTHOG_KEY",
         "POSTHOG_KEY",

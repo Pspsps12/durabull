@@ -10,6 +10,7 @@ import { secureHeaders } from 'hono/secure-headers'
 
 import { getAuth } from './lib/auth'
 import { isAuthlessMode } from './lib/authless'
+import { getAppVersionPayload } from './lib/build-info'
 import { RedisUnavailableError } from './lib/redis'
 import { createSessionMiddleware } from './middleware/auth'
 import { createConnectionMiddleware } from './middleware/connection'
@@ -35,6 +36,7 @@ import workersRoutes from './routes/workers'
 
 const DEFAULT_POSTHOG_API_HOST = 'https://us.i.posthog.com'
 const DEFAULT_POSTHOG_UI_HOST = 'https://us.posthog.com'
+const NO_STORE_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, max-age=0'
 const REDIS_CONNECTION_ERROR_MESSAGE =
   'Unable to connect to Redis for this connection. Verify Redis URL, credentials, TLS settings, and IP allowlist, then retry.'
 
@@ -142,6 +144,7 @@ function getAppConfig() {
       uiHost: DEFAULT_POSTHOG_UI_HOST,
     },
     telemetry: getTelemetryStatus(),
+    version: getAppVersionPayload(),
   }
 }
 
@@ -176,6 +179,15 @@ const apiRoutes = new Hono()
   .route('/invitations', invitationsRoutes)
   // Health check (no auth needed)
   .get('/health', (c) => c.json({ status: 'ok', timestamp: Date.now() }))
+  .get('/app/version', (c) => {
+    c.header('Cache-Control', NO_STORE_CACHE_CONTROL)
+    return c.json(
+      getAppVersionPayload({
+        version: c.req.query('clientVersion'),
+        buildId: c.req.query('clientBuildId'),
+      })
+    )
+  })
   // App bootstrap config for the web client
   .get('/app/config', (c) => c.json(getAppConfig()))
   // Backward-compatible app mode subset
@@ -350,6 +362,15 @@ export async function createApiApp(options: CreateApiAppOptions = {}) {
     .route('/auth', authRoutes)
     .route('/invitations', invitationsRoutes)
     .get('/health', (c) => c.json({ status: 'ok', timestamp: Date.now() }))
+    .get('/app/version', (c) => {
+      c.header('Cache-Control', NO_STORE_CACHE_CONTROL)
+      return c.json(
+        getAppVersionPayload({
+          version: c.req.query('clientVersion'),
+          buildId: c.req.query('clientBuildId'),
+        })
+      )
+    })
     .get('/mode', (c) => c.json(getAppMode()))
     .route('/telemetry', telemetryRoutes)
 

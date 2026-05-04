@@ -72,6 +72,14 @@ wait_for_url "${APP_BASE_URL}/api/health"
 assert_json_contains "${APP_BASE_URL}/api/health" '"status":"ok"'
 assert_json_contains "${APP_BASE_URL}/api/app/config" '"authless":true'
 assert_json_contains "${APP_BASE_URL}/api/app/config" '"persistence":"pglite"'
+if [[ -n "${DURABULL_EXPECTED_BUILD_ID:-}" ]]; then
+  assert_json_contains "${APP_BASE_URL}/api/app/version" "\"buildId\":\"${DURABULL_EXPECTED_BUILD_ID}\""
+fi
+if [[ -n "${DURABULL_EXPECTED_RELEASE_CHANNEL:-}" ]]; then
+  assert_json_contains \
+    "${APP_BASE_URL}/api/app/version" \
+    "\"releaseChannel\":\"${DURABULL_EXPECTED_RELEASE_CHANNEL}\""
+fi
 assert_json_contains "${APP_BASE_URL}/api/auth/get-session" '"id":"authless-user"'
 
 echo "Docker image smoke test passed."

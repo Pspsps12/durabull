@@ -5,6 +5,12 @@ const queueInstances: Array<{
   opts: { prefix?: string; connection?: { url?: string } }
 }> = []
 const scanCalls: Array<Array<string | number>> = []
+let importId = 0
+
+async function importFreshRedis(): Promise<typeof import('./redis')> {
+  importId += 1
+  return import(`./redis?redis-prefix-test=${importId}`) as Promise<typeof import('./redis')>
+}
 
 mock.module('bullmq', () => ({
   Queue: class MockQueue {
@@ -52,7 +58,7 @@ describe('redis queue prefix handling', () => {
   })
 
   it('caches queues separately by connection URL and prefix', async () => {
-    const { getQueue } = await import('./redis')
+    const { getQueue } = await importFreshRedis()
 
     const first = await getQueue('conn-1', 'redis://localhost:6379/0', 'email', 'bull')
     const same = await getQueue('conn-1', 'redis://localhost:6379/0', 'email', 'bull')
@@ -74,7 +80,7 @@ describe('redis queue prefix handling', () => {
   })
 
   it('escapes prefix glob characters when scanning queue metadata', async () => {
-    const { debugGetBullKeys, scanQueuesPage } = await import('./redis')
+    const { debugGetBullKeys, scanQueuesPage } = await importFreshRedis()
 
     await scanQueuesPage('conn-2', 'redis://localhost:6379/0', '0', 100, 'bull\\prod[1]*?')
     await debugGetBullKeys('conn-3', 'redis://localhost:6379/0', 'bull\\prod[1]*?')

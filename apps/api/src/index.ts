@@ -64,6 +64,7 @@ startAlertMonitor()
 // Serve static files from web app build (for production)
 const webDistPath = join(import.meta.dir, '../../web/dist')
 const hasWebBuild = existsSync(webDistPath)
+const HTML_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, max-age=0'
 
 if (hasWebBuild) {
   // Serve static assets with immutable cache headers (hashed filenames)
@@ -78,10 +79,29 @@ if (hasWebBuild) {
   )
 
   // Serve other static files (favicons, etc.)
-  app.use('*', serveStatic({ root: webDistPath }))
+  app.use(
+    '*',
+    serveStatic({
+      root: webDistPath,
+      onFound: (path, c) => {
+        if (path.endsWith('.html')) {
+          c.header('Cache-Control', HTML_CACHE_CONTROL)
+        }
+      },
+    })
+  )
 
   // SPA fallback - serve index.html for all unmatched routes
-  app.get('*', serveStatic({ root: webDistPath, path: 'index.html' }))
+  app.get(
+    '*',
+    serveStatic({
+      root: webDistPath,
+      path: 'index.html',
+      onFound: (_path, c) => {
+        c.header('Cache-Control', HTML_CACHE_CONTROL)
+      },
+    })
+  )
 }
 
 // Re-export the API type for RPC client

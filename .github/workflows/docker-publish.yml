@@ -17,13 +17,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve release metadata
+        shell: bash
+        run: |
+          echo "DURABULL_APP_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          echo "DURABULL_BUILD_ID=${GITHUB_SHA}" >> "$GITHUB_ENV"
+          echo "DURABULL_BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Build smoke-test image
-        run: docker build -f tooling/docker/Dockerfile -t durabull-release:${{ github.sha }} .
+        run: |
+          docker build \
+            -f tooling/docker/Dockerfile \
+            --build-arg DURABULL_APP_VERSION="${DURABULL_APP_VERSION}" \
+            --build-arg DURABULL_BUILD_ID="${DURABULL_BUILD_ID}" \
+            --build-arg DURABULL_BUILD_TIME="${DURABULL_BUILD_TIME}" \
+            --build-arg DURABULL_RELEASE_CHANNEL="docker" \
+            -t durabull-release:${{ github.sha }} \
+            .
 
       - name: Smoke test self-hosted image
         run: bash tooling/scripts/docker-image-smoke.sh
         env:
           DURABULL_IMAGE: durabull-release:${{ github.sha }}
+          DURABULL_EXPECTED_BUILD_ID: ${{ env.DURABULL_BUILD_ID }}
+          DURABULL_EXPECTED_RELEASE_CHANNEL: docker
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -57,6 +74,11 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            DURABULL_APP_VERSION=${{ env.DURABULL_APP_VERSION }}
+            DURABULL_BUILD_ID=${{ env.DURABULL_BUILD_ID }}
+            DURABULL_BUILD_TIME=${{ env.DURABULL_BUILD_TIME }}
+            DURABULL_RELEASE_CHANNEL=docker
 
   trigger-cloud-deploy-hook:
     name: Trigger Cloud Deploy Hook

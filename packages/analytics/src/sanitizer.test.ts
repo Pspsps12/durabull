@@ -51,21 +51,41 @@ describe('telemetry sanitizer', () => {
   it('keeps allowlisted booleans, enums, and numeric aggregates', () => {
     const result = sanitizeTelemetryEvent(AnalyticsEvents.QUEUE_CLEANED, {
       action: 'clean',
+      api_build_id: 'server-build-123',
+      api_version: '1.4.0',
+      app_build_id: 'client-build-123',
+      app_version: '1.3.0',
+      client_build_id: 'client-build-123',
+      client_version: '1.3.0',
       connection_environment: 'production',
       duration_bucket: '1s-5s',
       job_count: 42,
       queue_status: 'completed',
+      release_channel: 'stable',
+      server_build_id: 'server-build-123',
+      server_version: '1.4.0',
       success: true,
+      update_reason: 'build_mismatch',
       visible: false,
     })
 
     expect(result.properties).toEqual({
       action: 'clean',
+      api_build_id: 'server-build-123',
+      api_version: '1.4.0',
+      app_build_id: 'client-build-123',
+      app_version: '1.3.0',
+      client_build_id: 'client-build-123',
+      client_version: '1.3.0',
       connection_environment: 'production',
       duration_bucket: '1s-5s',
       job_count: 42,
       queue_status: 'completed',
+      release_channel: 'stable',
+      server_build_id: 'server-build-123',
+      server_version: '1.4.0',
       success: true,
+      update_reason: 'build_mismatch',
       visible: false,
     })
   })
