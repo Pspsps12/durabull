@@ -14,6 +14,9 @@ interface RateLimitEntry {
 // In-memory store for rate limiting
 const rateLimitStore = new Map<string, RateLimitEntry>()
 
+const GENERAL_API_RATE_LIMIT_WINDOW_MS = 60 * 1000
+const GENERAL_API_RATE_LIMIT_MAX_REQUESTS = 600
+
 // Clean up expired entries periodically
 setInterval(
   () => {
@@ -195,8 +198,8 @@ export const authRateLimiter = rateLimiter({
  * Prevents abuse while allowing normal usage.
  */
 export const apiRateLimiter = rateLimiter({
-  windowMs: 10 * 1000, // 10 seconds
-  limit: 50, // 50 requests per 10 seconds
+  windowMs: GENERAL_API_RATE_LIMIT_WINDOW_MS,
+  limit: GENERAL_API_RATE_LIMIT_MAX_REQUESTS,
   keyPrefix: 'rl:api',
   // Custom handler to distinguish from auth errors
   onRateLimit: (c) =>
