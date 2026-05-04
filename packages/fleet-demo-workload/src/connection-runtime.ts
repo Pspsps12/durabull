@@ -1,6 +1,13 @@
-import { type Job, Queue, QueueEvents, Worker } from 'bullmq'
+import { type Job, Queue, Worker } from 'bullmq'
 import IORedis from 'ioredis'
-import { COMPLETED_JOB_RETENTION, FAILED_JOB_RETENTION, METRICS_MAX_DATA_POINTS } from './config'
+import {
+  COMPLETED_JOB_RETENTION,
+  EVENT_STREAM_MAX_LEN,
+  FAILED_JOB_RETENTION,
+  JOB_LOG_RETENTION,
+  METRICS_MAX_DATA_POINTS,
+  RESET_ON_BOOT,
+} from './config'
 import { createSimulatedProcessingError } from './errors'
 import { IncidentController } from './incident-controller'
 import type { Logger } from './logger'
@@ -12,7 +19,6 @@ import type { QueueWorkloadConfig, WorkloadConnectionConfig } from './types'
 interface QueueRuntime {
   config: QueueWorkloadConfig
   queue: Queue
-  queueEvents: QueueEvents
   worker: Worker
 }
 
@@ -20,6 +26,9 @@ const REDIS_CONNECTION_OPTIONS = {
   family: 4 as const,
   maxRetriesPerRequest: null,
 }
+
+const REDIS_DELETE_BATCH_SIZE = 250
+const METRIC_TYPES = ['completed', 'failed'] as const
 
 export class ConnectionRuntime {
   private readonly logger: Logger
@@ -61,6 +70,8 @@ export class ConnectionRuntime {
 
     await this.healthClient.connect()
     await this.healthClient.ping()
+    await this.resetDemoQueuesOnBoot()
+    await this.runRedisMemoryMaintenance()
 
     for (const queueConfig of this.queues) {
       const queue = new Queue(queueConfig.name, {
@@ -68,6 +79,11 @@ export class ConnectionRuntime {
         connection: {
           url: this.connection.url,
           ...REDIS_CONNECTION_OPTIONS,
+        },
+        streams: {
+          events: {
+            maxLen: EVENT_STREAM_MAX_LEN,
+          },
         },
         defaultJobOptions: {
           attempts: queueConfig.attempts,
@@ -81,17 +97,10 @@ export class ConnectionRuntime {
           removeOnFail: {
             count: FAILED_JOB_RETENTION,
           },
+          keepLogs: JOB_LOG_RETENTION,
+          stackTraceLimit: 5,
         },
       })
-
-      const queueEvents = new QueueEvents(queueConfig.name, {
-        prefix: this.connection.queuePrefix,
-        connection: {
-          url: this.connection.url,
-          ...REDIS_CONNECTION_OPTIONS,
-        },
-      })
-      await queueEvents.waitUntilReady()
 
       const worker = new Worker(queueConfig.name, this.createProcessor(queueConfig), {
         prefix: this.connection.queuePrefix,
@@ -148,20 +157,41 @@ export class ConnectionRuntime {
       this.queueRuntimes.push({
         config: queueConfig,
         queue,
-        queueEvents,
         worker,
       })
     }
 
-    await this.ensureScheduledJobs()
-    await this.seedInitialBacklog()
-    this.startProducers()
+    try {
+      await this.ensureScheduledJobs()
+      await this.seedInitialBacklog()
+      this.startProducers()
+    } catch (error) {
+      if (!isRedisOutOfMemoryError(error)) throw error
+
+      this.logger.error(
+        'redis.oom.startup',
+        'Redis is over maxmemory after cleanup; workload will stay alive with workers and producers paused',
+        {
+          queueCount: this.queueRuntimes.length,
+          completedRetention: COMPLETED_JOB_RETENTION,
+          failedRetention: FAILED_JOB_RETENTION,
+          eventStreamMaxLen: EVENT_STREAM_MAX_LEN,
+          metricsMaxDataPoints: METRICS_MAX_DATA_POINTS,
+        },
+        error
+      )
+      await this.pauseWorkersAfterStartupOom()
+    }
 
     this.logger.info('start.complete', 'Connection runtime started', {
       queues: this.queueRuntimes.length,
       workers: this.queueRuntimes.length,
       metricsMaxDataPoints: METRICS_MAX_DATA_POINTS,
       completedRetention: COMPLETED_JOB_RETENTION,
+      failedRetention: FAILED_JOB_RETENTION,
+      jobLogRetention: JOB_LOG_RETENTION,
+      eventStreamMaxLen: EVENT_STREAM_MAX_LEN,
+      resetOnBoot: RESET_ON_BOOT,
     })
   }
 
@@ -179,7 +209,6 @@ export class ConnectionRuntime {
     await Promise.allSettled(
       this.queueRuntimes.map(async (runtime) => {
         await runtime.worker.close()
-        await runtime.queueEvents.close()
         await runtime.queue.close()
       })
     )
@@ -354,6 +383,8 @@ export class ConnectionRuntime {
               removeOnFail: {
                 count: FAILED_JOB_RETENTION,
               },
+              keepLogs: JOB_LOG_RETENTION,
+              stackTraceLimit: 5,
             },
           }
         )
@@ -381,6 +412,201 @@ export class ConnectionRuntime {
     }
 
     this.logger.info('seed.complete', 'Initial backlog seeded')
+  }
+
+  private async runRedisMemoryMaintenance(): Promise<void> {
+    if (!this.healthClient) return
+
+    this.logger.info('redis.maintenance.begin', 'Trimming retained BullMQ data before startup', {
+      completedRetention: COMPLETED_JOB_RETENTION,
+      failedRetention: FAILED_JOB_RETENTION,
+      jobLogRetention: JOB_LOG_RETENTION,
+      eventStreamMaxLen: EVENT_STREAM_MAX_LEN,
+      metricsMaxDataPoints: METRICS_MAX_DATA_POINTS,
+    })
+
+    const totals = {
+      removedFinishedJobs: 0,
+      trimmedEventStreams: 0,
+      trimmedMetricLists: 0,
+    }
+
+    for (const queueConfig of this.queues) {
+      const baseKey = this.queueBaseKey(queueConfig.name)
+
+      try {
+        totals.removedFinishedJobs += await this.trimFinishedJobs(
+          `${baseKey}:completed`,
+          COMPLETED_JOB_RETENTION,
+          baseKey
+        )
+        totals.removedFinishedJobs += await this.trimFinishedJobs(
+          `${baseKey}:failed`,
+          FAILED_JOB_RETENTION,
+          baseKey
+        )
+      } catch (error) {
+        this.logger.warn(
+          'redis.maintenance.finished_jobs_failed',
+          'Could not trim retained finished jobs for queue',
+          { queueName: queueConfig.name },
+          error
+        )
+      }
+
+      try {
+        totals.trimmedEventStreams += await this.trimEventStream(`${baseKey}:events`)
+      } catch (error) {
+        this.logger.warn(
+          'redis.maintenance.events_failed',
+          'Could not trim BullMQ event stream for queue',
+          { queueName: queueConfig.name },
+          error
+        )
+      }
+
+      for (const metricType of METRIC_TYPES) {
+        try {
+          totals.trimmedMetricLists += await this.trimMetricList(
+            `${baseKey}:metrics:${metricType}:data`
+          )
+        } catch (error) {
+          this.logger.warn(
+            'redis.maintenance.metrics_failed',
+            'Could not trim BullMQ metrics list for queue',
+            { queueName: queueConfig.name, metricType },
+            error
+          )
+        }
+      }
+
+      try {
+        await this.healthClient.hset(
+          `${baseKey}:meta`,
+          'opts.maxLenEvents',
+          String(EVENT_STREAM_MAX_LEN)
+        )
+      } catch (error) {
+        this.logger.warn(
+          'redis.maintenance.meta_failed',
+          'Could not update BullMQ event stream retention metadata',
+          { queueName: queueConfig.name },
+          error
+        )
+      }
+    }
+
+    this.logger.info('redis.maintenance.complete', 'Redis startup maintenance complete', totals)
+  }
+
+  private async resetDemoQueuesOnBoot(): Promise<void> {
+    if (!this.healthClient || !RESET_ON_BOOT) return
+
+    this.logger.warn('redis.reset.begin', 'Resetting demo workload queues before startup', {
+      queuePrefix: this.connection.queuePrefix,
+      queueCount: this.queues.length,
+    })
+
+    let deletedKeys = 0
+    for (const queueConfig of this.queues) {
+      deletedKeys += await this.deleteKeysByPattern(`${this.queueBaseKey(queueConfig.name)}:*`)
+    }
+
+    this.logger.warn('redis.reset.complete', 'Demo workload queue reset complete', {
+      deletedKeys,
+    })
+  }
+
+  private async deleteKeysByPattern(pattern: string): Promise<number> {
+    if (!this.healthClient) return 0
+
+    let cursor = '0'
+    let deletedKeys = 0
+
+    do {
+      const [nextCursor, keys] = await this.healthClient.scan(
+        cursor,
+        'MATCH',
+        pattern,
+        'COUNT',
+        REDIS_DELETE_BATCH_SIZE
+      )
+      cursor = nextCursor
+
+      if (keys.length > 0) {
+        await this.healthClient.del(...keys)
+        deletedKeys += keys.length
+      }
+    } while (cursor !== '0')
+
+    return deletedKeys
+  }
+
+  private queueBaseKey(queueName: string): string {
+    return `${this.connection.queuePrefix}:${queueName}`
+  }
+
+  private async trimFinishedJobs(
+    finishedKey: string,
+    keepCount: number,
+    baseKey: string
+  ): Promise<number> {
+    if (!this.healthClient) return 0
+
+    const finishedCount = await this.healthClient.zcard(finishedKey)
+    const removeCount = Math.max(0, finishedCount - keepCount)
+    if (removeCount === 0) return 0
+
+    let removed = 0
+    while (removed < removeCount) {
+      const batchSize = Math.min(REDIS_DELETE_BATCH_SIZE, removeCount - removed)
+      const jobIds = await this.healthClient.zrange(finishedKey, 0, batchSize - 1)
+      if (jobIds.length === 0) break
+
+      const pipeline = this.healthClient.pipeline()
+      pipeline.zrem(finishedKey, ...jobIds)
+
+      for (const jobId of jobIds) {
+        const jobKey = `${baseKey}:${jobId}`
+        pipeline.del(
+          jobKey,
+          `${jobKey}:logs`,
+          `${jobKey}:dependencies`,
+          `${jobKey}:processed`,
+          `${jobKey}:failed`,
+          `${jobKey}:unsuccessful`
+        )
+      }
+
+      await pipeline.exec()
+      removed += jobIds.length
+    }
+
+    return removed
+  }
+
+  private async trimEventStream(eventsKey: string): Promise<number> {
+    if (!this.healthClient) return 0
+
+    const currentLength = await this.healthClient.xlen(eventsKey).catch(() => 0)
+    if (currentLength <= EVENT_STREAM_MAX_LEN) return 0
+
+    await this.healthClient.xtrim(eventsKey, 'MAXLEN', '~', EVENT_STREAM_MAX_LEN)
+    return 1
+  }
+
+  private async trimMetricList(metricDataKey: string): Promise<number> {
+    if (!this.healthClient) return 0
+
+    const currentLength = await this.healthClient.llen(metricDataKey).catch(() => 0)
+    if (currentLength <= METRICS_MAX_DATA_POINTS) return 0
+
+    await this.healthClient.ltrim(metricDataKey, 0, METRICS_MAX_DATA_POINTS - 1)
+    return 1
+  }
+
+  private async pauseWorkersAfterStartupOom(): Promise<void> {
+    await Promise.allSettled(this.queueRuntimes.map((runtime) => runtime.worker.close(true)))
   }
 
   private createProcessor(config: QueueWorkloadConfig) {
@@ -509,4 +735,12 @@ export class ConnectionRuntime {
         return 0.003
     }
   }
+}
+
+function isRedisOutOfMemoryError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.message.includes('OOM command not allowed') ||
+      error.message.includes("used memory > 'maxmemory'"))
+  )
 }

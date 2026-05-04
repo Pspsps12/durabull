@@ -8,7 +8,7 @@
 - Uses 1 logical connection.
 - Injects low-rate random failures plus intermittent incident windows.
 - Enables BullMQ native metrics on every worker (`metrics.maxDataPoints`).
-- Retains the last 100 completed jobs per queue.
+- Retains a bounded number of completed jobs, failed jobs, events, metrics, and per-job log entries.
 - Upserts 38 scheduled jobs across 9 queues using realistic cron patterns.
 
 ## Queue set
@@ -32,9 +32,15 @@ The workload runs against one Redis URL.
 WORKLOAD_REDIS_URL=redis://localhost:6379
 
 # Optional runtime tuning
-WORKLOAD_METRICS_MAX_DATA_POINTS=20160
+WORKLOAD_COMPLETED_JOB_RETENTION=25
+WORKLOAD_FAILED_JOB_RETENTION=50
+WORKLOAD_JOB_LOG_RETENTION=6
+WORKLOAD_EVENT_STREAM_MAX_LEN=500
+WORKLOAD_METRICS_MAX_DATA_POINTS=1440
 WORKLOAD_HEARTBEAT_MS=60000
 WORKLOAD_LOG_LEVEL=info
+# Reset known demo queues on startup. Defaults to true for this disposable workload.
+WORKLOAD_RESET_ON_BOOT=true
 # Optional: namespace queues when sharing Redis with other Bull workloads
 # WORKLOAD_NAMESPACE_QUEUES=true
 ```
@@ -43,6 +49,7 @@ Notes:
 
 - By default, queue names remain generic (`user-welcome`, `order-processing`, etc.).
 - Enable `WORKLOAD_NAMESPACE_QUEUES=true` if this workload shares Redis with other Bull workloads and you need strict isolation.
+- Startup resets this workload's known queue keys by default, then trims retained BullMQ data to the configured limits before scheduled jobs are upserted. Set `WORKLOAD_RESET_ON_BOOT=false` to keep queue history between restarts.
 - On Render, use the full internal Redis URL (often `rediss://...` with credentials) and make sure env changes are applied to the worker service before restart.
 
 ## Run
