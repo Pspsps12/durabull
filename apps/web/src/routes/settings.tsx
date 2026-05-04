@@ -30,6 +30,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppConfig } from '@/hooks/use-app-config'
 import { linkSocial, listAccounts, unlinkAccount, useAuth } from '@/hooks/use-auth'
+import { APP_BUILD_INFO } from '@/lib/app-version'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/settings')({
@@ -334,6 +335,10 @@ function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <p className="px-1 text-right text-[11px] text-muted-foreground/70">
+        Durabull v{APP_BUILD_INFO.version}
+      </p>
 
       {/* Unlink Confirmation Dialog */}
       <Dialog
