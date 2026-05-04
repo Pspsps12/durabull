@@ -1,12 +1,18 @@
 import type { EnvironmentType, QueueWorkloadConfig, WorkloadConnectionConfig } from './types'
 
-export const COMPLETED_JOB_RETENTION = 100
-export const FAILED_JOB_RETENTION = 150
+export const COMPLETED_JOB_RETENTION = readPositiveInt(
+  process.env.WORKLOAD_COMPLETED_JOB_RETENTION,
+  25
+)
+export const FAILED_JOB_RETENTION = readPositiveInt(process.env.WORKLOAD_FAILED_JOB_RETENTION, 50)
+export const JOB_LOG_RETENTION = readPositiveInt(process.env.WORKLOAD_JOB_LOG_RETENTION, 6)
+export const EVENT_STREAM_MAX_LEN = readPositiveInt(process.env.WORKLOAD_EVENT_STREAM_MAX_LEN, 500)
 export const METRICS_MAX_DATA_POINTS = readPositiveInt(
   process.env.WORKLOAD_METRICS_MAX_DATA_POINTS,
-  60 * 24 * 14
+  60 * 24
 )
 export const HEARTBEAT_INTERVAL_MS = readPositiveInt(process.env.WORKLOAD_HEARTBEAT_MS, 60_000)
+export const RESET_ON_BOOT = readBoolean(process.env.WORKLOAD_RESET_ON_BOOT, true)
 export const NAMESPACE_QUEUES = readBoolean(process.env.WORKLOAD_NAMESPACE_QUEUES, false)
 const CONNECTION_SLUG = 'prod-east'
 const CONNECTION_NAME = 'Commerce Production East'
