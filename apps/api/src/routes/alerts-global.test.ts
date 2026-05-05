@@ -9,6 +9,7 @@ import {
   decryptSecret,
   getDb,
   linearIntegrationRepository,
+  linearOauthStateRepository,
   organization,
   redisConnection,
 } from '@durabull/dal'
@@ -18,6 +19,7 @@ import { Hono } from 'hono'
 const TEST_ORG_ID = 'alert-global-org'
 const FIRST_CONNECTION_ID = '66666666-6666-4666-8666-666666666666'
 const SECOND_CONNECTION_ID = '77777777-7777-4777-8777-777777777777'
+const LINEAR_CALLBACK_URL = 'https://app.durabull.test/api/alerts/integrations/linear/callback'
 
 const mutableEnv = env as {
   DATABASE_URL?: string
@@ -141,8 +143,7 @@ describe('global alerts routes', () => {
       '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     mutableEnv.LINEAR_OAUTH_CLIENT_ID = 'linear-client-id'
     mutableEnv.LINEAR_OAUTH_CLIENT_SECRET = 'linear-client-secret'
-    mutableEnv.LINEAR_OAUTH_REDIRECT_URI =
-      'https://app.durabull.test/api/alerts/integrations/linear/callback'
+    mutableEnv.LINEAR_OAUTH_REDIRECT_URI = LINEAR_CALLBACK_URL
     mutableEnv.APP_BASE_URL = 'https://app.durabull.test'
     exchangeLinearOauthCodeMock.mockClear()
     validateLinearAccessTokenMock.mockClear()
@@ -300,10 +301,10 @@ describe('global alerts routes', () => {
       'https://linear.app/oauth/authorize'
     )
     expect(authorizeUrl.searchParams.get('client_id')).toBe('linear-client-id')
-    expect(authorizeUrl.searchParams.get('redirect_uri')).toBe(
-      'https://app.durabull.test/api/alerts/integrations/linear/callback'
-    )
+    expect(authorizeUrl.searchParams.get('redirect_uri')).toBe(LINEAR_CALLBACK_URL)
     expect(authorizeUrl.searchParams.get('scope')).toBe('read,issues:create')
+    expect(authorizeUrl.searchParams.get('response_type')).toBe('code')
+    expect(authorizeUrl.searchParams.get('actor')).toBe('app')
 
     const state = authorizeUrl.searchParams.get('state')
     expect(state).toBeTruthy()
@@ -317,7 +318,7 @@ describe('global alerts routes', () => {
     )
     expect(exchangeLinearOauthCodeMock).toHaveBeenCalledWith({
       code: 'linear-code',
-      redirectUri: 'https://app.durabull.test/api/alerts/integrations/linear/callback',
+      redirectUri: LINEAR_CALLBACK_URL,
       clientId: 'linear-client-id',
       clientSecret: 'linear-client-secret',
     })
@@ -339,5 +340,148 @@ describe('global alerts routes', () => {
     expect(stored?.encryptedRefreshToken).not.toContain('linear-refresh-token')
     expect(decryptSecret(stored?.encryptedAccessToken ?? '')).toBe('linear-access-token')
     expect(decryptSecret(stored?.encryptedRefreshToken ?? '')).toBe('linear-refresh-token')
+  })
+
+  it('uses the deployment app base URL as the default OAuth callback for cloud and self-hosted installs', async () => {
+    mutableEnv.LINEAR_OAUTH_REDIRECT_URI = undefined
+    mutableEnv.APP_BASE_URL = 'https://self-hosted.example.com///'
+
+    const app = await createGlobalAlertsRouteApp()
+    const response = await app.request('/integrations/linear/connect', { method: 'POST' })
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { authorizationUrl: string }
+    const authorizeUrl = new URL(body.authorizationUrl)
+    expect(authorizeUrl.searchParams.get('redirect_uri')).toBe(
+      'https://self-hosted.example.com/api/alerts/integrations/linear/callback'
+    )
+  })
+
+  it('rejects OAuth callbacks with an invalid state before exchanging the authorization code', async () => {
+    const app = await createGlobalAlertsRouteApp()
+    const connectResponse = await app.request('/integrations/linear/connect', { method: 'POST' })
+    const { authorizationUrl } = (await connectResponse.json()) as { authorizationUrl: string }
+    const state = new URL(authorizationUrl).searchParams.get('state')
+
+    const invalidResponse = await app.request(
+      '/integrations/linear/callback?code=linear-code&state=attacker-state'
+    )
+    expect(invalidResponse.status).toBe(400)
+    expect(exchangeLinearOauthCodeMock).not.toHaveBeenCalled()
+
+    const validResponse = await app.request(
+      `/integrations/linear/callback?code=linear-code&state=${state}`
+    )
+    expect(validResponse.status).toBe(302)
+    expect(exchangeLinearOauthCodeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not allow replaying a consumed OAuth state', async () => {
+    const app = await createGlobalAlertsRouteApp()
+    const connectResponse = await app.request('/integrations/linear/connect', { method: 'POST' })
+    const { authorizationUrl } = (await connectResponse.json()) as { authorizationUrl: string }
+    const state = new URL(authorizationUrl).searchParams.get('state')
+
+    const firstResponse = await app.request(
+      `/integrations/linear/callback?code=linear-code&state=${state}`
+    )
+    const replayResponse = await app.request(
+      `/integrations/linear/callback?code=linear-code&state=${state}`
+    )
+
+    expect(firstResponse.status).toBe(302)
+    expect(replayResponse.status).toBe(400)
+    expect(exchangeLinearOauthCodeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects expired OAuth state records', async () => {
+    const app = await createGlobalAlertsRouteApp()
+    await linearOauthStateRepository.create({
+      organizationId: TEST_ORG_ID,
+      userId: 'user-1',
+      state: 'expired-state',
+      redirectUri: LINEAR_CALLBACK_URL,
+      expiresAt: new Date(Date.now() - 1_000),
+    })
+
+    const response = await app.request(
+      '/integrations/linear/callback?code=linear-code&state=expired-state'
+    )
+
+    expect(response.status).toBe(400)
+    expect(exchangeLinearOauthCodeMock).not.toHaveBeenCalled()
+  })
+
+  it('returns a setup error when Linear OAuth client credentials are missing', async () => {
+    mutableEnv.LINEAR_OAUTH_CLIENT_SECRET = undefined
+
+    const app = await createGlobalAlertsRouteApp()
+    const response = await app.request('/integrations/linear/connect', { method: 'POST' })
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({
+      error: 'LINEAR_OAUTH_CLIENT_ID and LINEAR_OAUTH_CLIENT_SECRET are required.',
+    })
+  })
+
+  it('refreshes expired access tokens before fetching Linear metadata and persists rotated tokens', async () => {
+    await linearIntegrationRepository.upsertOauth({
+      organizationId: TEST_ORG_ID,
+      accessToken: 'expired-linear-access-token',
+      refreshToken: 'old-linear-refresh-token',
+      tokenType: 'Bearer',
+      scopes: 'read issues:create',
+      accessTokenExpiresAt: new Date(Date.now() - 60_000),
+      validationStatus: 'valid',
+      lastValidatedAt: new Date(),
+    })
+
+    const app = await createGlobalAlertsRouteApp()
+    const response = await app.request('/integrations/linear/metadata')
+
+    expect(response.status).toBe(200)
+    expect(refreshLinearOauthTokenMock).toHaveBeenCalledWith({
+      refreshToken: 'old-linear-refresh-token',
+      clientId: 'linear-client-id',
+      clientSecret: 'linear-client-secret',
+    })
+    expect(fetchLinearMetadataMock).toHaveBeenCalledWith('refreshed-linear-access-token')
+
+    const stored = await linearIntegrationRepository.findByOrganization(TEST_ORG_ID)
+    expect(decryptSecret(stored?.encryptedAccessToken ?? '')).toBe('refreshed-linear-access-token')
+    expect(decryptSecret(stored?.encryptedRefreshToken ?? '')).toBe(
+      'refreshed-linear-refresh-token'
+    )
+  })
+
+  it('revokes stored OAuth tokens on disconnect without exposing token values', async () => {
+    await linearIntegrationRepository.upsertOauth({
+      organizationId: TEST_ORG_ID,
+      accessToken: 'linear-access-token-to-revoke',
+      refreshToken: 'linear-refresh-token-to-revoke',
+      tokenType: 'Bearer',
+      scopes: 'read issues:create',
+      accessTokenExpiresAt: new Date(Date.now() + 60 * 60_000),
+      validationStatus: 'valid',
+      lastValidatedAt: new Date(),
+    })
+
+    const app = await createGlobalAlertsRouteApp()
+    const response = await app.request('/integrations/linear', { method: 'DELETE' })
+
+    expect(response.status).toBe(200)
+    expect(revokeLinearOauthTokenMock).toHaveBeenCalledWith({
+      token: 'linear-refresh-token-to-revoke',
+      tokenTypeHint: 'refresh_token',
+      clientId: 'linear-client-id',
+      clientSecret: 'linear-client-secret',
+    })
+    expect(revokeLinearOauthTokenMock).toHaveBeenCalledWith({
+      token: 'linear-access-token-to-revoke',
+      tokenTypeHint: 'access_token',
+      clientId: 'linear-client-id',
+      clientSecret: 'linear-client-secret',
+    })
+    expect(await linearIntegrationRepository.findByOrganization(TEST_ORG_ID)).toBeNull()
   })
 })
