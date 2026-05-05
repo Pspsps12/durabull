@@ -133,13 +133,22 @@ const app = new Hono()
       expiresAt: new Date(Date.now() + 10 * 60_000),
     })
 
-    return c.json({
-      authorizationUrl: buildLinearOauthAuthorizeUrl({
-        clientId: config.clientId,
-        redirectUri: config.redirectUri,
-        state,
-      }),
+    const authorizationUrl = buildLinearOauthAuthorizeUrl({
+      clientId: config.clientId,
+      redirectUri: config.redirectUri,
+      state,
     })
+
+    if (env.NODE_ENV !== 'production') {
+      console.info('[linear-oauth] starting authorization', {
+        organizationId,
+        userId: user.id,
+        redirectUri: config.redirectUri,
+        authorizationUrl,
+      })
+    }
+
+    return c.json({ authorizationUrl })
   })
   .get(
     '/integrations/linear/callback',

@@ -308,6 +308,7 @@ describe('global alerts routes', () => {
     expect(authorizeUrl.searchParams.get('redirect_uri')).toBe(LINEAR_CALLBACK_URL)
     expect(authorizeUrl.searchParams.get('scope')).toBe('read,issues:create')
     expect(authorizeUrl.searchParams.get('response_type')).toBe('code')
+    expect(authorizeUrl.searchParams.get('prompt')).toBe('consent')
     expect(authorizeUrl.searchParams.get('actor')).toBe('app')
 
     const state = authorizeUrl.searchParams.get('state')

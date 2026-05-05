@@ -66,6 +66,7 @@ describe('Linear OAuth helpers', () => {
     expect(authorizationUrl.searchParams.get('response_type')).toBe('code')
     expect(authorizationUrl.searchParams.get('scope')).toBe('read,issues:create')
     expect(authorizationUrl.searchParams.get('state')).toBe('opaque-state')
+    expect(authorizationUrl.searchParams.get('prompt')).toBe('consent')
     expect(authorizationUrl.searchParams.get('actor')).toBe('app')
   })
 })

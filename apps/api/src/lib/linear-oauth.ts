@@ -35,6 +35,7 @@ export function buildLinearOauthAuthorizeUrl(input: {
     response_type: 'code',
     scope: LINEAR_OAUTH_SCOPE,
     state: input.state,
+    prompt: 'consent',
     actor: 'app',
   })
 
