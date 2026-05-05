@@ -13,7 +13,7 @@ import {
   Settings,
   Shield,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useAppTopBar } from '@/components/app-top-bar'
 import { Badge } from '@/components/ui/badge'
@@ -67,6 +67,7 @@ const providers = [
 ] as const
 
 type ProviderId = (typeof providers)[number]['id']
+const LINEAR_PENDING_TEAM_STORAGE_KEY = 'durabull.linear.pendingDefaultTeamId'
 
 // Account type from better-auth
 interface LinkedAccount {
@@ -94,6 +95,7 @@ function SettingsPage() {
   const [linkingProvider, setLinkingProvider] = useState<ProviderId | null>(null)
   const [unlinkingAccount, setUnlinkingAccount] = useState<LinkedAccount | null>(null)
   const [isUnlinking, setIsUnlinking] = useState(false)
+  const appliedPendingLinearTeam = useRef(false)
   const topBarConfig = useMemo(
     () => ({
       left: (
@@ -118,6 +120,28 @@ function SettingsPage() {
   useEffect(() => {
     setLinearTeamId(linearIntegration?.defaultTeamId ?? '')
   }, [linearIntegration?.defaultTeamId])
+
+  useEffect(() => {
+    if (!linearIntegration || appliedPendingLinearTeam.current) return
+    const pendingTeamId = window.sessionStorage.getItem(LINEAR_PENDING_TEAM_STORAGE_KEY)
+    if (pendingTeamId === null) return
+
+    appliedPendingLinearTeam.current = true
+    window.sessionStorage.removeItem(LINEAR_PENDING_TEAM_STORAGE_KEY)
+    setLinearTeamId(pendingTeamId)
+
+    if (pendingTeamId === (linearIntegration.defaultTeamId ?? '')) return
+
+    saveLinearIntegration
+      .mutateAsync({ defaultTeamId: pendingTeamId || null })
+      .then(() => toast.success('Linear defaults saved'))
+      .catch((error) => {
+        console.error('Failed to save Linear defaults after OAuth:', error)
+        toast.error('Linear connected, but defaults were not saved', {
+          description: getErrorMessage(error, 'Save the default team again.'),
+        })
+      })
+  }, [linearIntegration, saveLinearIntegration])
 
   // Fetch linked accounts
   useEffect(() => {
@@ -351,14 +375,31 @@ function SettingsPage() {
               value={linearTeamId}
               onChange={(event) => setLinearTeamId(event.target.value)}
               placeholder="Default Linear team ID"
-              disabled={!linearIntegration}
+              aria-label="Default Linear team ID"
             />
             {!linearIntegration ? (
               <Button
                 type="button"
                 onClick={async () => {
-                  const result = await connectLinearIntegration.mutateAsync()
-                  window.location.assign(result.authorizationUrl)
+                  const pendingTeamId = linearTeamId.trim()
+                  if (pendingTeamId) {
+                    window.sessionStorage.setItem(LINEAR_PENDING_TEAM_STORAGE_KEY, pendingTeamId)
+                  } else {
+                    window.sessionStorage.removeItem(LINEAR_PENDING_TEAM_STORAGE_KEY)
+                  }
+
+                  try {
+                    const result = await connectLinearIntegration.mutateAsync()
+                    window.location.assign(result.authorizationUrl)
+                  } catch (error) {
+                    console.error('Failed to start Linear OAuth:', error)
+                    toast.error('Failed to start Linear connection', {
+                      description: getErrorMessage(
+                        error,
+                        'Check the Linear OAuth configuration and try again.'
+                      ),
+                    })
+                  }
                 }}
                 disabled={connectLinearIntegration.isPending}
               >
@@ -541,6 +582,10 @@ function SettingsPage() {
       </Dialog>
     </div>
   )
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback
 }
 
 interface AccountRowProps {
