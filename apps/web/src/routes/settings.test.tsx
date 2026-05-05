@@ -125,26 +125,24 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Durabull v1.2.3-test')).toBeInTheDocument()
   })
 
-  it('allows entering a Linear team before starting OAuth and starts the connect flow', async () => {
+  it('only shows the Linear connect action before OAuth is configured', async () => {
     const Component = Route.options.component as () => React.ReactNode
     mocks.connectLinearIntegrationMutateAsync.mockImplementation(() => new Promise(() => {}))
 
     render(<Component />)
 
-    const teamInput = screen.getByRole('textbox', { name: /default linear team id/i })
-    fireEvent.change(teamInput, { target: { value: 'team-123' } })
-    expect(teamInput).toHaveValue('team-123')
+    expect(
+      screen.queryByRole('textbox', { name: /default linear team id/i })
+    ).not.toBeInTheDocument()
 
     const connectButton = screen.getByRole('button', { name: /connect linear/i })
     expect(connectButton).toBeEnabled()
     fireEvent.click(connectButton)
 
     await waitFor(() => expect(mocks.connectLinearIntegrationMutateAsync).toHaveBeenCalledTimes(1))
-    expect(window.sessionStorage.getItem('durabull.linear.pendingDefaultTeamId')).toBe('team-123')
   })
 
-  it('saves a team entered before OAuth after Linear returns connected', async () => {
-    window.sessionStorage.setItem('durabull.linear.pendingDefaultTeamId', 'team-456')
+  it('shows and saves Linear team defaults only after Linear is connected', async () => {
     mocks.linearIntegration = {
       id: 'linear-1',
       connected: true,
@@ -166,12 +164,15 @@ describe('SettingsPage', () => {
 
     render(<Component />)
 
+    const teamInput = screen.getByRole('textbox', { name: /default linear team id/i })
+    expect(teamInput).toHaveValue('')
+    fireEvent.change(teamInput, { target: { value: 'team-456' } })
+    fireEvent.click(screen.getByRole('button', { name: /save defaults/i }))
+
     await waitFor(() =>
       expect(mocks.saveLinearIntegrationMutateAsync).toHaveBeenCalledWith({
         defaultTeamId: 'team-456',
       })
     )
-    expect(screen.getByRole('textbox', { name: /default linear team id/i })).toHaveValue('team-456')
-    expect(window.sessionStorage.getItem('durabull.linear.pendingDefaultTeamId')).toBeNull()
   })
 })
