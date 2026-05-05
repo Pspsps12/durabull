@@ -114,11 +114,13 @@ async function seedOrganization() {
   ])
 }
 
-async function createGlobalAlertsRouteApp() {
+async function createGlobalAlertsRouteApp(options: { includeContext?: boolean } = {}) {
   const { default: alertsGlobalRoutes } = await import('./alerts-global')
+  const includeContext = options.includeContext ?? true
+  const app = new Hono()
 
-  return new Hono()
-    .use('*', async (c, next) => {
+  if (includeContext) {
+    app.use('*', async (c, next) => {
       c.set('organizationId', TEST_ORG_ID)
       c.set('user', {
         id: 'user-1',
@@ -130,7 +132,9 @@ async function createGlobalAlertsRouteApp() {
       })
       await next()
     })
-    .route('/', alertsGlobalRoutes)
+  }
+
+  return app.route('/', alertsGlobalRoutes)
 }
 
 describe('global alerts routes', () => {
@@ -340,6 +344,34 @@ describe('global alerts routes', () => {
     expect(stored?.encryptedRefreshToken).not.toContain('linear-refresh-token')
     expect(decryptSecret(stored?.encryptedAccessToken ?? '')).toBe('linear-access-token')
     expect(decryptSecret(stored?.encryptedRefreshToken ?? '')).toBe('linear-refresh-token')
+  })
+
+  it('completes the OAuth callback with only the opaque state when browser session cookies are unavailable', async () => {
+    const app = await createGlobalAlertsRouteApp()
+    const connectResponse = await app.request('/integrations/linear/connect', { method: 'POST' })
+    const connectBody = (await connectResponse.json()) as { authorizationUrl: string }
+    const state = new URL(connectBody.authorizationUrl).searchParams.get('state')
+    expect(state).toBeTruthy()
+
+    const callbackApp = await createGlobalAlertsRouteApp({ includeContext: false })
+    const callbackResponse = await callbackApp.request(
+      `/integrations/linear/callback?code=linear-code&state=${state}`
+    )
+
+    expect(callbackResponse.status).toBe(302)
+    expect(callbackResponse.headers.get('location')).toBe(
+      'https://app.durabull.test/settings?linear=connected'
+    )
+    expect(exchangeLinearOauthCodeMock).toHaveBeenCalledWith({
+      code: 'linear-code',
+      redirectUri: LINEAR_CALLBACK_URL,
+      clientId: 'linear-client-id',
+      clientSecret: 'linear-client-secret',
+    })
+    expect(await linearIntegrationRepository.findByOrganization(TEST_ORG_ID)).toMatchObject({
+      validationStatus: 'valid',
+      linearOrganizationName: 'Acme',
+    })
   })
 
   it('uses the deployment app base URL as the default OAuth callback for cloud and self-hosted installs', async () => {

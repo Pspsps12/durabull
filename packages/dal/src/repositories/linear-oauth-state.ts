@@ -53,6 +53,19 @@ export const linearOauthStateRepository = {
     return rows[0] ?? null
   },
 
+  async consumeByState(state: string): Promise<LinearOauthState | null> {
+    const db = await getDb()
+    const stateHash = hashLinearOauthState(state)
+    const rows = await db
+      .delete(linearOauthState)
+      .where(
+        and(eq(linearOauthState.stateHash, stateHash), gt(linearOauthState.expiresAt, new Date()))
+      )
+      .returning()
+
+    return rows[0] ?? null
+  },
+
   async deleteExpired(): Promise<void> {
     const db = await getDb()
     await db.delete(linearOauthState).where(lt(linearOauthState.expiresAt, new Date()))

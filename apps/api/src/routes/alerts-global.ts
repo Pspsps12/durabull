@@ -52,7 +52,14 @@ type LinearDefaultsInput = {
 }
 
 const app = new Hono()
-  .use('*', requireOrganization)
+  .use('*', async (c, next) => {
+    if (c.req.path.endsWith('/integrations/linear/callback')) {
+      await next()
+      return
+    }
+
+    return requireOrganization(c, next)
+  })
   .get(
     '/events',
     zValidator(
@@ -139,14 +146,6 @@ const app = new Hono()
     zValidator('query', linearOauthCallbackSchema),
     async (c) => {
       const query = c.req.valid('query')
-      const organizationId = c.get('organizationId')
-      const user = c.get('user')
-      if (!organizationId) {
-        return c.json({ error: 'Organization is required' }, 403)
-      }
-      if (!user) {
-        return c.json({ error: 'User is required' }, 401)
-      }
       if (query.error) {
         return redirectToSettings(c, {
           linear: 'error',
@@ -157,11 +156,7 @@ const app = new Hono()
         return c.json({ error: 'Linear OAuth callback is missing code or state.' }, 400)
       }
 
-      const oauthState = await linearOauthStateRepository.consume({
-        organizationId,
-        userId: user.id,
-        state: query.state,
-      })
+      const oauthState = await linearOauthStateRepository.consumeByState(query.state)
       if (!oauthState) {
         return c.json({ error: 'Linear OAuth state is invalid or expired.' }, 400)
       }
@@ -175,10 +170,12 @@ const app = new Hono()
           clientSecret,
         })
         const validation = await validateLinearAccessToken(token.accessToken)
-        const existing = await linearIntegrationRepository.findByOrganization(organizationId)
+        const existing = await linearIntegrationRepository.findByOrganization(
+          oauthState.organizationId
+        )
 
         await linearIntegrationRepository.upsertOauth({
-          organizationId,
+          organizationId: oauthState.organizationId,
           accessToken: token.accessToken,
           refreshToken: token.refreshToken,
           tokenType: token.tokenType,
