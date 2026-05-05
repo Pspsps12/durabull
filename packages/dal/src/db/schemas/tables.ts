@@ -19,6 +19,7 @@ export { connectionEnvironments, redisConnection } from './redis-connection/sche
 export { redisDiscoveredQueue } from './redis-discovered-queue/schema'
 export { linearIntegration } from './linear-integration/schema'
 export { linearJobIssue } from './linear-job-issue/schema'
+export { linearOauthState } from './linear-oauth-state/schema'
 // Telemetry installation schema tables
 export { telemetryInstallation } from './telemetry-installation/schema'
 // User schema tables

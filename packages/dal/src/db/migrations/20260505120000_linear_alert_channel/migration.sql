@@ -8,8 +8,12 @@ CREATE TABLE "linear_integration" (
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
   "organization_id" text NOT NULL,
-  "encrypted_api_key" text NOT NULL,
-  "key_preview" text NOT NULL,
+  "encrypted_access_token" text NOT NULL,
+  "encrypted_refresh_token" text NOT NULL,
+  "token_type" text DEFAULT 'Bearer' NOT NULL,
+  "scopes" text NOT NULL,
+  "access_token_expires_at" timestamp with time zone NOT NULL,
+  "linear_organization_name" text,
   "validation_status" text DEFAULT 'unknown' NOT NULL,
   "default_team_id" text,
   "default_project_id" text,
@@ -22,6 +26,22 @@ CREATE TABLE "linear_integration" (
   CONSTRAINT "linear_integration_organization_id_organization_id_fk"
     FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE cascade
 );
+--> statement-breakpoint
+CREATE TABLE "linear_oauth_state" (
+  "id" uuid PRIMARY KEY NOT NULL,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+  "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+  "organization_id" text NOT NULL,
+  "user_id" text NOT NULL,
+  "state_hash" text NOT NULL,
+  "redirect_uri" text NOT NULL,
+  "expires_at" timestamp with time zone NOT NULL,
+  CONSTRAINT "linear_oauth_state_state_hash_unique" UNIQUE("state_hash"),
+  CONSTRAINT "linear_oauth_state_organization_id_organization_id_fk"
+    FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX "linear_oauth_state_expires_at_idx" ON "linear_oauth_state" ("expires_at");
 --> statement-breakpoint
 CREATE TABLE "alert_delivery" (
   "id" uuid PRIMARY KEY NOT NULL,

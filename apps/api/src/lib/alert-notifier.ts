@@ -1,6 +1,5 @@
 import {
   alertDeliveryRepository,
-  decryptSecret,
   eq,
   getDb,
   linearIntegrationRepository,
@@ -13,6 +12,7 @@ import {
 import { isEmailConfigured } from '@durabull/email'
 import { env } from '@durabull/env'
 import { createLinearIssue, LinearApiError } from './linear-client'
+import { getValidLinearAccessToken } from './linear-oauth'
 
 export type NotificationChannel =
   | {
@@ -162,8 +162,8 @@ async function sendLinearAlert(
     jobId: jobContext.jobId,
   })
 
-  const apiKey = decryptSecret(integration.encryptedApiKey)
-  const issue = await createLinearIssue(apiKey, {
+  const accessToken = await getValidLinearAccessToken(integration)
+  const issue = await createLinearIssue(accessToken, {
     teamId,
     title: buildLinearIssueTitle(event, connection, ruleName, jobContext.jobName),
     description: buildLinearIssueDescription({

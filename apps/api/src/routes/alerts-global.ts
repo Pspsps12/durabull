@@ -3,11 +3,25 @@ import {
   alertEventRepository,
   decryptSecret,
   linearIntegrationRepository,
+  linearOauthStateRepository,
 } from '@durabull/dal'
+import { env } from '@durabull/env'
 import { zValidator } from '@hono/zod-validator'
-import { Hono } from 'hono'
+import { randomBytes } from 'node:crypto'
+import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { fetchLinearMetadata, LinearApiError, validateLinearApiKey } from '../lib/linear-client'
+import {
+  exchangeLinearOauthCode,
+  fetchLinearMetadata,
+  LinearApiError,
+  revokeLinearOauthToken,
+  validateLinearAccessToken,
+} from '../lib/linear-client'
+import {
+  buildLinearOauthAuthorizeUrl,
+  getLinearOauthConfig,
+  getValidLinearAccessToken,
+} from '../lib/linear-oauth'
 import { requireOrganization } from '../middleware/auth'
 
 const linearDefaultsSchema = z.object({
@@ -19,9 +33,23 @@ const linearDefaultsSchema = z.object({
   defaultPriority: z.number().int().min(0).max(4).nullable().optional(),
 })
 
-const putLinearIntegrationSchema = linearDefaultsSchema.extend({
-  apiKey: z.string().min(20).optional(),
+const putLinearIntegrationSchema = linearDefaultsSchema
+
+const linearOauthCallbackSchema = z.object({
+  code: z.string().min(1).optional(),
+  state: z.string().min(1).optional(),
+  error: z.string().min(1).optional(),
+  error_description: z.string().min(1).optional(),
 })
+
+type LinearDefaultsInput = {
+  defaultTeamId?: string | null
+  defaultProjectId?: string | null
+  defaultLabelIds?: string[]
+  defaultAssigneeId?: string | null
+  defaultStateId?: string | null
+  defaultPriority?: number | null
+}
 
 const app = new Hono()
   .use('*', requireOrganization)
@@ -68,6 +96,109 @@ const app = new Hono()
     const integration = await linearIntegrationRepository.findByOrganization(organizationId)
     return c.json({ integration: integration ? serializeLinearIntegration(integration) : null })
   })
+  .post('/integrations/linear/connect', async (c) => {
+    const organizationId = c.get('organizationId')
+    const user = c.get('user')
+    if (!organizationId) {
+      return c.json({ error: 'Organization is required' }, 403)
+    }
+    if (!user) {
+      return c.json({ error: 'User is required' }, 401)
+    }
+
+    let config: ReturnType<typeof getLinearOauthConfig>
+    try {
+      config = getLinearOauthConfig()
+    } catch (error) {
+      return c.json(
+        { error: error instanceof Error ? error.message : 'Linear OAuth is not configured.' },
+        503
+      )
+    }
+
+    await linearOauthStateRepository.deleteExpired()
+    const state = randomBytes(32).toString('base64url')
+    await linearOauthStateRepository.create({
+      organizationId,
+      userId: user.id,
+      state,
+      redirectUri: config.redirectUri,
+      expiresAt: new Date(Date.now() + 10 * 60_000),
+    })
+
+    return c.json({
+      authorizationUrl: buildLinearOauthAuthorizeUrl({
+        clientId: config.clientId,
+        redirectUri: config.redirectUri,
+        state,
+      }),
+    })
+  })
+  .get(
+    '/integrations/linear/callback',
+    zValidator('query', linearOauthCallbackSchema),
+    async (c) => {
+      const query = c.req.valid('query')
+      const organizationId = c.get('organizationId')
+      const user = c.get('user')
+      if (!organizationId) {
+        return c.json({ error: 'Organization is required' }, 403)
+      }
+      if (!user) {
+        return c.json({ error: 'User is required' }, 401)
+      }
+      if (query.error) {
+        return redirectToSettings(c, {
+          linear: 'error',
+          message: query.error_description ?? query.error,
+        })
+      }
+      if (!query.code || !query.state) {
+        return c.json({ error: 'Linear OAuth callback is missing code or state.' }, 400)
+      }
+
+      const oauthState = await linearOauthStateRepository.consume({
+        organizationId,
+        userId: user.id,
+        state: query.state,
+      })
+      if (!oauthState) {
+        return c.json({ error: 'Linear OAuth state is invalid or expired.' }, 400)
+      }
+
+      try {
+        const { clientId, clientSecret } = getLinearOauthConfig()
+        const token = await exchangeLinearOauthCode({
+          code: query.code,
+          redirectUri: oauthState.redirectUri,
+          clientId,
+          clientSecret,
+        })
+        const validation = await validateLinearAccessToken(token.accessToken)
+        const existing = await linearIntegrationRepository.findByOrganization(organizationId)
+
+        await linearIntegrationRepository.upsertOauth({
+          organizationId,
+          accessToken: token.accessToken,
+          refreshToken: token.refreshToken,
+          tokenType: token.tokenType,
+          scopes: token.scopes,
+          accessTokenExpiresAt: token.accessTokenExpiresAt,
+          linearOrganizationName: validation.organizationName,
+          validationStatus: 'valid',
+          lastValidatedAt: new Date(),
+          ...normalizeLinearDefaults(existing ?? {}),
+        })
+
+        return redirectToSettings(c, { linear: 'connected' })
+      } catch (error) {
+        if (error instanceof LinearApiError) {
+          return redirectToSettings(c, { linear: 'error', message: error.message })
+        }
+        throw error
+      }
+    }
+  )
   .put('/integrations/linear', zValidator('json', putLinearIntegrationSchema), async (c) => {
     const body = c.req.valid('json')
     const organizationId = c.get('organizationId')
@@ -76,36 +207,17 @@ const app = new Hono()
     }
 
     const existing = await linearIntegrationRepository.findByOrganization(organizationId)
-    if (!existing && !body.apiKey) {
-      return c.json({ error: 'Linear API key is required.' }, 400)
+    if (!existing) {
+      return c.json({ error: 'Linear integration is not configured.' }, 404)
     }
 
-    try {
-      let integration = existing
-      if (body.apiKey) {
-        await validateLinearApiKey(body.apiKey)
-        integration = await linearIntegrationRepository.upsert({
-          organizationId,
-          apiKey: body.apiKey,
-          validationStatus: 'valid',
-          lastValidatedAt: new Date(),
-          ...normalizeLinearDefaults(body),
-        })
-      } else if (existing) {
-        integration = await linearIntegrationRepository.updateDefaults(organizationId, {
-          validationStatus: existing.validationStatus,
-          lastValidatedAt: existing.lastValidatedAt,
-          ...normalizeLinearDefaults(body),
-        })
-      }
+    const integration = await linearIntegrationRepository.updateDefaults(organizationId, {
+      validationStatus: existing.validationStatus,
+      lastValidatedAt: existing.lastValidatedAt,
+      ...normalizeLinearDefaults(body),
+    })
 
-      return c.json({ integration: integration ? serializeLinearIntegration(integration) : null })
-    } catch (error) {
-      if (error instanceof LinearApiError) {
-        return c.json({ error: error.message }, error.status === 401 ? 401 : 400)
-      }
-      throw error
-    }
+    return c.json({ integration: integration ? serializeLinearIntegration(integration) : null })
   })
   .delete('/integrations/linear', async (c) => {
     const organizationId = c.get('organizationId')
@@ -113,6 +225,10 @@ const app = new Hono()
       return c.json({ error: 'Organization is required' }, 403)
     }
 
+    const integration = await linearIntegrationRepository.findByOrganization(organizationId)
+    if (integration) {
+      await revokeLinearIntegrationTokens(integration)
+    }
     await linearIntegrationRepository.delete(organizationId)
     return c.json({ success: true })
   })
@@ -128,7 +244,8 @@ const app = new Hono()
     }
 
     try {
-      const result = await validateLinearApiKey(decryptSecret(integration.encryptedApiKey))
+      const accessToken = await getValidLinearAccessToken(integration)
+      const result = await validateLinearAccessToken(accessToken)
       await linearIntegrationRepository.markValidationStatus(organizationId, 'valid')
       return c.json({ ok: true, organizationName: result.organizationName })
     } catch (error) {
@@ -151,7 +268,8 @@ const app = new Hono()
     }
 
     try {
-      const metadata = await fetchLinearMetadata(decryptSecret(integration.encryptedApiKey))
+      const accessToken = await getValidLinearAccessToken(integration)
+      const metadata = await fetchLinearMetadata(accessToken)
       return c.json({ metadata })
     } catch (error) {
       if (error instanceof LinearApiError) {
@@ -161,7 +279,7 @@ const app = new Hono()
     }
   })
 
-function normalizeLinearDefaults(body: z.infer<typeof linearDefaultsSchema>) {
+function normalizeLinearDefaults(body: LinearDefaultsInput) {
   return {
     defaultTeamId: body.defaultTeamId ?? null,
     defaultProjectId: body.defaultProjectId ?? null,
@@ -169,6 +287,44 @@ function normalizeLinearDefaults(body: z.infer<typeof linearDefaultsSchema>) {
     defaultAssigneeId: body.defaultAssigneeId ?? null,
     defaultStateId: body.defaultStateId ?? null,
     defaultPriority: body.defaultPriority ?? null,
+  }
+}
+
+function settingsRedirectUrl(params: Record<string, string>): string {
+  const url = new URL('/settings', env.APP_BASE_URL)
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value)
+  }
+  return url.toString()
+}
+
+function redirectToSettings(c: Context, params: Record<string, string>) {
+  return c.redirect(settingsRedirectUrl(params), 302)
+}
+
+async function revokeLinearIntegrationTokens(
+  integration: NonNullable<
+    Awaited<ReturnType<typeof linearIntegrationRepository.findByOrganization>>
+  >
+) {
+  try {
+    const { clientId, clientSecret } = getLinearOauthConfig()
+    await Promise.allSettled([
+      revokeLinearOauthToken({
+        token: decryptSecret(integration.encryptedRefreshToken),
+        tokenTypeHint: 'refresh_token',
+        clientId,
+        clientSecret,
+      }),
+      revokeLinearOauthToken({
+        token: decryptSecret(integration.encryptedAccessToken),
+        tokenTypeHint: 'access_token',
+        clientId,
+        clientSecret,
+      }),
+    ])
+  } catch {
+    // Deletion should remain possible if Linear OAuth credentials were rotated or removed.
   }
 }
 
@@ -189,8 +345,11 @@ function serializeLinearIntegration(
   return {
     id: integration.id,
     organizationId: integration.organizationId,
-    keyPreview: integration.keyPreview,
+    connected: true,
     validationStatus: integration.validationStatus,
+    scopes: integration.scopes,
+    accessTokenExpiresAt: integration.accessTokenExpiresAt,
+    linearOrganizationName: integration.linearOrganizationName,
     defaultTeamId: integration.defaultTeamId,
     defaultProjectId: integration.defaultProjectId,
     defaultLabelIds: integration.defaultLabelIds,

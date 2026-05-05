@@ -64,6 +64,8 @@ export type {
   LinearIntegration,
   NewLinearIntegration,
 } from './linear-integration/types'
+export { linearOauthState } from './linear-oauth-state/schema'
+export type { LinearOauthState, NewLinearOauthState } from './linear-oauth-state/types'
 export { linearJobIssue } from './linear-job-issue/schema'
 export type { LinearJobIssue, NewLinearJobIssue } from './linear-job-issue/types'
 // Relations v2 - single consolidated relations object

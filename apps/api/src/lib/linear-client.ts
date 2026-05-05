@@ -1,4 +1,6 @@
 const LINEAR_GRAPHQL_ENDPOINT = 'https://api.linear.app/graphql'
+const LINEAR_TOKEN_ENDPOINT = 'https://api.linear.app/oauth/token'
+const LINEAR_REVOKE_ENDPOINT = 'https://api.linear.app/oauth/revoke'
 
 interface LinearGraphQLError {
   message?: string
@@ -11,6 +13,20 @@ interface LinearGraphQLError {
 interface LinearGraphQLResponse<T> {
   data?: T
   errors?: LinearGraphQLError[]
+}
+
+interface LinearOauthErrorResponse {
+  error?: string
+  error_description?: string
+}
+
+export interface LinearOauthTokenResponse {
+  accessToken: string
+  refreshToken: string
+  tokenType: string
+  expiresIn: number
+  scopes: string
+  accessTokenExpiresAt: Date
 }
 
 export class LinearApiError extends Error {
@@ -70,11 +86,141 @@ function parseRateLimitReset(headers: Headers): Date | null {
 }
 
 function redactLinearError(message: string): string {
-  return message.replace(/lin_api_[A-Za-z0-9_-]+/g, '[REDACTED_LINEAR_API_KEY]')
+  return message
+    .replace(/lin_api_[A-Za-z0-9_-]+/g, '[REDACTED_LINEAR_TOKEN]')
+    .replace(/([A-Za-z0-9_-]{32,})/g, '[REDACTED_LINEAR_TOKEN]')
+}
+
+function normalizeScope(scope: unknown): string {
+  if (Array.isArray(scope)) {
+    return scope.filter((item): item is string => typeof item === 'string').join(' ')
+  }
+  return typeof scope === 'string' ? scope : ''
+}
+
+function normalizeTokenPayload(payload: Record<string, unknown>): LinearOauthTokenResponse {
+  const accessToken = typeof payload.access_token === 'string' ? payload.access_token : ''
+  const refreshToken = typeof payload.refresh_token === 'string' ? payload.refresh_token : ''
+  const expiresIn = typeof payload.expires_in === 'number' ? payload.expires_in : 86_399
+  if (!accessToken || !refreshToken) {
+    throw new LinearApiError('Linear OAuth token response was missing required tokens.', {
+      status: 400,
+      retryable: false,
+    })
+  }
+
+  return {
+    accessToken,
+    refreshToken,
+    tokenType: typeof payload.token_type === 'string' ? payload.token_type : 'Bearer',
+    expiresIn,
+    scopes: normalizeScope(payload.scope),
+    accessTokenExpiresAt: new Date(Date.now() + Math.max(0, expiresIn - 60) * 1000),
+  }
+}
+
+async function requestOauthToken(body: URLSearchParams): Promise<LinearOauthTokenResponse> {
+  let response: Response
+  try {
+    response = await fetch(LINEAR_TOKEN_ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body,
+    })
+  } catch (error) {
+    throw new LinearApiError(
+      error instanceof Error ? error.message : 'Linear OAuth network error',
+      {
+        status: 0,
+        retryable: true,
+      }
+    )
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | (Record<string, unknown> & LinearOauthErrorResponse)
+    | null
+
+  if (!response.ok) {
+    throw new LinearApiError(
+      redactLinearError(
+        payload?.error_description ?? payload?.error ?? `Linear OAuth failed (${response.status})`
+      ),
+      { status: response.status, retryable: response.status >= 500 || response.status === 429 }
+    )
+  }
+
+  if (!payload) {
+    throw new LinearApiError('Linear OAuth returned an empty response.', {
+      status: response.status,
+      retryable: true,
+    })
+  }
+
+  return normalizeTokenPayload(payload)
+}
+
+export async function exchangeLinearOauthCode(input: {
+  code: string
+  redirectUri: string
+  clientId: string
+  clientSecret: string
+}): Promise<LinearOauthTokenResponse> {
+  const body = new URLSearchParams({
+    code: input.code,
+    redirect_uri: input.redirectUri,
+    client_id: input.clientId,
+    client_secret: input.clientSecret,
+    grant_type: 'authorization_code',
+  })
+
+  return requestOauthToken(body)
+}
+
+export async function refreshLinearOauthToken(input: {
+  refreshToken: string
+  clientId: string
+  clientSecret: string
+}): Promise<LinearOauthTokenResponse> {
+  const body = new URLSearchParams({
+    refresh_token: input.refreshToken,
+    client_id: input.clientId,
+    client_secret: input.clientSecret,
+    grant_type: 'refresh_token',
+  })
+
+  return requestOauthToken(body)
+}
+
+export async function revokeLinearOauthToken(input: {
+  token: string
+  tokenTypeHint: 'access_token' | 'refresh_token'
+  clientId: string
+  clientSecret: string
+}): Promise<void> {
+  const body = new URLSearchParams({
+    token: input.token,
+    token_type_hint: input.tokenTypeHint,
+    client_id: input.clientId,
+    client_secret: input.clientSecret,
+  })
+
+  const response = await fetch(LINEAR_REVOKE_ENDPOINT, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body,
+  })
+
+  if (!response.ok && response.status !== 400) {
+    throw new LinearApiError(`Linear OAuth revoke failed (${response.status})`, {
+      status: response.status,
+      retryable: response.status >= 500 || response.status === 429,
+    })
+  }
 }
 
 async function linearGraphql<T>(
-  apiKey: string,
+  accessToken: string,
   query: string,
   variables: Record<string, unknown> = {}
 ): Promise<T> {
@@ -83,7 +229,7 @@ async function linearGraphql<T>(
     response = await fetch(LINEAR_GRAPHQL_ENDPOINT, {
       method: 'POST',
       headers: {
-        authorization: apiKey,
+        authorization: `Bearer ${accessToken}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify({ query, variables }),
@@ -142,16 +288,18 @@ async function linearGraphql<T>(
   return payload.data
 }
 
-export async function validateLinearApiKey(apiKey: string): Promise<{ organizationName: string }> {
+export async function validateLinearAccessToken(
+  accessToken: string
+): Promise<{ organizationName: string }> {
   const data = await linearGraphql<{ organization: { name: string } }>(
-    apiKey,
-    'query DurabullValidateLinearKey { organization { name } }'
+    accessToken,
+    'query DurabullValidateLinearToken { organization { name } }'
   )
 
   return { organizationName: data.organization.name }
 }
 
-export async function fetchLinearMetadata(apiKey: string): Promise<LinearMetadata> {
+export async function fetchLinearMetadata(accessToken: string): Promise<LinearMetadata> {
   const data = await linearGraphql<{
     teams: { nodes: LinearTeamSummary[] }
     projects: { nodes: Array<{ id: string; name: string }> }
@@ -159,7 +307,7 @@ export async function fetchLinearMetadata(apiKey: string): Promise<LinearMetadat
     users: { nodes: Array<{ id: string; name: string; email?: string | null }> }
     workflowStates: { nodes: Array<{ id: string; name: string; team: { id: string } }> }
   }>(
-    apiKey,
+    accessToken,
     `query DurabullLinearMetadata {
       teams(first: 100) { nodes { id name key } }
       projects(first: 100) { nodes { id name } }
@@ -183,7 +331,7 @@ export async function fetchLinearMetadata(apiKey: string): Promise<LinearMetadat
 }
 
 export async function createLinearIssue(
-  apiKey: string,
+  accessToken: string,
   input: LinearIssueInput
 ): Promise<LinearIssueResult> {
   const data = await linearGraphql<{
@@ -192,7 +340,7 @@ export async function createLinearIssue(
       issue?: LinearIssueResult | null
     }
   }>(
-    apiKey,
+    accessToken,
     `mutation DurabullCreateIssue($input: IssueCreateInput!) {
       issueCreate(input: $input) {
         success

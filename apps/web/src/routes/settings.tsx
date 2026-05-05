@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
+  useConnectLinearIntegration,
   useDeleteLinearIntegration,
   useLinearIntegration,
   useSaveLinearIntegration,
@@ -83,11 +84,11 @@ function SettingsPage() {
   const { user, isLoading: sessionLoading } = useAuth()
   const { config } = useAppConfig()
   const linearIntegrationQuery = useLinearIntegration()
+  const connectLinearIntegration = useConnectLinearIntegration()
   const saveLinearIntegration = useSaveLinearIntegration()
   const deleteLinearIntegration = useDeleteLinearIntegration()
   const testLinearIntegration = useTestLinearIntegration()
   const [accounts, setAccounts] = useState<LinkedAccount[]>([])
-  const [linearApiKey, setLinearApiKey] = useState('')
   const [linearTeamId, setLinearTeamId] = useState('')
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true)
   const [linkingProvider, setLinkingProvider] = useState<ProviderId | null>(null)
@@ -317,7 +318,7 @@ function SettingsPage() {
             <div>
               <CardTitle className="text-base">Linear alerts</CardTitle>
               <CardDescription>
-                Store an encrypted Linear API key and default team for issue creation.
+                Connect Linear with OAuth and choose defaults for alert-created issues.
               </CardDescription>
             </div>
           </div>
@@ -333,42 +334,53 @@ function SettingsPage() {
                   : 'Needs attention'
                 : 'Not configured'}
             </Badge>
-            {linearIntegration?.keyPreview ? (
+            {linearIntegration?.linearOrganizationName ? (
+              <span className="text-xs text-muted-foreground">
+                {linearIntegration.linearOrganizationName}
+              </span>
+            ) : null}
+            {linearIntegration?.scopes ? (
               <span className="font-mono text-xs text-muted-foreground">
-                {linearIntegration.keyPreview}
+                {linearIntegration.scopes}
               </span>
             ) : null}
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <input
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-              type="password"
-              value={linearApiKey}
-              onChange={(event) => setLinearApiKey(event.target.value)}
-              placeholder={linearIntegration ? 'Rotate API key' : 'Linear API key'}
-            />
+          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
             <input
               className="h-10 rounded-md border border-input bg-background px-3 text-sm"
               value={linearTeamId}
               onChange={(event) => setLinearTeamId(event.target.value)}
               placeholder="Default Linear team ID"
+              disabled={!linearIntegration}
             />
+            {!linearIntegration ? (
+              <Button
+                type="button"
+                onClick={async () => {
+                  const result = await connectLinearIntegration.mutateAsync()
+                  window.location.assign(result.authorizationUrl)
+                }}
+                disabled={connectLinearIntegration.isPending}
+              >
+                {connectLinearIntegration.isPending ? 'Connecting...' : 'Connect Linear'}
+              </Button>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              onClick={async () => {
-                await saveLinearIntegration.mutateAsync({
-                  ...(linearApiKey.trim() ? { apiKey: linearApiKey.trim() } : {}),
-                  defaultTeamId: linearTeamId.trim() || null,
-                })
-                setLinearApiKey('')
-                toast.success('Linear integration saved')
-              }}
-              disabled={saveLinearIntegration.isPending || (!linearIntegration && !linearApiKey)}
-            >
-              {saveLinearIntegration.isPending ? 'Saving...' : 'Save Linear settings'}
-            </Button>
+            {linearIntegration ? (
+              <Button
+                type="button"
+                onClick={async () => {
+                  await saveLinearIntegration.mutateAsync({
+                    defaultTeamId: linearTeamId.trim() || null,
+                  })
+                  toast.success('Linear defaults saved')
+                }}
+                disabled={saveLinearIntegration.isPending}
+              >
+                {saveLinearIntegration.isPending ? 'Saving...' : 'Save defaults'}
+              </Button>
+            ) : null}
             {linearIntegration ? (
               <Button
                 type="button"
@@ -390,7 +402,6 @@ function SettingsPage() {
                 variant="destructive"
                 onClick={async () => {
                   await deleteLinearIntegration.mutateAsync()
-                  setLinearApiKey('')
                   setLinearTeamId('')
                   toast.success('Linear integration removed')
                 }}
@@ -401,8 +412,8 @@ function SettingsPage() {
             ) : null}
           </div>
           <p className="text-sm text-muted-foreground">
-            The key is encrypted at rest and never returned by the API. Rules can override Linear
-            fields, but the default team is used when no rule-level team is set.
+            OAuth tokens are encrypted at rest and never returned by the API. Rules can override
+            Linear fields, but the default team is used when no rule-level team is set.
           </p>
         </CardContent>
       </Card>

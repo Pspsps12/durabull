@@ -112,6 +112,8 @@ export type {
 } from './db/schemas/linear-integration/types'
 export { linearJobIssue } from './db/schemas/linear-job-issue/schema'
 export type { LinearJobIssue, NewLinearJobIssue } from './db/schemas/linear-job-issue/types'
+export { linearOauthState } from './db/schemas/linear-oauth-state/schema'
+export type { LinearOauthState, NewLinearOauthState } from './db/schemas/linear-oauth-state/types'
 export { telemetryInstallation } from './db/schemas/telemetry-installation/schema'
 export * as userSchema from './db/schemas/user/schema'
 // User schema exports
@@ -123,6 +125,7 @@ export { alertEventRepository } from './repositories/alert-event'
 export { alertRuleRepository } from './repositories/alert-rule'
 export { linearIntegrationRepository } from './repositories/linear-integration'
 export { linearJobIssueRepository } from './repositories/linear-job-issue'
+export { linearOauthStateRepository } from './repositories/linear-oauth-state'
 // Repositories
 export { redisConnectionRepository } from './repositories/redis-connection'
 export { redisDiscoveredQueueRepository } from './repositories/redis-discovered-queue'

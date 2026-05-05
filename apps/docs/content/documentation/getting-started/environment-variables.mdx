@@ -31,7 +31,7 @@ description: Complete runtime environment variable reference for local and produ
 | `DATABASE_URL` | Optional | Enables PostgreSQL mode when set |
 | `REDIS_URL` | Optional | Generic Redis URL used by scripts/defaults |
 | `DURABULL_REDIS_URL_ENCRYPTION_KEY` | Required when persisting connections | 32-byte key (hex/base64) used to encrypt Redis connection URLs at rest |
-| `DURABULL_SECRET_ENCRYPTION_KEY` | Required for Linear alert integrations | 32-byte key (hex/base64) used to encrypt third-party API credentials at rest |
+| `DURABULL_SECRET_ENCRYPTION_KEY` | Required for Linear alert integrations | 32-byte key (hex/base64) used to encrypt third-party OAuth tokens at rest |
 | `DURABULL_PGLITE_DIR` | Optional | Override PGlite data directory |
 
 ## Connection Mode
@@ -48,6 +48,9 @@ description: Complete runtime environment variable reference for local and produ
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `RESEND_API_KEY` | Optional | Invitation email delivery |
+| `LINEAR_OAUTH_CLIENT_ID` | Required for Linear alert integrations | Linear OAuth application client ID |
+| `LINEAR_OAUTH_CLIENT_SECRET` | Required for Linear alert integrations | Linear OAuth application client secret |
+| `LINEAR_OAUTH_REDIRECT_URI` | Optional | Explicit Linear OAuth callback URL; defaults to `${APP_BASE_URL}/api/alerts/integrations/linear/callback` |
 | `POSTHOG_KEY` | Optional | PostHog project API key |
 | `POSTHOG_HOST` | Optional | PostHog upstream host for the reverse proxy (defaults to `https://us.i.posthog.com`) |
 

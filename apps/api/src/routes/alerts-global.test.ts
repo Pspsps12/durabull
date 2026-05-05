@@ -22,25 +22,54 @@ const SECOND_CONNECTION_ID = '77777777-7777-4777-8777-777777777777'
 const mutableEnv = env as {
   DATABASE_URL?: string
   DURABULL_SECRET_ENCRYPTION_KEY?: string
+  LINEAR_OAUTH_CLIENT_ID?: string
+  LINEAR_OAUTH_CLIENT_SECRET?: string
+  LINEAR_OAUTH_REDIRECT_URI?: string
+  APP_BASE_URL: string
 }
 
 const originalDatabaseUrl = mutableEnv.DATABASE_URL
 const originalSecretKey = mutableEnv.DURABULL_SECRET_ENCRYPTION_KEY
+const originalLinearClientId = mutableEnv.LINEAR_OAUTH_CLIENT_ID
+const originalLinearClientSecret = mutableEnv.LINEAR_OAUTH_CLIENT_SECRET
+const originalLinearRedirectUri = mutableEnv.LINEAR_OAUTH_REDIRECT_URI
+const originalAppBaseUrl = mutableEnv.APP_BASE_URL
 const originalPgliteDir = process.env.DURABULL_PGLITE_DIR
 
 let tempPgliteDir = ''
 
-const validateLinearApiKeyMock = mock(async () => ({ organizationName: 'Acme' }))
+const exchangeLinearOauthCodeMock = mock(async () => ({
+  accessToken: 'linear-access-token',
+  refreshToken: 'linear-refresh-token',
+  tokenType: 'Bearer',
+  expiresIn: 86_399,
+  scopes: 'read issues:create',
+  accessTokenExpiresAt: new Date(Date.now() + 60 * 60_000),
+}))
+const validateLinearAccessTokenMock = mock(async () => ({ organizationName: 'Acme' }))
+const fetchLinearMetadataMock = mock(async () => ({
+  teams: [],
+  projects: [],
+  labels: [],
+  users: [],
+  states: [],
+}))
+const revokeLinearOauthTokenMock = mock(async () => undefined)
+const refreshLinearOauthTokenMock = mock(async () => ({
+  accessToken: 'refreshed-linear-access-token',
+  refreshToken: 'refreshed-linear-refresh-token',
+  tokenType: 'Bearer',
+  expiresIn: 86_399,
+  scopes: 'read issues:create',
+  accessTokenExpiresAt: new Date(Date.now() + 60 * 60_000),
+}))
 
 mock.module('../lib/linear-client', () => ({
-  validateLinearApiKey: validateLinearApiKeyMock,
-  fetchLinearMetadata: mock(async () => ({
-    teams: [],
-    projects: [],
-    labels: [],
-    users: [],
-    states: [],
-  })),
+  exchangeLinearOauthCode: exchangeLinearOauthCodeMock,
+  validateLinearAccessToken: validateLinearAccessTokenMock,
+  fetchLinearMetadata: fetchLinearMetadataMock,
+  revokeLinearOauthToken: revokeLinearOauthTokenMock,
+  refreshLinearOauthToken: refreshLinearOauthTokenMock,
   LinearApiError: class LinearApiError extends Error {
     status = 400
     retryable = false
@@ -89,6 +118,14 @@ async function createGlobalAlertsRouteApp() {
   return new Hono()
     .use('*', async (c, next) => {
       c.set('organizationId', TEST_ORG_ID)
+      c.set('user', {
+        id: 'user-1',
+        email: 'user@example.com',
+        name: 'Test User',
+        emailVerified: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
       await next()
     })
     .route('/', alertsGlobalRoutes)
@@ -102,7 +139,16 @@ describe('global alerts routes', () => {
     mutableEnv.DATABASE_URL = undefined
     mutableEnv.DURABULL_SECRET_ENCRYPTION_KEY =
       '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-    validateLinearApiKeyMock.mockClear()
+    mutableEnv.LINEAR_OAUTH_CLIENT_ID = 'linear-client-id'
+    mutableEnv.LINEAR_OAUTH_CLIENT_SECRET = 'linear-client-secret'
+    mutableEnv.LINEAR_OAUTH_REDIRECT_URI =
+      'https://app.durabull.test/api/alerts/integrations/linear/callback'
+    mutableEnv.APP_BASE_URL = 'https://app.durabull.test'
+    exchangeLinearOauthCodeMock.mockClear()
+    validateLinearAccessTokenMock.mockClear()
+    fetchLinearMetadataMock.mockClear()
+    revokeLinearOauthTokenMock.mockClear()
+    refreshLinearOauthTokenMock.mockClear()
     await closeDb()
     await seedOrganization()
   })
@@ -111,6 +157,10 @@ describe('global alerts routes', () => {
     await closeDb()
     mutableEnv.DATABASE_URL = originalDatabaseUrl
     mutableEnv.DURABULL_SECRET_ENCRYPTION_KEY = originalSecretKey
+    mutableEnv.LINEAR_OAUTH_CLIENT_ID = originalLinearClientId
+    mutableEnv.LINEAR_OAUTH_CLIENT_SECRET = originalLinearClientSecret
+    mutableEnv.LINEAR_OAUTH_REDIRECT_URI = originalLinearRedirectUri
+    mutableEnv.APP_BASE_URL = originalAppBaseUrl
 
     if (originalPgliteDir) {
       process.env.DURABULL_PGLITE_DIR = originalPgliteDir
@@ -239,29 +289,55 @@ describe('global alerts routes', () => {
     })
   })
 
-  it('stores Linear API keys encrypted and returns only preview metadata', async () => {
+  it('stores Linear OAuth tokens encrypted and returns only connection metadata', async () => {
     const app = await createGlobalAlertsRouteApp()
-    const response = await app.request('/integrations/linear', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        apiKey: 'lin_api_super_secret_key',
-        defaultTeamId: 'team-1',
-      }),
-    })
+    const connectResponse = await app.request('/integrations/linear/connect', { method: 'POST' })
 
+    expect(connectResponse.status).toBe(200)
+    const connectBody = (await connectResponse.json()) as { authorizationUrl: string }
+    const authorizeUrl = new URL(connectBody.authorizationUrl)
+    expect(`${authorizeUrl.origin}${authorizeUrl.pathname}`).toBe(
+      'https://linear.app/oauth/authorize'
+    )
+    expect(authorizeUrl.searchParams.get('client_id')).toBe('linear-client-id')
+    expect(authorizeUrl.searchParams.get('redirect_uri')).toBe(
+      'https://app.durabull.test/api/alerts/integrations/linear/callback'
+    )
+    expect(authorizeUrl.searchParams.get('scope')).toBe('read,issues:create')
+
+    const state = authorizeUrl.searchParams.get('state')
+    expect(state).toBeTruthy()
+
+    const callbackResponse = await app.request(
+      `/integrations/linear/callback?code=linear-code&state=${state}`
+    )
+    expect(callbackResponse.status).toBe(302)
+    expect(callbackResponse.headers.get('location')).toBe(
+      'https://app.durabull.test/settings?linear=connected'
+    )
+    expect(exchangeLinearOauthCodeMock).toHaveBeenCalledWith({
+      code: 'linear-code',
+      redirectUri: 'https://app.durabull.test/api/alerts/integrations/linear/callback',
+      clientId: 'linear-client-id',
+      clientSecret: 'linear-client-secret',
+    })
+    expect(validateLinearAccessTokenMock).toHaveBeenCalledWith('linear-access-token')
+
+    const response = await app.request('/integrations/linear')
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({
       integration: {
-        keyPreview: 'lin_…_key',
+        connected: true,
         validationStatus: 'valid',
-        defaultTeamId: 'team-1',
+        scopes: 'read issues:create',
+        linearOrganizationName: 'Acme',
       },
     })
-    expect(validateLinearApiKeyMock).toHaveBeenCalledTimes(1)
 
     const stored = await linearIntegrationRepository.findByOrganization(TEST_ORG_ID)
-    expect(stored?.encryptedApiKey).not.toContain('lin_api_super_secret_key')
-    expect(decryptSecret(stored?.encryptedApiKey ?? '')).toBe('lin_api_super_secret_key')
+    expect(stored?.encryptedAccessToken).not.toContain('linear-access-token')
+    expect(stored?.encryptedRefreshToken).not.toContain('linear-refresh-token')
+    expect(decryptSecret(stored?.encryptedAccessToken ?? '')).toBe('linear-access-token')
+    expect(decryptSecret(stored?.encryptedRefreshToken ?? '')).toBe('linear-refresh-token')
   })
 })

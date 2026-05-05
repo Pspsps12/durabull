@@ -35,6 +35,10 @@ type LinearIntegrationResponse = InferResponseType<
   (typeof api.alerts.integrations.linear)['$get'],
   200
 >
+type LinearConnectResponse = InferResponseType<
+  (typeof api.alerts.integrations.linear.connect)['$post'],
+  200
+>
 type LinearMetadataResponse = InferResponseType<
   (typeof api.alerts.integrations.linear.metadata)['$get'],
   200
@@ -103,8 +107,11 @@ export interface AlertEventRecord {
 
 export interface LinearIntegrationRecord {
   id: string
-  keyPreview: string
+  connected: boolean
   validationStatus: 'valid' | 'invalid' | 'unknown'
+  scopes: string
+  linearOrganizationName?: string | null
+  accessTokenExpiresAt?: string | Date | null
   defaultTeamId?: string | null
   defaultProjectId?: string | null
   defaultLabelIds: string[]
@@ -480,13 +487,20 @@ function normalizeLinearIntegration(value: unknown): LinearIntegrationRecord | n
   if (!isRecord(value)) return null
   return {
     id: typeof value.id === 'string' ? value.id : '',
-    keyPreview: typeof value.keyPreview === 'string' ? value.keyPreview : '',
+    connected: value.connected !== false,
     validationStatus:
       value.validationStatus === 'valid' ||
       value.validationStatus === 'invalid' ||
       value.validationStatus === 'unknown'
         ? value.validationStatus
         : 'unknown',
+    scopes: typeof value.scopes === 'string' ? value.scopes : '',
+    linearOrganizationName:
+      typeof value.linearOrganizationName === 'string' ? value.linearOrganizationName : null,
+    accessTokenExpiresAt:
+      typeof value.accessTokenExpiresAt === 'string' || value.accessTokenExpiresAt instanceof Date
+        ? value.accessTokenExpiresAt
+        : null,
     defaultTeamId: typeof value.defaultTeamId === 'string' ? value.defaultTeamId : null,
     defaultProjectId: typeof value.defaultProjectId === 'string' ? value.defaultProjectId : null,
     defaultLabelIds: normalizeStringArray(value.defaultLabelIds),
@@ -523,12 +537,25 @@ export function useLinearMetadata(enabled: boolean) {
   })
 }
 
+export function useConnectLinearIntegration() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.alerts.integrations.linear.connect.$post()
+      return handleRes<LinearConnectResponse>(res)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: alertKeys.linearIntegration() })
+    },
+  })
+}
+
 export function useSaveLinearIntegration() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (input: {
-      apiKey?: string
       defaultTeamId?: string | null
       defaultProjectId?: string | null
       defaultLabelIds?: string[]

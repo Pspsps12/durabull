@@ -5,7 +5,7 @@ import type {
   LinearIntegration,
   LinearIntegrationValidationStatus,
 } from '../db/schemas/linear-integration/types'
-import { encryptSecret, maskSecretPreview } from '../db/secret-encryption'
+import { encryptSecret } from '../db/secret-encryption'
 
 export interface LinearIntegrationDefaults {
   defaultTeamId?: string | null
@@ -16,9 +16,14 @@ export interface LinearIntegrationDefaults {
   defaultPriority?: number | null
 }
 
-export interface UpsertLinearIntegrationInput extends LinearIntegrationDefaults {
+export interface UpsertLinearOauthIntegrationInput extends LinearIntegrationDefaults {
   organizationId: string
-  apiKey: string
+  accessToken: string
+  refreshToken: string
+  tokenType?: string
+  scopes: string
+  accessTokenExpiresAt: Date
+  linearOrganizationName?: string | null
   validationStatus?: LinearIntegrationValidationStatus
   lastValidatedAt?: Date | null
 }
@@ -35,13 +40,17 @@ export const linearIntegrationRepository = {
     return rows[0] ?? null
   },
 
-  async upsert(input: UpsertLinearIntegrationInput): Promise<LinearIntegration> {
+  async upsertOauth(input: UpsertLinearOauthIntegrationInput): Promise<LinearIntegration> {
     const db = await getDb()
     const now = new Date()
     const values = {
       organizationId: input.organizationId,
-      encryptedApiKey: encryptSecret(input.apiKey),
-      keyPreview: maskSecretPreview(input.apiKey),
+      encryptedAccessToken: encryptSecret(input.accessToken),
+      encryptedRefreshToken: encryptSecret(input.refreshToken),
+      tokenType: input.tokenType ?? 'Bearer',
+      scopes: input.scopes,
+      accessTokenExpiresAt: input.accessTokenExpiresAt,
+      linearOrganizationName: input.linearOrganizationName ?? null,
       validationStatus: input.validationStatus ?? 'unknown',
       defaultTeamId: input.defaultTeamId ?? null,
       defaultProjectId: input.defaultProjectId ?? null,
@@ -63,6 +72,35 @@ export const linearIntegrationRepository = {
       .returning()
 
     return row
+  },
+
+  async updateOauthTokens(
+    organizationId: string,
+    tokens: {
+      accessToken: string
+      refreshToken: string
+      tokenType?: string
+      scopes?: string
+      accessTokenExpiresAt: Date
+    }
+  ): Promise<LinearIntegration | null> {
+    const db = await getDb()
+    const [row] = await db
+      .update(linearIntegration)
+      .set({
+        encryptedAccessToken: encryptSecret(tokens.accessToken),
+        encryptedRefreshToken: encryptSecret(tokens.refreshToken),
+        tokenType: tokens.tokenType ?? 'Bearer',
+        ...(tokens.scopes ? { scopes: tokens.scopes } : {}),
+        accessTokenExpiresAt: tokens.accessTokenExpiresAt,
+        validationStatus: 'valid',
+        lastValidatedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(linearIntegration.organizationId, organizationId))
+      .returning()
+
+    return row ?? null
   },
 
   async updateDefaults(

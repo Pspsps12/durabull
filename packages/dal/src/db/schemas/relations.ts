@@ -41,6 +41,7 @@ export const relations = defineRelations(tables, (r) => ({
     alertRules: r.many.alertRule(),
     alertEvents: r.many.alertEvent(),
     linearIntegration: r.one.linearIntegration(),
+    linearOauthStates: r.many.linearOauthState(),
     linearJobIssues: r.many.linearJobIssue(),
   },
   member: {
@@ -126,6 +127,12 @@ export const relations = defineRelations(tables, (r) => ({
   linearIntegration: {
     organization: r.one.organization({
       from: r.linearIntegration.organizationId,
+      to: r.organization.id,
+    }),
+  },
+  linearOauthState: {
+    organization: r.one.organization({
+      from: r.linearOauthState.organizationId,
       to: r.organization.id,
     }),
   },

@@ -11,8 +11,12 @@ export const linearIntegration = pgTable('linear_integration', {
     .notNull()
     .unique()
     .references(() => organization.id, { onDelete: 'cascade' }),
-  encryptedApiKey: text('encrypted_api_key').notNull(),
-  keyPreview: text('key_preview').notNull(),
+  encryptedAccessToken: text('encrypted_access_token').notNull(),
+  encryptedRefreshToken: text('encrypted_refresh_token').notNull(),
+  tokenType: text('token_type').notNull().default('Bearer'),
+  scopes: text('scopes').notNull(),
+  accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }).notNull(),
+  linearOrganizationName: text('linear_organization_name'),
   validationStatus: text('validation_status')
     .$type<LinearIntegrationValidationStatus>()
     .notNull()

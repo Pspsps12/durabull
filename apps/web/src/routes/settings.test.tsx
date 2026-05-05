@@ -42,6 +42,7 @@ vi.mock('@/hooks/use-app-config', () => ({
 
 vi.mock('@/hooks/use-alerts', () => ({
   useLinearIntegration: () => ({ data: { integration: null } }),
+  useConnectLinearIntegration: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSaveLinearIntegration: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteLinearIntegration: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useTestLinearIntegration: () => ({ mutateAsync: vi.fn(), isPending: false }),
