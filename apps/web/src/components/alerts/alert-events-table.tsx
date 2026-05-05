@@ -103,9 +103,7 @@ export function AlertEventsTable({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <span className="text-xs text-muted-foreground">
-                    {event.notificationSentAt ? 'Delivered' : 'Not sent'}
-                  </span>
+                  <DeliverySummary event={event} />
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {formatAlertDate(event.firedAt)}
@@ -148,5 +146,39 @@ export function AlertEventsTable({
         </TableBody>
       </Table>
     </div>
+  )
+}
+
+function DeliverySummary({ event }: { event: AlertEventRecord }) {
+  const linearDelivery = event.deliveries.find(
+    (delivery) => delivery.channelType === 'linear' && delivery.externalUrl
+  )
+  if (linearDelivery?.externalUrl) {
+    return (
+      <a
+        href={linearDelivery.externalUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+      >
+        {linearDelivery.externalIdentifier ?? 'Linear issue'}
+        <ArrowUpRight className="h-3 w-3" />
+      </a>
+    )
+  }
+
+  if (event.deliveries.length > 0) {
+    const delivered = event.deliveries.filter((delivery) => delivery.status === 'delivered').length
+    return (
+      <span className="text-xs text-muted-foreground">
+        {delivered}/{event.deliveries.length} delivered
+      </span>
+    )
+  }
+
+  return (
+    <span className="text-xs text-muted-foreground">
+      {event.notificationSentAt ? 'Delivered' : 'Not sent'}
+    </span>
   )
 }

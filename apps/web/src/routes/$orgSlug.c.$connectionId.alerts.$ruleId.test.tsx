@@ -142,6 +142,13 @@ vi.mock('@/hooks/use-alerts', () => ({
     mutateAsync: testRuleMutateAsyncMock,
     isPending: false,
   }),
+  useLinearIntegration: () => ({
+    data: {
+      integration: {
+        validationStatus: 'valid',
+      },
+    },
+  }),
 }))
 
 vi.mock('sonner', () => ({

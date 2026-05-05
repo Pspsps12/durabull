@@ -31,15 +31,41 @@ type TestAlertRuleResponse = InferResponseType<
   ConnectionAlertsEndpoint['rules'][':ruleId']['test']['$post'],
   200
 >
+type LinearIntegrationResponse = InferResponseType<
+  (typeof api.alerts.integrations.linear)['$get'],
+  200
+>
+type LinearMetadataResponse = InferResponseType<
+  (typeof api.alerts.integrations.linear.metadata)['$get'],
+  200
+>
 
 export type AlertSummaryConnection = AlertSummaryResponse['connections'][number]
-export type AlertRuleType = 'failure_threshold' | 'failure_rate' | 'queue_stalled'
+export type AlertRuleType = 'failure_threshold' | 'failure_rate' | 'queue_stalled' | 'job_failed'
 export type QueueFilterMode = 'include' | 'exclude'
 export type AlertEventStatus = 'firing' | 'resolved' | 'suppressed'
 
-export interface AlertNotificationChannel {
-  type: 'email'
+export type AlertNotificationChannel =
+  | { type: 'email'; target: string }
+  | {
+      type: 'linear'
+      target: 'org-default'
+      teamId?: string
+      projectId?: string
+      labelIds?: string[]
+      assigneeId?: string
+      stateId?: string
+      priority?: number
+    }
+
+export interface AlertDeliveryRecord {
+  id: string
+  channelType: 'email' | 'linear'
+  status: 'pending' | 'claimed' | 'delivered' | 'failed'
   target: string
+  externalIdentifier?: string | null
+  externalUrl?: string | null
+  lastError?: string | null
 }
 
 export interface AlertRuleRecord {
@@ -72,6 +98,28 @@ export interface AlertEventRecord {
   firedAt: string | Date
   resolvedAt?: string | Date | null
   notificationSentAt?: string | Date | null
+  deliveries: AlertDeliveryRecord[]
+}
+
+export interface LinearIntegrationRecord {
+  id: string
+  keyPreview: string
+  validationStatus: 'valid' | 'invalid' | 'unknown'
+  defaultTeamId?: string | null
+  defaultProjectId?: string | null
+  defaultLabelIds: string[]
+  defaultAssigneeId?: string | null
+  defaultStateId?: string | null
+  defaultPriority?: number | null
+  lastValidatedAt?: string | Date | null
+}
+
+export interface LinearMetadataRecord {
+  teams: Array<{ id: string; name: string; key: string }>
+  projects: Array<{ id: string; name: string }>
+  labels: Array<{ id: string; name: string }>
+  users: Array<{ id: string; name: string; email?: string | null }>
+  states: Array<{ id: string; name: string; teamId: string }>
 }
 
 export interface AlertTestResult {
@@ -112,6 +160,8 @@ export const alertKeys = {
   summary: () => ['alerts', 'summary'] as const,
   globalEvents: (filters: AlertEventFilterOptions = {}) =>
     ['alerts', 'global-events', filters] as const,
+  linearIntegration: () => ['alerts', 'integrations', 'linear'] as const,
+  linearMetadata: () => ['alerts', 'integrations', 'linear', 'metadata'] as const,
   connectionRules: (connectionId: string) =>
     ['alerts', 'connection', connectionId, 'rules'] as const,
   connectionEvents: (connectionId: string, filters: AlertEventFilterOptions = {}) =>
@@ -123,7 +173,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isAlertRuleType(value: unknown): value is AlertRuleType {
-  return value === 'failure_threshold' || value === 'failure_rate' || value === 'queue_stalled'
+  return (
+    value === 'failure_threshold' ||
+    value === 'failure_rate' ||
+    value === 'queue_stalled' ||
+    value === 'job_failed'
+  )
 }
 
 function isAlertEventStatus(value: unknown): value is AlertEventStatus {
@@ -133,8 +188,22 @@ function isAlertEventStatus(value: unknown): value is AlertEventStatus {
 function normalizeNotificationChannels(value: unknown): AlertNotificationChannel[] {
   if (!Array.isArray(value)) return []
 
-  return value.flatMap((entry) => {
+  return value.flatMap((entry): AlertNotificationChannel[] => {
     if (!isRecord(entry)) return []
+    if (entry.type === 'linear' && entry.target === 'org-default') {
+      return [
+        {
+          type: 'linear',
+          target: 'org-default',
+          teamId: typeof entry.teamId === 'string' ? entry.teamId : undefined,
+          projectId: typeof entry.projectId === 'string' ? entry.projectId : undefined,
+          labelIds: normalizeStringArray(entry.labelIds),
+          assigneeId: typeof entry.assigneeId === 'string' ? entry.assigneeId : undefined,
+          stateId: typeof entry.stateId === 'string' ? entry.stateId : undefined,
+          priority: typeof entry.priority === 'number' ? entry.priority : undefined,
+        },
+      ]
+    }
     if (entry.type !== 'email' || typeof entry.target !== 'string') return []
     return [{ type: 'email', target: entry.target }]
   })
@@ -205,7 +274,34 @@ function normalizeAlertEvent(value: unknown): AlertEventRecord {
       typeof source.notificationSentAt === 'string' || source.notificationSentAt instanceof Date
         ? source.notificationSentAt
         : null,
+    deliveries: normalizeAlertDeliveries(source.deliveries),
   }
+}
+
+function normalizeAlertDeliveries(value: unknown): AlertDeliveryRecord[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    if (!isRecord(entry)) return []
+    if (entry.channelType !== 'email' && entry.channelType !== 'linear') return []
+    return [
+      {
+        id: typeof entry.id === 'string' ? entry.id : '',
+        channelType: entry.channelType,
+        status:
+          entry.status === 'pending' ||
+          entry.status === 'claimed' ||
+          entry.status === 'delivered' ||
+          entry.status === 'failed'
+            ? entry.status
+            : 'pending',
+        target: typeof entry.target === 'string' ? entry.target : '',
+        externalIdentifier:
+          typeof entry.externalIdentifier === 'string' ? entry.externalIdentifier : null,
+        externalUrl: typeof entry.externalUrl === 'string' ? entry.externalUrl : null,
+        lastError: typeof entry.lastError === 'string' ? entry.lastError : null,
+      },
+    ]
+  })
 }
 
 function invalidateAlertQueries(queryClient: QueryClient, connectionId?: string) {
@@ -377,5 +473,105 @@ export function useTestAlertRule(connectionId: string | undefined) {
       const data = await handleRes<TestAlertRuleResponse>(res)
       return data as AlertTestResult
     },
+  })
+}
+
+function normalizeLinearIntegration(value: unknown): LinearIntegrationRecord | null {
+  if (!isRecord(value)) return null
+  return {
+    id: typeof value.id === 'string' ? value.id : '',
+    keyPreview: typeof value.keyPreview === 'string' ? value.keyPreview : '',
+    validationStatus:
+      value.validationStatus === 'valid' ||
+      value.validationStatus === 'invalid' ||
+      value.validationStatus === 'unknown'
+        ? value.validationStatus
+        : 'unknown',
+    defaultTeamId: typeof value.defaultTeamId === 'string' ? value.defaultTeamId : null,
+    defaultProjectId: typeof value.defaultProjectId === 'string' ? value.defaultProjectId : null,
+    defaultLabelIds: normalizeStringArray(value.defaultLabelIds),
+    defaultAssigneeId: typeof value.defaultAssigneeId === 'string' ? value.defaultAssigneeId : null,
+    defaultStateId: typeof value.defaultStateId === 'string' ? value.defaultStateId : null,
+    defaultPriority: typeof value.defaultPriority === 'number' ? value.defaultPriority : null,
+    lastValidatedAt:
+      typeof value.lastValidatedAt === 'string' || value.lastValidatedAt instanceof Date
+        ? value.lastValidatedAt
+        : null,
+  }
+}
+
+export function useLinearIntegration() {
+  return useQuery({
+    queryKey: alertKeys.linearIntegration(),
+    queryFn: async () => {
+      const res = await api.alerts.integrations.linear.$get()
+      const data = await handleRes<LinearIntegrationResponse>(res)
+      return { integration: normalizeLinearIntegration(data.integration) }
+    },
+  })
+}
+
+export function useLinearMetadata(enabled: boolean) {
+  return useQuery({
+    queryKey: alertKeys.linearMetadata(),
+    queryFn: async () => {
+      const res = await api.alerts.integrations.linear.metadata.$get()
+      const data = await handleRes<LinearMetadataResponse>(res)
+      return data.metadata as LinearMetadataRecord
+    },
+    enabled,
+  })
+}
+
+export function useSaveLinearIntegration() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: {
+      apiKey?: string
+      defaultTeamId?: string | null
+      defaultProjectId?: string | null
+      defaultLabelIds?: string[]
+      defaultAssigneeId?: string | null
+      defaultStateId?: string | null
+      defaultPriority?: number | null
+    }) => {
+      const res = await api.alerts.integrations.linear.$put({ json: input })
+      const data = await handleRes<LinearIntegrationResponse>(res)
+      return { integration: normalizeLinearIntegration(data.integration) }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: alertKeys.linearIntegration() })
+      queryClient.invalidateQueries({ queryKey: alertKeys.linearMetadata() })
+      queryClient.invalidateQueries({ queryKey: ['alerts', 'connection'] })
+    },
+  })
+}
+
+export function useDeleteLinearIntegration() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.alerts.integrations.linear.$delete()
+      return handleRes<{ success: boolean }>(res)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: alertKeys.linearIntegration() })
+      queryClient.invalidateQueries({ queryKey: alertKeys.linearMetadata() })
+      queryClient.invalidateQueries({ queryKey: ['alerts', 'connection'] })
+    },
+  })
+}
+
+export function useTestLinearIntegration() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.alerts.integrations.linear.test.$post()
+      return handleRes<{ ok: boolean; organizationName: string }>(res)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: alertKeys.linearIntegration() }),
   })
 }

@@ -25,6 +25,42 @@ export const alertEventRepository = {
     return result
   },
 
+  async createOrGetByDedupeKey(
+    data: Omit<NewAlertEvent, 'id' | 'createdAt' | 'updatedAt'> & { dedupeKey: string }
+  ): Promise<{ event: AlertEvent; created: boolean }> {
+    const db = await getDb()
+    const id = uuidv7()
+
+    const [inserted] = await db
+      .insert(alertEvent)
+      .values({
+        id,
+        ...data,
+      })
+      .onConflictDoNothing({
+        target: [alertEvent.alertRuleId, alertEvent.dedupeKey],
+      })
+      .returning()
+
+    if (inserted) {
+      return { event: inserted, created: true }
+    }
+
+    const rows = await db
+      .select()
+      .from(alertEvent)
+      .where(
+        and(eq(alertEvent.alertRuleId, data.alertRuleId), eq(alertEvent.dedupeKey, data.dedupeKey))
+      )
+      .limit(1)
+
+    if (!rows[0]) {
+      throw new Error('Alert event dedupe conflict could not be resolved.')
+    }
+
+    return { event: rows[0], created: false }
+  },
+
   async findActiveFiring(alertRuleId: string, queueName: string): Promise<AlertEvent | null> {
     const db = await getDb()
     const rows = await db

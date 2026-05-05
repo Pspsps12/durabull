@@ -1,7 +1,9 @@
 import {
   alertCheckCursorRepository,
+  alertDeliveryRepository,
   alertEventRepository,
   alertRuleRepository,
+  linearIntegrationRepository,
   redisDiscoveredQueueRepository,
 } from '@durabull/dal'
 import { zValidator } from '@hono/zod-validator'
@@ -10,13 +12,27 @@ import { z } from 'zod'
 import { evaluateRule, type CursorState, type QueueSnapshot } from '../lib/alert-evaluator'
 import { getQueue } from '../lib/redis'
 
-const alertTypeSchema = z.enum(['failure_threshold', 'failure_rate', 'queue_stalled'])
+const alertTypeSchema = z.enum(['failure_threshold', 'failure_rate', 'queue_stalled', 'job_failed'])
 const queueFilterModeSchema = z.enum(['include', 'exclude'])
 const alertEventStatusSchema = z.enum(['firing', 'resolved', 'suppressed'])
-const notificationChannelSchema = z.object({
-  type: z.enum(['email']),
+const emailNotificationChannelSchema = z.object({
+  type: z.literal('email'),
   target: z.string().email(),
 })
+const linearNotificationChannelSchema = z.object({
+  type: z.literal('linear'),
+  target: z.literal('org-default'),
+  teamId: z.string().min(1).optional(),
+  projectId: z.string().min(1).optional(),
+  labelIds: z.array(z.string().min(1)).max(50).optional(),
+  assigneeId: z.string().min(1).optional(),
+  stateId: z.string().min(1).optional(),
+  priority: z.number().int().min(0).max(4).optional(),
+})
+const notificationChannelSchema = z.discriminatedUnion('type', [
+  emailNotificationChannelSchema,
+  linearNotificationChannelSchema,
+])
 
 const createRuleSchema = z.object({
   name: z.string().min(1).max(200),
@@ -65,6 +81,13 @@ const app = new Hono()
     if (configError) {
       return c.json({ error: configError }, 400)
     }
+    const channelError = await validateNotificationChannels(
+      body.notificationChannels,
+      organizationId
+    )
+    if (channelError) {
+      return c.json({ error: channelError }, 400)
+    }
 
     const count = await alertRuleRepository.countByConnection(connectionId, organizationId)
     if (count >= 50) {
@@ -98,6 +121,15 @@ const app = new Hono()
       const configError = validateAlertConfig(nextType, nextConfig)
       if (configError) {
         return c.json({ error: configError }, 400)
+      }
+    }
+    if (body.notificationChannels !== undefined) {
+      const channelError = await validateNotificationChannels(
+        body.notificationChannels,
+        organizationId
+      )
+      if (channelError) {
+        return c.json({ error: channelError }, 400)
       }
     }
 
@@ -221,7 +253,7 @@ const app = new Hono()
         limit,
         status,
       })
-      return c.json({ events })
+      return c.json({ events: await attachDeliveries(events) })
     }
   )
   .post('/events/:eventId/resolve', async (c) => {
@@ -238,6 +270,15 @@ const app = new Hono()
 
     return c.json({ event })
   })
+
+async function attachDeliveries<T extends { id: string }>(events: T[]) {
+  return Promise.all(
+    events.map(async (event) => ({
+      ...event,
+      deliveries: await alertDeliveryRepository.listByEvent(event.id),
+    }))
+  )
+}
 
 function validateAlertConfig(type: string, config: Record<string, unknown>): string | null {
   switch (type) {
@@ -265,9 +306,33 @@ function validateAlertConfig(type: string, config: Record<string, unknown>): str
       const result = schema.safeParse(config)
       return result.success ? null : `Invalid config: ${result.error.message}`
     }
+    case 'job_failed': {
+      const schema = z.object({
+        maxIssuesPerPoll: z.number().int().min(1).max(500).optional(),
+      })
+      const result = schema.safeParse(config)
+      return result.success ? null : `Invalid config: ${result.error.message}`
+    }
     default:
       return `Unknown alert type: ${type}`
   }
+}
+
+async function validateNotificationChannels(
+  channels: z.infer<typeof notificationChannelSchema>[],
+  organizationId: string
+): Promise<string | null> {
+  if (!channels.some((channel) => channel.type === 'linear')) return null
+
+  const integration = await linearIntegrationRepository.findByOrganization(organizationId)
+  if (!integration || integration.validationStatus !== 'valid') {
+    return 'Linear integration must be configured and valid before Linear alert routing can be enabled.'
+  }
+
+  const missingTeam = channels.some(
+    (channel) => channel.type === 'linear' && !channel.teamId && !integration.defaultTeamId
+  )
+  return missingTeam ? 'Linear alert routing requires a teamId or organization default team.' : null
 }
 
 export default app

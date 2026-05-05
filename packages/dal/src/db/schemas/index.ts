@@ -3,6 +3,15 @@
 // Alert Check Cursor schema exports
 export { alertCheckCursor } from './alert-check-cursor/schema'
 export type { AlertCheckCursor, NewAlertCheckCursor } from './alert-check-cursor/types'
+// Alert Delivery schema exports
+export {
+  alertDelivery,
+  type AlertDeliveryChannelType,
+  alertDeliveryChannelTypes,
+  type AlertDeliveryStatus,
+  alertDeliveryStatuses,
+} from './alert-delivery/schema'
+export type { AlertDelivery, NewAlertDelivery } from './alert-delivery/types'
 // Alert Event schema exports
 export { type AlertEventStatus, alertEvent, alertEventStatuses } from './alert-event/schema'
 export type { AlertEvent, NewAlertEvent } from './alert-event/types'
@@ -45,6 +54,18 @@ export type {
   NewRedisDiscoveredQueue,
   RedisDiscoveredQueue,
 } from './redis-discovered-queue/types'
+// Linear integration schema exports
+export {
+  type LinearIntegrationValidationStatus,
+  linearIntegration,
+  linearIntegrationValidationStatuses,
+} from './linear-integration/schema'
+export type {
+  LinearIntegration,
+  NewLinearIntegration,
+} from './linear-integration/types'
+export { linearJobIssue } from './linear-job-issue/schema'
+export type { LinearJobIssue, NewLinearJobIssue } from './linear-job-issue/types'
 // Relations v2 - single consolidated relations object
 export { relations } from './relations'
 // Telemetry installation schema exports

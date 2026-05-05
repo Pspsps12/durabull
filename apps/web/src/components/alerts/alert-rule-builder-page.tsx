@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   createAlertRuleDraft,
+  createLinearNotificationRouteDraft,
   createNotificationRouteDraft,
   normalizeNotificationEmails,
   serializeAlertRuleDraftsForMode,
@@ -40,6 +41,7 @@ interface AlertRuleBuilderPageProps {
   onTest?: () => Promise<AlertTestResult>
   isSaving?: boolean
   isTesting?: boolean
+  linearIntegrationConfigured?: boolean
 }
 
 const RULE_TYPE_EXAMPLES: Record<
@@ -66,6 +68,11 @@ const RULE_TYPE_EXAMPLES: Record<
     example: 'Example: "If jobs are waiting but completions stop for 10 minutes, page the owner."',
     note: 'Best for stuck consumers, dead workers, or downstream systems that quietly halt throughput.',
   },
+  job_failed: {
+    headline: 'Create one Linear issue per failed job',
+    example: 'Example: "When a job fails, create exactly one Linear issue for that job id."',
+    note: 'Best when every failed job needs product or engineering follow-up without duplicate issues.',
+  },
 }
 
 export function AlertRuleBuilderPage({
@@ -79,6 +86,7 @@ export function AlertRuleBuilderPage({
   onTest,
   isSaving = false,
   isTesting = false,
+  linearIntegrationConfigured = false,
 }: AlertRuleBuilderPageProps) {
   const [draft, setDraft] = useState<AlertRuleDraft>(() => createAlertRuleDraft(rule))
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -133,8 +141,9 @@ export function AlertRuleBuilderPage({
   }
 
   const activeRecipients = normalizeNotificationEmails(
-    draft.notificationRoutes.map((route) => route.target)
+    draft.notificationRoutes.filter((route) => route.type === 'email').map((route) => route.target)
   )
+  const activeLinearRoutes = draft.notificationRoutes.filter((route) => route.type === 'linear')
 
   async function handleSubmit() {
     const validationError = validateAlertRuleDraft(draft)
@@ -238,40 +247,42 @@ export function AlertRuleBuilderPage({
           description="Choose the failure model you want Durabull to evaluate in the background."
         >
           <div className="grid gap-3 lg:grid-cols-3">
-            {(['failure_threshold', 'failure_rate', 'queue_stalled'] as const).map((type) => {
-              const meta = getAlertTypeMeta(type)
-              const isActive = draft.type === type
+            {(['failure_threshold', 'failure_rate', 'queue_stalled', 'job_failed'] as const).map(
+              (type) => {
+                const meta = getAlertTypeMeta(type)
+                const isActive = draft.type === type
 
-              return (
-                <button
-                  key={type}
-                  type="button"
-                  className={cn(
-                    'border px-4 py-4 text-left transition-colors',
-                    isActive
-                      ? 'border-foreground bg-foreground text-background'
-                      : 'border-border/70 bg-background hover:border-foreground/40'
-                  )}
-                  onClick={() => updateDraft({ type })}
-                  data-testid={`alert-rule-type-${type}`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold">{meta.label}</span>
-                    {isActive ? (
-                      <span className="text-xs uppercase tracking-wide">Selected</span>
-                    ) : null}
-                  </div>
-                  <p
+                return (
+                  <button
+                    key={type}
+                    type="button"
                     className={cn(
-                      'mt-3 text-sm leading-6',
-                      isActive ? 'text-background/80' : 'text-muted-foreground'
+                      'border px-4 py-4 text-left transition-colors',
+                      isActive
+                        ? 'border-foreground bg-foreground text-background'
+                        : 'border-border/70 bg-background hover:border-foreground/40'
                     )}
+                    onClick={() => updateDraft({ type })}
+                    data-testid={`alert-rule-type-${type}`}
                   >
-                    {meta.description}
-                  </p>
-                </button>
-              )
-            })}
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-semibold">{meta.label}</span>
+                      {isActive ? (
+                        <span className="text-xs uppercase tracking-wide">Selected</span>
+                      ) : null}
+                    </div>
+                    <p
+                      className={cn(
+                        'mt-3 text-sm leading-6',
+                        isActive ? 'text-background/80' : 'text-muted-foreground'
+                      )}
+                    >
+                      {meta.description}
+                    </p>
+                  </button>
+                )
+              }
+            )}
           </div>
 
           <div className="mt-4 border border-border/70 bg-muted/10 px-4 py-4">
@@ -375,12 +386,25 @@ export function AlertRuleBuilderPage({
               />
             </div>
           ) : null}
+
+          {draft.type === 'job_failed' ? (
+            <div className="grid gap-6 md:grid-cols-2">
+              <NumberField
+                id="alert-job-failed-max-issues"
+                label="Max issues per poll"
+                value={draft.jobFailedMaxIssuesPerPoll}
+                onChange={(value) => updateDraft({ jobFailedMaxIssuesPerPoll: value })}
+                helper="Caps how many failed jobs Durabull will turn into Linear issues during one monitor tick."
+                example="Default: 100, maximum: 500"
+              />
+            </div>
+          ) : null}
         </BuilderSection>
 
         <BuilderSection
           step="05"
           title="Notification routing"
-          description="Add multiple destinations for incident delivery. Email works today; Slack and Linear are shown for future routing coverage."
+          description="Add multiple destinations for incident delivery. Linear uses the organization integration defaults unless this rule overrides them."
         >
           <div className="space-y-3">
             <div className="grid grid-cols-[140px_minmax(0,1fr)_auto] gap-3 border-b border-border/70 pb-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
@@ -394,20 +418,58 @@ export function AlertRuleBuilderPage({
                 key={route.id}
                 className="grid grid-cols-[140px_minmax(0,1fr)_auto] items-center gap-3"
               >
-                <div className="inline-flex items-center gap-2 text-sm font-medium">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  Email
-                </div>
-                <Input
-                  value={route.target}
-                  onChange={(event) => {
-                    const notificationRoutes = draft.notificationRoutes.slice()
-                    notificationRoutes[index] = { ...route, target: event.target.value }
-                    updateDraft({ notificationRoutes })
-                  }}
-                  placeholder="oncall@example.com"
-                  data-testid={`alert-rule-email-${index}`}
-                />
+                {route.type === 'email' ? (
+                  <>
+                    <div className="inline-flex items-center gap-2 text-sm font-medium">
+                      <Mail className="h-4 w-4 text-muted-foreground" />
+                      Email
+                    </div>
+                    <Input
+                      value={route.target}
+                      onChange={(event) => {
+                        const notificationRoutes = draft.notificationRoutes.slice()
+                        notificationRoutes[index] = { ...route, target: event.target.value }
+                        updateDraft({ notificationRoutes })
+                      }}
+                      placeholder="oncall@example.com"
+                      data-testid={`alert-rule-email-${index}`}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <div className="inline-flex items-center gap-2 text-sm font-medium">Linear</div>
+                    <div className="grid gap-2 md:grid-cols-3">
+                      <Input
+                        value={route.teamId ?? ''}
+                        onChange={(event) => {
+                          const notificationRoutes = draft.notificationRoutes.slice()
+                          notificationRoutes[index] = { ...route, teamId: event.target.value }
+                          updateDraft({ notificationRoutes })
+                        }}
+                        placeholder="Team ID (optional)"
+                        data-testid={`alert-rule-linear-team-${index}`}
+                      />
+                      <Input
+                        value={route.projectId ?? ''}
+                        onChange={(event) => {
+                          const notificationRoutes = draft.notificationRoutes.slice()
+                          notificationRoutes[index] = { ...route, projectId: event.target.value }
+                          updateDraft({ notificationRoutes })
+                        }}
+                        placeholder="Project ID"
+                      />
+                      <Input
+                        value={route.priority ?? ''}
+                        onChange={(event) => {
+                          const notificationRoutes = draft.notificationRoutes.slice()
+                          notificationRoutes[index] = { ...route, priority: event.target.value }
+                          updateDraft({ notificationRoutes })
+                        }}
+                        placeholder="Priority 0-4"
+                      />
+                    </div>
+                  </>
+                )}
                 <Button
                   type="button"
                   variant="ghost"
@@ -423,7 +485,7 @@ export function AlertRuleBuilderPage({
                           : [createNotificationRouteDraft()],
                     })
                   }}
-                  aria-label={`Remove email route ${index + 1}`}
+                  aria-label={`Remove ${route.type} route ${index + 1}`}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -445,8 +507,24 @@ export function AlertRuleBuilderPage({
               <Plus className="mr-1.5 h-4 w-4" />
               Add email route
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                updateDraft({
+                  notificationRoutes: [
+                    ...draft.notificationRoutes,
+                    createLinearNotificationRouteDraft(),
+                  ],
+                })
+              }
+              disabled={!linearIntegrationConfigured || activeLinearRoutes.length >= 1}
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              Add Linear route
+            </Button>
             <span className="text-sm text-muted-foreground">
-              Up to 10 active email destinations per rule.
+              Up to 10 email destinations and one Linear destination per rule.
             </span>
           </div>
 
@@ -456,10 +534,18 @@ export function AlertRuleBuilderPage({
                 label="Slack"
                 description="Post incidents to channel-based on-call flows."
               />
-              <ComingSoonRoute
-                label="Linear"
-                description="Open issues directly from alert policy routing."
-              />
+              <div className="border border-border/70 bg-background/50 px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium">Linear</span>
+                  <Badge variant={linearIntegrationConfigured ? 'success' : 'secondary'}>
+                    {linearIntegrationConfigured ? 'Configured' : 'Setup required'}
+                  </Badge>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Open issues directly from alert policy routing with org defaults or rule
+                  overrides.
+                </p>
+              </div>
             </div>
           </div>
         </BuilderSection>
@@ -531,7 +617,10 @@ export function AlertRuleBuilderPage({
               }
             />
             <SummaryRow label="Rules on save" value="1" />
-            <SummaryRow label="Recipients" value={String(activeRecipients.length)} />
+            <SummaryRow
+              label="Routes"
+              value={String(activeRecipients.length + activeLinearRoutes.length)}
+            />
           </div>
         </FlatPanel>
 

@@ -82,6 +82,7 @@ const envSchema = z.object({
   DURABULL_AUTHLESS: optionalBoolean,
   DURABULL_ENV_CONNECTIONS: optionalBoolean,
   DURABULL_REDIS_URL_ENCRYPTION_KEY: optionalString,
+  DURABULL_SECRET_ENCRYPTION_KEY: optionalString,
   DURABULL_REDIS_PORT: optionalInt,
   DURABULL_REDIS_URL_DEFAULT: optionalString,
   DURABULL_DEMO_ACCOUNT_REDIS_CONNECTION_STRING: optionalString,

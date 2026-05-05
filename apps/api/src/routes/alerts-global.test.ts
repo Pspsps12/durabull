@@ -1,12 +1,14 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
   alertEventRepository,
   alertRuleRepository,
   closeDb,
+  decryptSecret,
   getDb,
+  linearIntegrationRepository,
   organization,
   redisConnection,
 } from '@durabull/dal'
@@ -19,12 +21,31 @@ const SECOND_CONNECTION_ID = '77777777-7777-4777-8777-777777777777'
 
 const mutableEnv = env as {
   DATABASE_URL?: string
+  DURABULL_SECRET_ENCRYPTION_KEY?: string
 }
 
 const originalDatabaseUrl = mutableEnv.DATABASE_URL
+const originalSecretKey = mutableEnv.DURABULL_SECRET_ENCRYPTION_KEY
 const originalPgliteDir = process.env.DURABULL_PGLITE_DIR
 
 let tempPgliteDir = ''
+
+const validateLinearApiKeyMock = mock(async () => ({ organizationName: 'Acme' }))
+
+mock.module('../lib/linear-client', () => ({
+  validateLinearApiKey: validateLinearApiKeyMock,
+  fetchLinearMetadata: mock(async () => ({
+    teams: [],
+    projects: [],
+    labels: [],
+    users: [],
+    states: [],
+  })),
+  LinearApiError: class LinearApiError extends Error {
+    status = 400
+    retryable = false
+  },
+}))
 
 async function seedOrganization() {
   const db = await getDb()
@@ -79,6 +100,9 @@ describe('global alerts routes', () => {
     process.env.DURABULL_PGLITE_DIR = tempPgliteDir
     delete process.env.DATABASE_URL
     mutableEnv.DATABASE_URL = undefined
+    mutableEnv.DURABULL_SECRET_ENCRYPTION_KEY =
+      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    validateLinearApiKeyMock.mockClear()
     await closeDb()
     await seedOrganization()
   })
@@ -86,6 +110,7 @@ describe('global alerts routes', () => {
   afterEach(async () => {
     await closeDb()
     mutableEnv.DATABASE_URL = originalDatabaseUrl
+    mutableEnv.DURABULL_SECRET_ENCRYPTION_KEY = originalSecretKey
 
     if (originalPgliteDir) {
       process.env.DURABULL_PGLITE_DIR = originalPgliteDir
@@ -212,5 +237,31 @@ describe('global alerts routes', () => {
     expect(await response.json()).toEqual({
       connections: [{ connectionId: FIRST_CONNECTION_ID, count: 2 }],
     })
+  })
+
+  it('stores Linear API keys encrypted and returns only preview metadata', async () => {
+    const app = await createGlobalAlertsRouteApp()
+    const response = await app.request('/integrations/linear', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        apiKey: 'lin_api_super_secret_key',
+        defaultTeamId: 'team-1',
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      integration: {
+        keyPreview: 'lin_…_key',
+        validationStatus: 'valid',
+        defaultTeamId: 'team-1',
+      },
+    })
+    expect(validateLinearApiKeyMock).toHaveBeenCalledTimes(1)
+
+    const stored = await linearIntegrationRepository.findByOrganization(TEST_ORG_ID)
+    expect(stored?.encryptedApiKey).not.toContain('lin_api_super_secret_key')
+    expect(decryptSecret(stored?.encryptedApiKey ?? '')).toBe('lin_api_super_secret_key')
   })
 })

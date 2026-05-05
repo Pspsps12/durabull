@@ -28,6 +28,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  useDeleteLinearIntegration,
+  useLinearIntegration,
+  useSaveLinearIntegration,
+  useTestLinearIntegration,
+} from '@/hooks/use-alerts'
 import { useAppConfig } from '@/hooks/use-app-config'
 import { linkSocial, listAccounts, unlinkAccount, useAuth } from '@/hooks/use-auth'
 import { APP_BUILD_INFO } from '@/lib/app-version'
@@ -76,7 +82,13 @@ interface LinkedAccount {
 function SettingsPage() {
   const { user, isLoading: sessionLoading } = useAuth()
   const { config } = useAppConfig()
+  const linearIntegrationQuery = useLinearIntegration()
+  const saveLinearIntegration = useSaveLinearIntegration()
+  const deleteLinearIntegration = useDeleteLinearIntegration()
+  const testLinearIntegration = useTestLinearIntegration()
   const [accounts, setAccounts] = useState<LinkedAccount[]>([])
+  const [linearApiKey, setLinearApiKey] = useState('')
+  const [linearTeamId, setLinearTeamId] = useState('')
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true)
   const [linkingProvider, setLinkingProvider] = useState<ProviderId | null>(null)
   const [unlinkingAccount, setUnlinkingAccount] = useState<LinkedAccount | null>(null)
@@ -99,6 +111,12 @@ function SettingsPage() {
   )
 
   useAppTopBar(topBarConfig)
+
+  const linearIntegration = linearIntegrationQuery.data?.integration ?? null
+
+  useEffect(() => {
+    setLinearTeamId(linearIntegration?.defaultTeamId ?? '')
+  }, [linearIntegration?.defaultTeamId])
 
   // Fetch linked accounts
   useEffect(() => {
@@ -289,6 +307,103 @@ function SettingsPage() {
               })}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="border-b bg-muted/30">
+          <div className="flex items-center gap-2">
+            <Link2 className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <CardTitle className="text-base">Linear alerts</CardTitle>
+              <CardDescription>
+                Store an encrypted Linear API key and default team for issue creation.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant={linearIntegration?.validationStatus === 'valid' ? 'success' : 'secondary'}
+            >
+              {linearIntegration
+                ? linearIntegration.validationStatus === 'valid'
+                  ? 'Valid'
+                  : 'Needs attention'
+                : 'Not configured'}
+            </Badge>
+            {linearIntegration?.keyPreview ? (
+              <span className="font-mono text-xs text-muted-foreground">
+                {linearIntegration.keyPreview}
+              </span>
+            ) : null}
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <input
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              type="password"
+              value={linearApiKey}
+              onChange={(event) => setLinearApiKey(event.target.value)}
+              placeholder={linearIntegration ? 'Rotate API key' : 'Linear API key'}
+            />
+            <input
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={linearTeamId}
+              onChange={(event) => setLinearTeamId(event.target.value)}
+              placeholder="Default Linear team ID"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              onClick={async () => {
+                await saveLinearIntegration.mutateAsync({
+                  ...(linearApiKey.trim() ? { apiKey: linearApiKey.trim() } : {}),
+                  defaultTeamId: linearTeamId.trim() || null,
+                })
+                setLinearApiKey('')
+                toast.success('Linear integration saved')
+              }}
+              disabled={saveLinearIntegration.isPending || (!linearIntegration && !linearApiKey)}
+            >
+              {saveLinearIntegration.isPending ? 'Saving...' : 'Save Linear settings'}
+            </Button>
+            {linearIntegration ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={async () => {
+                  const result = await testLinearIntegration.mutateAsync()
+                  toast.success('Linear connection verified', {
+                    description: result.organizationName,
+                  })
+                }}
+                disabled={testLinearIntegration.isPending}
+              >
+                {testLinearIntegration.isPending ? 'Testing...' : 'Test connection'}
+              </Button>
+            ) : null}
+            {linearIntegration ? (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={async () => {
+                  await deleteLinearIntegration.mutateAsync()
+                  setLinearApiKey('')
+                  setLinearTeamId('')
+                  toast.success('Linear integration removed')
+                }}
+                disabled={deleteLinearIntegration.isPending}
+              >
+                Remove
+              </Button>
+            ) : null}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            The key is encrypted at rest and never returned by the API. Rules can override Linear
+            fields, but the default team is used when no rule-level team is set.
+          </p>
         </CardContent>
       </Card>
 

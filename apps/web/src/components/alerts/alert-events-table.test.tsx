@@ -34,6 +34,7 @@ function createEvent(overrides: Partial<AlertEventRecord> = {}): AlertEventRecor
     firedAt: '2026-03-24T10:00:00.000Z',
     resolvedAt: null,
     notificationSentAt: null,
+    deliveries: [],
     ...overrides,
   }
 }

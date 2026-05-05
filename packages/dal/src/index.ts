@@ -19,6 +19,14 @@ export {
   isRedisUrlEncrypted,
   isRedisUrlEncryptionKeyConfigured,
 } from './db/redis-url-encryption'
+export {
+  assertSecretEncryptionKeyConfigured,
+  decryptSecret,
+  encryptSecret,
+  isSecretEncrypted,
+  isSecretEncryptionKeyConfigured,
+  maskSecretPreview,
+} from './db/secret-encryption'
 export type { RedisUrlValidationResult } from './db/redis-url-validation'
 export {
   allowsInternalConnections,
@@ -33,6 +41,14 @@ export type {
 } from './db/schemas'
 export { alertCheckCursor } from './db/schemas/alert-check-cursor/schema'
 export type { AlertCheckCursor, NewAlertCheckCursor } from './db/schemas/alert-check-cursor/types'
+export {
+  alertDelivery,
+  type AlertDeliveryChannelType,
+  alertDeliveryChannelTypes,
+  type AlertDeliveryStatus,
+  alertDeliveryStatuses,
+} from './db/schemas/alert-delivery/schema'
+export type { AlertDelivery, NewAlertDelivery } from './db/schemas/alert-delivery/types'
 export {
   type AlertEventStatus,
   alertEvent,
@@ -85,14 +101,28 @@ export type {
   NewRedisDiscoveredQueue,
   RedisDiscoveredQueue,
 } from './db/schemas/redis-discovered-queue/types'
+export {
+  type LinearIntegrationValidationStatus,
+  linearIntegration,
+  linearIntegrationValidationStatuses,
+} from './db/schemas/linear-integration/schema'
+export type {
+  LinearIntegration,
+  NewLinearIntegration,
+} from './db/schemas/linear-integration/types'
+export { linearJobIssue } from './db/schemas/linear-job-issue/schema'
+export type { LinearJobIssue, NewLinearJobIssue } from './db/schemas/linear-job-issue/types'
 export { telemetryInstallation } from './db/schemas/telemetry-installation/schema'
 export * as userSchema from './db/schemas/user/schema'
 // User schema exports
 export { user } from './db/schemas/user/schema'
 export type { NewUser, User } from './db/schemas/user/types'
 export { alertCheckCursorRepository } from './repositories/alert-check-cursor'
+export { alertDeliveryRepository } from './repositories/alert-delivery'
 export { alertEventRepository } from './repositories/alert-event'
 export { alertRuleRepository } from './repositories/alert-rule'
+export { linearIntegrationRepository } from './repositories/linear-integration'
+export { linearJobIssueRepository } from './repositories/linear-job-issue'
 // Repositories
 export { redisConnectionRepository } from './repositories/redis-connection'
 export { redisDiscoveredQueueRepository } from './repositories/redis-discovered-queue'

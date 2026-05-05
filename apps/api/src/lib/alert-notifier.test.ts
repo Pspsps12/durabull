@@ -12,6 +12,7 @@ describe('buildAlertAppUrls', () => {
     })
 
     expect(urls.dashboardUrl).toBe('https://app.durabull.io/acme-inc/c/conn_123/queues/email-send')
+    expect(urls.jobUrl).toBe('https://app.durabull.io/acme-inc/c/conn_123/queues/email-send')
     expect(urls.muteUrl).toBe('https://app.durabull.io/acme-inc/c/conn_123/alerts?ruleId=rule_456')
   })
 
@@ -26,6 +27,7 @@ describe('buildAlertAppUrls', () => {
 
     expect(urls).toEqual({
       dashboardUrl: 'https://app.durabull.io',
+      jobUrl: 'https://app.durabull.io',
       muteUrl: 'https://app.durabull.io',
     })
   })
@@ -40,6 +42,9 @@ describe('buildAlertAppUrls', () => {
     })
 
     expect(urls.dashboardUrl).toBe(
+      'https://app.durabull.io/acme%20ops/c/conn%2F123/queues/email%2Fsend%20jobs'
+    )
+    expect(urls.jobUrl).toBe(
       'https://app.durabull.io/acme%20ops/c/conn%2F123/queues/email%2Fsend%20jobs'
     )
     expect(urls.muteUrl).toBe(
