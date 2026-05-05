@@ -137,6 +137,7 @@ const app = new Hono()
       clientId: config.clientId,
       redirectUri: config.redirectUri,
       state,
+      actor: config.actor,
     })
 
     if (env.NODE_ENV !== 'production') {
@@ -144,6 +145,7 @@ const app = new Hono()
         organizationId,
         userId: user.id,
         redirectUri: config.redirectUri,
+        actor: config.actor,
         authorizationUrl,
       })
     }

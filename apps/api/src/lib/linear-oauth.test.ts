@@ -7,12 +7,14 @@ const mutableEnv = env as {
   LINEAR_OAUTH_CLIENT_ID?: string
   LINEAR_OAUTH_CLIENT_SECRET?: string
   LINEAR_OAUTH_REDIRECT_URI?: string
+  LINEAR_OAUTH_ACTOR: 'user' | 'app'
 }
 
 const originalAppBaseUrl = mutableEnv.APP_BASE_URL
 const originalClientId = mutableEnv.LINEAR_OAUTH_CLIENT_ID
 const originalClientSecret = mutableEnv.LINEAR_OAUTH_CLIENT_SECRET
 const originalRedirectUri = mutableEnv.LINEAR_OAUTH_REDIRECT_URI
+const originalActor = mutableEnv.LINEAR_OAUTH_ACTOR
 
 describe('Linear OAuth helpers', () => {
   afterEach(() => {
@@ -20,6 +22,7 @@ describe('Linear OAuth helpers', () => {
     mutableEnv.LINEAR_OAUTH_CLIENT_ID = originalClientId
     mutableEnv.LINEAR_OAUTH_CLIENT_SECRET = originalClientSecret
     mutableEnv.LINEAR_OAUTH_REDIRECT_URI = originalRedirectUri
+    mutableEnv.LINEAR_OAUTH_ACTOR = originalActor
   })
 
   it('builds a cloud/self-host compatible callback from APP_BASE_URL by default', () => {
@@ -32,6 +35,7 @@ describe('Linear OAuth helpers', () => {
       clientId: 'client-id',
       clientSecret: 'client-secret',
       redirectUri: 'https://durabull.example.com/api/alerts/integrations/linear/callback',
+      actor: 'user',
     })
   })
 
@@ -53,6 +57,7 @@ describe('Linear OAuth helpers', () => {
         clientId: 'client-id',
         redirectUri: 'https://durabull.example.com/api/alerts/integrations/linear/callback',
         state: 'opaque-state',
+        actor: 'user',
       })
     )
 
@@ -67,6 +72,23 @@ describe('Linear OAuth helpers', () => {
     expect(authorizationUrl.searchParams.get('scope')).toBe('read,issues:create')
     expect(authorizationUrl.searchParams.get('state')).toBe('opaque-state')
     expect(authorizationUrl.searchParams.get('prompt')).toBe('consent')
+    expect(authorizationUrl.searchParams.has('actor')).toBe(false)
+  })
+
+  it('can opt into Linear app actor authorization for service-account style installs', () => {
+    mutableEnv.LINEAR_OAUTH_ACTOR = 'app'
+
+    expect(getLinearOauthConfig().actor).toBe('app')
+
+    const authorizationUrl = new URL(
+      buildLinearOauthAuthorizeUrl({
+        clientId: 'client-id',
+        redirectUri: 'https://durabull.example.com/api/alerts/integrations/linear/callback',
+        state: 'opaque-state',
+        actor: 'app',
+      })
+    )
+
     expect(authorizationUrl.searchParams.get('actor')).toBe('app')
   })
 })

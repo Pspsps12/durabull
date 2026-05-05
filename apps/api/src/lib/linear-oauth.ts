@@ -10,6 +10,7 @@ export function getLinearOauthConfig(): {
   clientId: string
   clientSecret: string
   redirectUri: string
+  actor: 'user' | 'app'
 } {
   const clientId = env.LINEAR_OAUTH_CLIENT_ID?.trim()
   const clientSecret = env.LINEAR_OAUTH_CLIENT_SECRET?.trim()
@@ -21,13 +22,14 @@ export function getLinearOauthConfig(): {
     env.LINEAR_OAUTH_REDIRECT_URI?.trim() ||
     `${env.APP_BASE_URL.replace(/\/+$/, '')}/api/alerts/integrations/linear/callback`
 
-  return { clientId, clientSecret, redirectUri }
+  return { clientId, clientSecret, redirectUri, actor: env.LINEAR_OAUTH_ACTOR }
 }
 
 export function buildLinearOauthAuthorizeUrl(input: {
   clientId: string
   redirectUri: string
   state: string
+  actor: 'user' | 'app'
 }): string {
   const params = new URLSearchParams({
     client_id: input.clientId,
@@ -36,8 +38,11 @@ export function buildLinearOauthAuthorizeUrl(input: {
     scope: LINEAR_OAUTH_SCOPE,
     state: input.state,
     prompt: 'consent',
-    actor: 'app',
   })
+
+  if (input.actor === 'app') {
+    params.set('actor', 'app')
+  }
 
   return `${LINEAR_AUTHORIZATION_URL}?${params.toString()}`
 }

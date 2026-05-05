@@ -27,6 +27,7 @@ const mutableEnv = env as {
   LINEAR_OAUTH_CLIENT_ID?: string
   LINEAR_OAUTH_CLIENT_SECRET?: string
   LINEAR_OAUTH_REDIRECT_URI?: string
+  LINEAR_OAUTH_ACTOR: 'user' | 'app'
   APP_BASE_URL: string
 }
 
@@ -35,6 +36,7 @@ const originalSecretKey = mutableEnv.DURABULL_SECRET_ENCRYPTION_KEY
 const originalLinearClientId = mutableEnv.LINEAR_OAUTH_CLIENT_ID
 const originalLinearClientSecret = mutableEnv.LINEAR_OAUTH_CLIENT_SECRET
 const originalLinearRedirectUri = mutableEnv.LINEAR_OAUTH_REDIRECT_URI
+const originalLinearActor = mutableEnv.LINEAR_OAUTH_ACTOR
 const originalAppBaseUrl = mutableEnv.APP_BASE_URL
 const originalPgliteDir = process.env.DURABULL_PGLITE_DIR
 
@@ -148,6 +150,7 @@ describe('global alerts routes', () => {
     mutableEnv.LINEAR_OAUTH_CLIENT_ID = 'linear-client-id'
     mutableEnv.LINEAR_OAUTH_CLIENT_SECRET = 'linear-client-secret'
     mutableEnv.LINEAR_OAUTH_REDIRECT_URI = LINEAR_CALLBACK_URL
+    mutableEnv.LINEAR_OAUTH_ACTOR = 'user'
     mutableEnv.APP_BASE_URL = 'https://app.durabull.test'
     exchangeLinearOauthCodeMock.mockClear()
     validateLinearAccessTokenMock.mockClear()
@@ -165,6 +168,7 @@ describe('global alerts routes', () => {
     mutableEnv.LINEAR_OAUTH_CLIENT_ID = originalLinearClientId
     mutableEnv.LINEAR_OAUTH_CLIENT_SECRET = originalLinearClientSecret
     mutableEnv.LINEAR_OAUTH_REDIRECT_URI = originalLinearRedirectUri
+    mutableEnv.LINEAR_OAUTH_ACTOR = originalLinearActor
     mutableEnv.APP_BASE_URL = originalAppBaseUrl
 
     if (originalPgliteDir) {
@@ -309,7 +313,7 @@ describe('global alerts routes', () => {
     expect(authorizeUrl.searchParams.get('scope')).toBe('read,issues:create')
     expect(authorizeUrl.searchParams.get('response_type')).toBe('code')
     expect(authorizeUrl.searchParams.get('prompt')).toBe('consent')
-    expect(authorizeUrl.searchParams.get('actor')).toBe('app')
+    expect(authorizeUrl.searchParams.has('actor')).toBe(false)
 
     const state = authorizeUrl.searchParams.get('state')
     expect(state).toBeTruthy()
@@ -388,6 +392,18 @@ describe('global alerts routes', () => {
     expect(authorizeUrl.searchParams.get('redirect_uri')).toBe(
       'https://self-hosted.example.com/api/alerts/integrations/linear/callback'
     )
+  })
+
+  it('only sends Linear app actor authorization when explicitly configured', async () => {
+    mutableEnv.LINEAR_OAUTH_ACTOR = 'app'
+
+    const app = await createGlobalAlertsRouteApp()
+    const response = await app.request('/integrations/linear/connect', { method: 'POST' })
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { authorizationUrl: string }
+    const authorizeUrl = new URL(body.authorizationUrl)
+    expect(authorizeUrl.searchParams.get('actor')).toBe('app')
   })
 
   it('rejects OAuth callbacks with an invalid state before exchanging the authorization code', async () => {

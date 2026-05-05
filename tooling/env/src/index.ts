@@ -55,6 +55,10 @@ const appBaseUrlSchema = z.preprocess(
   emptyToUndefined,
   z.string().default('http://localhost:5173')
 )
+const linearOauthActorSchema = z.preprocess(
+  emptyToUndefined,
+  z.enum(['user', 'app']).default('user')
+)
 
 const envSchema = z.object({
   NODE_ENV: nodeEnvSchema,
@@ -91,6 +95,7 @@ const envSchema = z.object({
   LINEAR_OAUTH_CLIENT_ID: optionalString,
   LINEAR_OAUTH_CLIENT_SECRET: optionalString,
   LINEAR_OAUTH_REDIRECT_URI: optionalString,
+  LINEAR_OAUTH_ACTOR: linearOauthActorSchema,
   DEMO_HEALTH_MAX_AGE_HOURS: optionalNonNegativeInt,
 })
 

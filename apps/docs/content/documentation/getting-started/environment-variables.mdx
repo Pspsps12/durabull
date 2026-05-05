@@ -51,6 +51,7 @@ description: Complete runtime environment variable reference for local and produ
 | `LINEAR_OAUTH_CLIENT_ID` | Required for Linear alert integrations | Linear OAuth application client ID |
 | `LINEAR_OAUTH_CLIENT_SECRET` | Required for Linear alert integrations | Linear OAuth application client secret |
 | `LINEAR_OAUTH_REDIRECT_URI` | Optional | Explicit Linear OAuth callback URL; defaults to `${APP_BASE_URL}/api/alerts/integrations/linear/callback` |
+| `LINEAR_OAUTH_ACTOR` | Optional | Linear OAuth actor mode: `user` by default, or `app` for service-account style app actor authorization |
 | `POSTHOG_KEY` | Optional | PostHog project API key |
 | `POSTHOG_HOST` | Optional | PostHog upstream host for the reverse proxy (defaults to `https://us.i.posthog.com`) |
 
@@ -67,6 +68,9 @@ https://your-domain.example/api/alerts/integrations/linear/callback
 Durabull derives that URL from `APP_BASE_URL` by default. Set `LINEAR_OAUTH_REDIRECT_URI`
 explicitly when your self-hosted API is served from a different public origin than the web app.
 The redirect URI configured in Linear must exactly match the value Durabull sends during OAuth.
+By default, Durabull uses Linear's user actor OAuth flow and omits the `actor` authorize
+parameter. Set `LINEAR_OAUTH_ACTOR=app` only when the Linear application is configured for app
+actor authorization and you want alert-created issues attributed to the app.
 
 ## Anonymous Usage Telemetry
 
