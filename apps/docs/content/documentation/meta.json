@@ -29,6 +29,8 @@
     "workflows/team-and-invitations",
     "workflows/naming-best-practices",
     "workflows/log-formatting-and-highlighting",
+    "---Integrations---",
+    "integrations/linear",
     "---Reference---",
     "reference/http-api",
     "---Operations---",
