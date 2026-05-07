@@ -441,6 +441,7 @@ export function AlertRuleBuilderPage({
                     <div className="inline-flex items-center gap-2 text-sm font-medium">Linear</div>
                     <div className="grid gap-2 md:grid-cols-3">
                       <Input
+                        aria-label={`Linear team override ${index + 1}`}
                         value={route.teamId ?? ''}
                         onChange={(event) => {
                           const notificationRoutes = draft.notificationRoutes.slice()
@@ -451,6 +452,7 @@ export function AlertRuleBuilderPage({
                         data-testid={`alert-rule-linear-team-${index}`}
                       />
                       <Input
+                        aria-label={`Linear project override ${index + 1}`}
                         value={route.projectId ?? ''}
                         onChange={(event) => {
                           const notificationRoutes = draft.notificationRoutes.slice()
@@ -460,6 +462,7 @@ export function AlertRuleBuilderPage({
                         placeholder="Project ID"
                       />
                       <Input
+                        aria-label={`Linear priority override ${index + 1}`}
                         value={route.priority ?? ''}
                         onChange={(event) => {
                           const notificationRoutes = draft.notificationRoutes.slice()

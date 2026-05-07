@@ -107,6 +107,7 @@ export const relations = defineRelations(tables, (r) => ({
     }),
     deliveries: r.many.alertDelivery(),
     linearJobIssues: r.many.linearJobIssue(),
+    linearJobIssueEvents: r.many.linearJobIssueEvent(),
   },
   alertCheckCursor: {
     connection: r.one.redisConnection({
@@ -147,6 +148,17 @@ export const relations = defineRelations(tables, (r) => ({
     }),
     event: r.one.alertEvent({
       from: r.linearJobIssue.alertEventId,
+      to: r.alertEvent.id,
+    }),
+    eventLinks: r.many.linearJobIssueEvent(),
+  },
+  linearJobIssueEvent: {
+    issue: r.one.linearJobIssue({
+      from: r.linearJobIssueEvent.linearJobIssueId,
+      to: r.linearJobIssue.id,
+    }),
+    event: r.one.alertEvent({
+      from: r.linearJobIssueEvent.alertEventId,
       to: r.alertEvent.id,
     }),
   },

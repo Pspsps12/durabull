@@ -141,12 +141,14 @@ const app = new Hono()
     })
 
     if (env.NODE_ENV !== 'production') {
+      const safeAuthorizationUrl = new URL(authorizationUrl)
+      safeAuthorizationUrl.search = ''
       console.info('[linear-oauth] starting authorization', {
         organizationId,
         userId: user.id,
         redirectUri: config.redirectUri,
         actor: config.actor,
-        authorizationUrl,
+        authorizationUrl: safeAuthorizationUrl.toString(),
       })
     }
 

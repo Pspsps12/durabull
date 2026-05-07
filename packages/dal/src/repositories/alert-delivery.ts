@@ -1,9 +1,9 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
 import { getDb } from '../db/client'
 import {
-  alertDelivery,
   type AlertDeliveryChannelType,
   type AlertDeliveryStatus,
+  alertDelivery,
 } from '../db/schemas/alert-delivery/schema'
 import type { AlertDelivery } from '../db/schemas/alert-delivery/types'
 
@@ -143,7 +143,7 @@ export const alertDeliveryRepository = {
       externalUrl?: string | null
       providerMetadata?: Record<string, unknown>
     } = {},
-    expectedClaimedAt?: Date | null
+    expectedClaimedAt: Date
   ): Promise<boolean> {
     const db = await getDb()
     const rows = await db
@@ -160,13 +160,11 @@ export const alertDeliveryRepository = {
         updatedAt: new Date(),
       })
       .where(
-        expectedClaimedAt
-          ? and(
-              eq(alertDelivery.id, id),
-              eq(alertDelivery.status, 'claimed'),
-              eq(alertDelivery.claimedAt, expectedClaimedAt)
-            )
-          : eq(alertDelivery.id, id)
+        and(
+          eq(alertDelivery.id, id),
+          eq(alertDelivery.status, 'claimed'),
+          eq(alertDelivery.claimedAt, expectedClaimedAt)
+        )
       )
       .returning({ id: alertDelivery.id })
 
@@ -179,7 +177,7 @@ export const alertDeliveryRepository = {
       error: string
       retryable: boolean
       nextRetryAt?: Date | null
-      expectedClaimedAt?: Date | null
+      expectedClaimedAt: Date
     }
   ): Promise<boolean> {
     const db = await getDb()
@@ -195,13 +193,11 @@ export const alertDeliveryRepository = {
         updatedAt: now,
       })
       .where(
-        options.expectedClaimedAt
-          ? and(
-              eq(alertDelivery.id, id),
-              eq(alertDelivery.status, 'claimed'),
-              eq(alertDelivery.claimedAt, options.expectedClaimedAt)
-            )
-          : eq(alertDelivery.id, id)
+        and(
+          eq(alertDelivery.id, id),
+          eq(alertDelivery.status, 'claimed'),
+          eq(alertDelivery.claimedAt, options.expectedClaimedAt)
+        )
       )
       .returning({ id: alertDelivery.id })
 

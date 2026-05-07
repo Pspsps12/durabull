@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useActiveOrganization } from '@/hooks/use-organization'
 import { api, handleRes, type InferResponseType } from '@/lib/api'
 
 type ConnectionAlertsEndpoint = (typeof api.c)[':connectionId']['alerts']
@@ -169,8 +170,10 @@ export const alertKeys = {
   summary: () => ['alerts', 'summary'] as const,
   globalEvents: (filters: AlertEventFilterOptions = {}) =>
     ['alerts', 'global-events', filters] as const,
-  linearIntegration: () => ['alerts', 'integrations', 'linear'] as const,
-  linearMetadata: () => ['alerts', 'integrations', 'linear', 'metadata'] as const,
+  linearIntegration: (organizationId?: string | null) =>
+    ['alerts', 'integrations', 'linear', organizationId ?? 'unknown'] as const,
+  linearMetadata: (organizationId?: string | null) =>
+    ['alerts', 'integrations', 'linear', organizationId ?? 'unknown', 'metadata'] as const,
   connectionRules: (connectionId: string) =>
     ['alerts', 'connection', connectionId, 'rules'] as const,
   connectionEvents: (connectionId: string, filters: AlertEventFilterOptions = {}) =>
@@ -521,8 +524,11 @@ function normalizeLinearIntegration(value: unknown): LinearIntegrationRecord | n
 }
 
 export function useLinearIntegration() {
+  const { data: activeOrganization } = useActiveOrganization()
+  const organizationId = activeOrganization?.id
+
   return useQuery({
-    queryKey: alertKeys.linearIntegration(),
+    queryKey: alertKeys.linearIntegration(organizationId),
     queryFn: async () => {
       const res = await api.alerts.integrations.linear.$get()
       const data = await handleRes<LinearIntegrationResponse>(res)
@@ -532,8 +538,11 @@ export function useLinearIntegration() {
 }
 
 export function useLinearMetadata(enabled: boolean) {
+  const { data: activeOrganization } = useActiveOrganization()
+  const organizationId = activeOrganization?.id
+
   return useQuery({
-    queryKey: alertKeys.linearMetadata(),
+    queryKey: alertKeys.linearMetadata(organizationId),
     queryFn: async () => {
       const res = await api.alerts.integrations.linear.metadata.$get()
       const data = await handleRes<LinearMetadataResponse>(res)
@@ -545,6 +554,8 @@ export function useLinearMetadata(enabled: boolean) {
 
 export function useConnectLinearIntegration() {
   const queryClient = useQueryClient()
+  const { data: activeOrganization } = useActiveOrganization()
+  const organizationId = activeOrganization?.id
 
   return useMutation({
     mutationFn: async () => {
@@ -552,13 +563,15 @@ export function useConnectLinearIntegration() {
       return handleRes<LinearConnectResponse>(res)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: alertKeys.linearIntegration() })
+      queryClient.invalidateQueries({ queryKey: alertKeys.linearIntegration(organizationId) })
     },
   })
 }
 
 export function useSaveLinearIntegration() {
   const queryClient = useQueryClient()
+  const { data: activeOrganization } = useActiveOrganization()
+  const organizationId = activeOrganization?.id
 
   return useMutation({
     mutationFn: async (input: {
@@ -574,8 +587,8 @@ export function useSaveLinearIntegration() {
       return { integration: normalizeLinearIntegration(data.integration) }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: alertKeys.linearIntegration() })
-      queryClient.invalidateQueries({ queryKey: alertKeys.linearMetadata() })
+      queryClient.invalidateQueries({ queryKey: alertKeys.linearIntegration(organizationId) })
+      queryClient.invalidateQueries({ queryKey: alertKeys.linearMetadata(organizationId) })
       queryClient.invalidateQueries({ queryKey: ['alerts', 'connection'] })
     },
   })
@@ -583,6 +596,8 @@ export function useSaveLinearIntegration() {
 
 export function useDeleteLinearIntegration() {
   const queryClient = useQueryClient()
+  const { data: activeOrganization } = useActiveOrganization()
+  const organizationId = activeOrganization?.id
 
   return useMutation({
     mutationFn: async () => {
@@ -590,8 +605,8 @@ export function useDeleteLinearIntegration() {
       return handleRes<{ success: boolean }>(res)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: alertKeys.linearIntegration() })
-      queryClient.invalidateQueries({ queryKey: alertKeys.linearMetadata() })
+      queryClient.invalidateQueries({ queryKey: alertKeys.linearIntegration(organizationId) })
+      queryClient.invalidateQueries({ queryKey: alertKeys.linearMetadata(organizationId) })
       queryClient.invalidateQueries({ queryKey: ['alerts', 'connection'] })
     },
   })
@@ -599,12 +614,15 @@ export function useDeleteLinearIntegration() {
 
 export function useTestLinearIntegration() {
   const queryClient = useQueryClient()
+  const { data: activeOrganization } = useActiveOrganization()
+  const organizationId = activeOrganization?.id
 
   return useMutation({
     mutationFn: async () => {
       const res = await api.alerts.integrations.linear.test.$post()
       return handleRes<{ ok: boolean; organizationName: string }>(res)
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: alertKeys.linearIntegration() }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: alertKeys.linearIntegration(organizationId) }),
   })
 }

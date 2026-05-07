@@ -70,7 +70,7 @@ export async function processAlertDeliveries(
       switch (delivery.channelType) {
         case 'email':
           await sendAlertEmail(delivery.target, event, connection, ruleName, organizationSlug)
-          await alertDeliveryRepository.markDelivered(delivery.id, {}, delivery.claimedAt)
+          await alertDeliveryRepository.markDelivered(delivery.id, {}, requireClaimedAt(delivery))
           break
         case 'linear':
           await sendLinearAlert(delivery, event, connection, ruleName, organizationSlug)
@@ -79,14 +79,14 @@ export async function processAlertDeliveries(
           await alertDeliveryRepository.markFailed(delivery.id, {
             error: `Unknown channel type: ${delivery.channelType}`,
             retryable: false,
-            expectedClaimedAt: delivery.claimedAt,
+            expectedClaimedAt: requireClaimedAt(delivery),
           })
       }
     } catch (error) {
       const retry = classifyDeliveryFailure(error, delivery.attemptCount + 1)
       await alertDeliveryRepository.markFailed(delivery.id, {
         ...retry,
-        expectedClaimedAt: delivery.claimedAt,
+        expectedClaimedAt: requireClaimedAt(delivery),
       })
     }
   }
@@ -279,7 +279,7 @@ async function markLinearDeliveryDelivered(
         issue,
       },
     },
-    delivery.claimedAt
+    requireClaimedAt(delivery)
   )
   if (!marked) {
     throw new LinearApiError('Alert delivery claim was lost before it could be completed.', {
@@ -287,6 +287,14 @@ async function markLinearDeliveryDelivered(
       retryable: false,
     })
   }
+}
+
+function requireClaimedAt(delivery: AlertDelivery): Date {
+  if (delivery.claimedAt instanceof Date) return delivery.claimedAt
+  throw new LinearApiError('Alert delivery was not claimed before finalization.', {
+    status: 409,
+    retryable: false,
+  })
 }
 
 function parseLinearChannel(value: unknown): Extract<NotificationChannel, { type: 'linear' }> {
@@ -333,10 +341,12 @@ function buildLinearIssueTitle(
   jobName: string | null
 ): string {
   if (event.type === 'job_failed') {
-    return `[Durabull] ${connection.name}/${event.queueName} job failed${jobName ? `: ${jobName}` : ''}`
+    return `[Durabull] ${connection.name}/${event.queueName} job failed${
+      jobName ? `: ${safeLinearMarkdown(jobName, 200)}` : ''
+    }`
   }
 
-  return `[Durabull] ${ruleName} fired for ${connection.name}/${event.queueName}`
+  return `[Durabull] ${safeLinearMarkdown(ruleName, 200)} fired for ${connection.name}/${event.queueName}`
 }
 
 function buildLinearIssueDescription({
@@ -353,17 +363,19 @@ function buildLinearIssueDescription({
   jobContext: ReturnType<typeof getJobContext>
 }): string {
   const lines = [
-    `Durabull alert rule **${ruleName}** fired.`,
+    `Durabull alert rule **${safeLinearMarkdown(ruleName, 200)}** fired.`,
     '',
     `- Connection: ${connection.name}`,
     `- Queue: ${event.queueName}`,
-    `- Summary: ${event.summary}`,
+    `- Summary: ${safeLinearMarkdown(event.summary)}`,
     `- Fired at: ${event.firedAt.toISOString()}`,
   ]
 
   if (jobContext.jobId) lines.push(`- Job ID: ${jobContext.jobId}`)
-  if (jobContext.jobName) lines.push(`- Job name: ${jobContext.jobName}`)
-  if (jobContext.failedReason) lines.push(`- Failure reason: ${jobContext.failedReason}`)
+  if (jobContext.jobName) lines.push(`- Job name: ${safeLinearMarkdown(jobContext.jobName, 200)}`)
+  if (jobContext.failedReason) {
+    lines.push(`- Failure reason: ${safeLinearMarkdown(jobContext.failedReason)}`)
+  }
   if (jobContext.attemptsMade !== null) {
     lines.push(`- Attempts made: ${jobContext.attemptsMade}`)
   }
@@ -372,6 +384,15 @@ function buildLinearIssueDescription({
   lines.push('', `[Open in Durabull](${jobUrl})`)
 
   return lines.join('\n')
+}
+
+function safeLinearMarkdown(value: string, maxLength = 1000): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  const truncated =
+    normalized.length > maxLength
+      ? `${normalized.slice(0, Math.max(0, maxLength - 1))}...`
+      : normalized
+  return truncated.replace(/([\\`*_{}[\]()#+\-.!>])/g, '\\$1')
 }
 
 function classifyDeliveryFailure(

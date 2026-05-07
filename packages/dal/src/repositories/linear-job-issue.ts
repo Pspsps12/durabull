@@ -1,7 +1,8 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { getDb } from '../db/client'
 import { linearJobIssue } from '../db/schemas/linear-job-issue/schema'
 import type { LinearJobIssue } from '../db/schemas/linear-job-issue/types'
+import { linearJobIssueEvent } from '../db/schemas/linear-job-issue-event/schema'
 
 export interface CreateLinearJobIssueInput {
   organizationId: string
@@ -37,6 +38,16 @@ async function findLinearJobIssueByJob(input: {
   return rows[0] ?? null
 }
 
+async function linkIssueToEvent(linearJobIssueId: string, alertEventId: string): Promise<void> {
+  const db = await getDb()
+  await db
+    .insert(linearJobIssueEvent)
+    .values({ linearJobIssueId, alertEventId })
+    .onConflictDoNothing({
+      target: [linearJobIssueEvent.linearJobIssueId, linearJobIssueEvent.alertEventId],
+    })
+}
+
 export const linearJobIssueRepository = {
   async findByJob(input: {
     organizationId: string
@@ -62,7 +73,10 @@ export const linearJobIssueRepository = {
       })
       .returning()
 
-    if (inserted) return inserted
+    if (inserted) {
+      await linkIssueToEvent(inserted.id, input.alertEventId)
+      return inserted
+    }
 
     const existing = await findLinearJobIssueByJob(input)
 
@@ -70,11 +84,27 @@ export const linearJobIssueRepository = {
       throw new Error('Linear job issue dedupe conflict could not be resolved.')
     }
 
+    await linkIssueToEvent(existing.id, input.alertEventId)
     return existing
   },
 
   async findByEvent(alertEventId: string): Promise<LinearJobIssue[]> {
     const db = await getDb()
-    return db.select().from(linearJobIssue).where(eq(linearJobIssue.alertEventId, alertEventId))
+    const links = await db
+      .select({ linearJobIssueId: linearJobIssueEvent.linearJobIssueId })
+      .from(linearJobIssueEvent)
+      .where(eq(linearJobIssueEvent.alertEventId, alertEventId))
+
+    if (links.length === 0) return []
+
+    return db
+      .select()
+      .from(linearJobIssue)
+      .where(
+        inArray(
+          linearJobIssue.id,
+          links.map((link) => link.linearJobIssueId)
+        )
+      )
   },
 }

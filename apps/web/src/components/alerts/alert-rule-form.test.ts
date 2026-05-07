@@ -301,6 +301,35 @@ describe('alert rule form helpers', () => {
     ])
   })
 
+  it('trims blank Linear overrides before serialization', () => {
+    const payload = serializeAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Create Linear issues',
+      queueFilterMode: 'exclude',
+      type: 'job_failed',
+      notificationRoutes: [
+        {
+          ...createLinearNotificationRouteDraft(),
+          teamId: '   ',
+          projectId: ' project-1 ',
+          labelIds: [' label-1 ', '  '],
+          assigneeId: ' user-1 ',
+          stateId: '',
+        },
+      ],
+    })
+
+    expect(payload.notificationChannels).toEqual([
+      {
+        type: 'linear',
+        target: 'org-default',
+        projectId: 'project-1',
+        labelIds: ['label-1'],
+        assigneeId: 'user-1',
+      },
+    ])
+  })
+
   it('rejects non-whole Linear priority values', () => {
     const error = validateAlertRuleDraft({
       ...createAlertRuleDraft(),

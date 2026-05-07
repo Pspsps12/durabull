@@ -226,6 +226,15 @@ export function validateAlertRuleDraft(draft: AlertRuleDraft): string | null {
   }
 }
 
+function trimOrUndefined(value?: string): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : undefined
+}
+
+function trimStringArray(values?: string[]): string[] {
+  return values?.map((value) => value.trim()).filter(Boolean) ?? []
+}
+
 export function serializeAlertRuleDraft(draft: AlertRuleDraft): AlertRuleMutationInput {
   const type = draft.type
   const baseName = draft.name.trim()
@@ -243,11 +252,17 @@ export function serializeAlertRuleDraft(draft: AlertRuleDraft): AlertRuleMutatio
       .map((route) => ({
         type: 'linear' as const,
         target: 'org-default' as const,
-        ...(route.teamId ? { teamId: route.teamId } : {}),
-        ...(route.projectId ? { projectId: route.projectId } : {}),
-        ...(route.labelIds?.length ? { labelIds: route.labelIds } : {}),
-        ...(route.assigneeId ? { assigneeId: route.assigneeId } : {}),
-        ...(route.stateId ? { stateId: route.stateId } : {}),
+        ...(trimOrUndefined(route.teamId) ? { teamId: trimOrUndefined(route.teamId) } : {}),
+        ...(trimOrUndefined(route.projectId)
+          ? { projectId: trimOrUndefined(route.projectId) }
+          : {}),
+        ...(trimStringArray(route.labelIds).length
+          ? { labelIds: trimStringArray(route.labelIds) }
+          : {}),
+        ...(trimOrUndefined(route.assigneeId)
+          ? { assigneeId: trimOrUndefined(route.assigneeId) }
+          : {}),
+        ...(trimOrUndefined(route.stateId) ? { stateId: trimOrUndefined(route.stateId) } : {}),
         ...(route.priority?.trim()
           ? { priority: parseWholeNumber(route.priority) ?? undefined }
           : {}),

@@ -359,9 +359,9 @@ describe('alerts routes', () => {
       '/events?status=firing&queueName=email-send&jobId=job-1'
     )
     expect(filteredResponse.status).toBe(200)
-    expect(await filteredResponse.json()).toMatchObject({
-      events: [expect.objectContaining({ id: event.id, status: 'firing' })],
-    })
+    const filteredBody = (await filteredResponse.json()) as { events: unknown[] }
+    expect(filteredBody.events).toHaveLength(1)
+    expect(filteredBody.events[0]).toMatchObject({ id: event.id, status: 'firing' })
 
     const resolveResponse = await app.request(`/events/${event.id}/resolve`, { method: 'POST' })
     expect(resolveResponse.status).toBe(200)

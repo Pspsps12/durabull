@@ -1,16 +1,16 @@
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { env } from '@durabull/env'
 import { eq } from 'drizzle-orm'
 import { closeDb, getDb } from '../db/client'
 import { alertDelivery } from '../db/schemas/alert-delivery/schema'
 import { organization } from '../db/schemas/organization/schema'
+import { alertDeliveryRepository } from './alert-delivery'
 import { alertEventRepository } from './alert-event'
 import { alertRuleRepository } from './alert-rule'
 import { redisConnectionRepository } from './redis-connection'
-import { alertDeliveryRepository } from './alert-delivery'
 
 const TEST_ORG_ID = 'alert-delivery-org'
 const TEST_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
@@ -122,7 +122,7 @@ describe('alertDeliveryRepository', () => {
     expect(firstClaim[0]?.status).toBe('claimed')
     expect(firstClaim[0]?.claimedAt).toBeInstanceOf(Date)
 
-    await alertDeliveryRepository.markDelivered(firstClaim[0]!.id)
+    await alertDeliveryRepository.markDelivered(firstClaim[0]!.id, {}, firstClaim[0]!.claimedAt!)
 
     const secondClaim = await alertDeliveryRepository.claimDueForEvent(event.id)
     expect(secondClaim).toHaveLength(1)
@@ -134,7 +134,7 @@ describe('alertDeliveryRepository', () => {
 
   it('does not reclaim non-retryable failed deliveries', async () => {
     const event = await seedAlertEvent()
-    const [delivery] = await alertDeliveryRepository.enqueueMany([
+    await alertDeliveryRepository.enqueueMany([
       {
         alertEventId: event.id,
         organizationId: TEST_ORG_ID,
@@ -143,10 +143,12 @@ describe('alertDeliveryRepository', () => {
       },
     ])
 
+    const [delivery] = await alertDeliveryRepository.claimDueForEvent(event.id)
     expect(delivery).toBeDefined()
     await alertDeliveryRepository.markFailed(delivery!.id, {
       error: 'Manual reconciliation required',
       retryable: false,
+      expectedClaimedAt: delivery!.claimedAt!,
     })
 
     const claimed = await alertDeliveryRepository.claimDueForEvent(event.id)
@@ -174,14 +176,14 @@ describe('alertDeliveryRepository', () => {
       .set({ status: 'claimed', claimedAt: stolenClaimedAt })
       .where(eq(alertDelivery.id, claim!.id))
 
-    expect(await alertDeliveryRepository.markDelivered(claim!.id, {}, claim!.claimedAt)).toBe(
+    expect(await alertDeliveryRepository.markDelivered(claim!.id, {}, claim!.claimedAt!)).toBe(
       false
     )
     expect(
       await alertDeliveryRepository.markFailed(claim!.id, {
         error: 'stale worker failed',
         retryable: true,
-        expectedClaimedAt: claim!.claimedAt,
+        expectedClaimedAt: claim!.claimedAt!,
       })
     ).toBe(false)
 

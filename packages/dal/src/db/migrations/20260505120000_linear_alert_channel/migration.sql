@@ -98,3 +98,21 @@ CREATE INDEX "linear_job_issue_alert_event_id_idx" ON "linear_job_issue" ("alert
 --> statement-breakpoint
 CREATE UNIQUE INDEX "linear_job_issue_job_unique_idx"
   ON "linear_job_issue" ("organization_id", "connection_id", "queue_name", "job_id");
+--> statement-breakpoint
+CREATE TABLE "linear_job_issue_event" (
+  "id" uuid PRIMARY KEY NOT NULL,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+  "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+  "linear_job_issue_id" uuid NOT NULL,
+  "alert_event_id" uuid NOT NULL,
+  CONSTRAINT "linear_job_issue_event_linear_job_issue_id_fk"
+    FOREIGN KEY ("linear_job_issue_id") REFERENCES "linear_job_issue"("id") ON DELETE cascade,
+  CONSTRAINT "linear_job_issue_event_alert_event_id_fk"
+    FOREIGN KEY ("alert_event_id") REFERENCES "alert_event"("id") ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX "linear_job_issue_event_alert_event_id_idx"
+  ON "linear_job_issue_event" ("alert_event_id");
+--> statement-breakpoint
+CREATE UNIQUE INDEX "linear_job_issue_event_unique_idx"
+  ON "linear_job_issue_event" ("linear_job_issue_id", "alert_event_id");

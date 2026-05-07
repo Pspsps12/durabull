@@ -5,10 +5,10 @@ export { alertCheckCursor } from './alert-check-cursor/schema'
 export type { AlertCheckCursor, NewAlertCheckCursor } from './alert-check-cursor/types'
 // Alert Delivery schema exports
 export {
-  alertDelivery,
   type AlertDeliveryChannelType,
-  alertDeliveryChannelTypes,
   type AlertDeliveryStatus,
+  alertDelivery,
+  alertDeliveryChannelTypes,
   alertDeliveryStatuses,
 } from './alert-delivery/schema'
 export type { AlertDelivery, NewAlertDelivery } from './alert-delivery/types'
@@ -28,6 +28,25 @@ export type {
   NewAuthSession,
   NewAuthVerification,
 } from './auth/types'
+// Linear integration schema exports
+export {
+  type LinearIntegrationValidationStatus,
+  linearIntegration,
+  linearIntegrationValidationStatuses,
+} from './linear-integration/schema'
+export type {
+  LinearIntegration,
+  NewLinearIntegration,
+} from './linear-integration/types'
+export { linearJobIssue } from './linear-job-issue/schema'
+export type { LinearJobIssue, NewLinearJobIssue } from './linear-job-issue/types'
+export { linearJobIssueEvent } from './linear-job-issue-event/schema'
+export type {
+  LinearJobIssueEvent,
+  NewLinearJobIssueEvent,
+} from './linear-job-issue-event/types'
+export { linearOauthState } from './linear-oauth-state/schema'
+export type { LinearOauthState, NewLinearOauthState } from './linear-oauth-state/types'
 // Organization schema exports
 export { invitation, member, organization } from './organization/schema'
 export type {
@@ -54,20 +73,6 @@ export type {
   NewRedisDiscoveredQueue,
   RedisDiscoveredQueue,
 } from './redis-discovered-queue/types'
-// Linear integration schema exports
-export {
-  type LinearIntegrationValidationStatus,
-  linearIntegration,
-  linearIntegrationValidationStatuses,
-} from './linear-integration/schema'
-export type {
-  LinearIntegration,
-  NewLinearIntegration,
-} from './linear-integration/types'
-export { linearOauthState } from './linear-oauth-state/schema'
-export type { LinearOauthState, NewLinearOauthState } from './linear-oauth-state/types'
-export { linearJobIssue } from './linear-job-issue/schema'
-export type { LinearJobIssue, NewLinearJobIssue } from './linear-job-issue/types'
 // Relations v2 - single consolidated relations object
 export { relations } from './relations'
 // Telemetry installation schema exports
