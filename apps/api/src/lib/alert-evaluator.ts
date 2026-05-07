@@ -223,7 +223,12 @@ export function evaluateRule(
       return evaluateQueueStalled(parsed.data, snapshot, cursor)
     }
     case 'job_failed':
-      return { triggered: false, summary: '', context: {} }
+      return {
+        triggered: false,
+        summary:
+          'job_failed rules are evaluated by the failed-job scan and are not supported by this live test yet.',
+        context: { unsupportedLiveTest: true },
+      }
     default:
       return { triggered: false, summary: `Unknown rule type: ${rule.type}`, context: {} }
   }

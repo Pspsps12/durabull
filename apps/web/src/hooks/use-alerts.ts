@@ -160,6 +160,8 @@ export interface AlertEventFilterOptions {
   status?: AlertEventStatus
   limit?: number
   offset?: number
+  queueName?: string
+  jobId?: string
 }
 
 export const alertKeys = {
@@ -381,6 +383,8 @@ export function useConnectionAlertEvents(
     limit: filters.limit ?? 100,
     offset: filters.offset ?? 0,
     status: filters.status,
+    queueName: filters.queueName,
+    jobId: filters.jobId,
   } satisfies AlertEventFilterOptions
 
   return useQuery({
@@ -392,6 +396,8 @@ export function useConnectionAlertEvents(
           limit: String(normalizedFilters.limit),
           offset: String(normalizedFilters.offset),
           ...(normalizedFilters.status ? { status: normalizedFilters.status } : {}),
+          ...(normalizedFilters.queueName ? { queueName: normalizedFilters.queueName } : {}),
+          ...(normalizedFilters.jobId ? { jobId: normalizedFilters.jobId } : {}),
         },
       })
       const data = await handleRes<ConnectionAlertEventsResponse>(res)

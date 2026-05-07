@@ -172,9 +172,11 @@ export function validateAlertRuleDraft(draft: AlertRuleDraft): string | null {
   }
 
   for (const route of draft.notificationRoutes.filter((item) => item.type === 'linear')) {
-    const priority = route.priority?.trim() ? parseWholeNumber(route.priority) : null
-    if (priority !== null && (priority < 0 || priority > 4)) {
-      return 'Linear priority must be between 0 and 4.'
+    if (route.priority?.trim()) {
+      const priority = parseWholeNumber(route.priority)
+      if (priority === null || priority < 0 || priority > 4) {
+        return 'Linear priority must be a whole number between 0 and 4.'
+      }
     }
   }
 
@@ -246,7 +248,9 @@ export function serializeAlertRuleDraft(draft: AlertRuleDraft): AlertRuleMutatio
         ...(route.labelIds?.length ? { labelIds: route.labelIds } : {}),
         ...(route.assigneeId ? { assigneeId: route.assigneeId } : {}),
         ...(route.stateId ? { stateId: route.stateId } : {}),
-        ...(route.priority?.trim() ? { priority: Number(route.priority) } : {}),
+        ...(route.priority?.trim()
+          ? { priority: parseWholeNumber(route.priority) ?? undefined }
+          : {}),
       })),
   ]
   const config = buildAlertRuleConfig(type, draft)

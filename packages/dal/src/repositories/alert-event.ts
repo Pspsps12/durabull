@@ -1,7 +1,7 @@
 import { uuidv7 } from '@durabull/utils/uuid'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { getDb } from '../db/client'
-import { alertEvent, type AlertEventStatus } from '../db/schemas/alert-event/schema'
+import { type AlertEventStatus, alertEvent } from '../db/schemas/alert-event/schema'
 import type { AlertEvent, NewAlertEvent } from '../db/schemas/alert-event/types'
 
 function toNumber(value: number | string | bigint | null | undefined): number {
@@ -94,7 +94,13 @@ export const alertEventRepository = {
   async findByConnection(
     connectionId: string,
     organizationId: string,
-    options: { offset: number; limit: number; status?: AlertEventStatus }
+    options: {
+      offset: number
+      limit: number
+      status?: AlertEventStatus
+      queueName?: string
+      jobId?: string
+    }
   ): Promise<AlertEvent[]> {
     const db = await getDb()
     return db
@@ -104,7 +110,9 @@ export const alertEventRepository = {
         and(
           eq(alertEvent.connectionId, connectionId),
           eq(alertEvent.organizationId, organizationId),
-          ...(options.status ? [eq(alertEvent.status, options.status)] : [])
+          ...(options.status ? [eq(alertEvent.status, options.status)] : []),
+          ...(options.queueName ? [eq(alertEvent.queueName, options.queueName)] : []),
+          ...(options.jobId ? [sql`${alertEvent.context}->>'jobId' = ${options.jobId}`] : [])
         )
       )
       .orderBy(desc(alertEvent.firedAt))

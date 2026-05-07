@@ -1,18 +1,25 @@
 import {
+  type AlertDelivery,
+  type AlertEvent,
   alertDeliveryRepository,
   eq,
   getDb,
   linearIntegrationRepository,
   linearJobIssueRepository,
   organization,
-  type AlertDelivery,
-  type AlertEvent,
   type RedisConnection,
 } from '@durabull/dal'
 import { isEmailConfigured } from '@durabull/email'
 import { env } from '@durabull/env'
 import { createLinearIssue, LinearApiError } from './linear-client'
 import { getValidLinearAccessToken } from './linear-oauth'
+
+class NonRetryableDeliveryError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'NonRetryableDeliveryError'
+  }
+}
 
 export type NotificationChannel =
   | {
@@ -63,7 +70,7 @@ export async function processAlertDeliveries(
       switch (delivery.channelType) {
         case 'email':
           await sendAlertEmail(delivery.target, event, connection, ruleName, organizationSlug)
-          await alertDeliveryRepository.markDelivered(delivery.id)
+          await alertDeliveryRepository.markDelivered(delivery.id, {}, delivery.claimedAt)
           break
         case 'linear':
           await sendLinearAlert(delivery, event, connection, ruleName, organizationSlug)
@@ -72,11 +79,15 @@ export async function processAlertDeliveries(
           await alertDeliveryRepository.markFailed(delivery.id, {
             error: `Unknown channel type: ${delivery.channelType}`,
             retryable: false,
+            expectedClaimedAt: delivery.claimedAt,
           })
       }
     } catch (error) {
       const retry = classifyDeliveryFailure(error, delivery.attemptCount + 1)
-      await alertDeliveryRepository.markFailed(delivery.id, retry)
+      await alertDeliveryRepository.markFailed(delivery.id, {
+        ...retry,
+        expectedClaimedAt: delivery.claimedAt,
+      })
     }
   }
 }
@@ -102,8 +113,9 @@ async function sendAlertEmail(
   organizationSlug: string | null
 ): Promise<void> {
   if (!isEmailConfigured()) {
-    console.warn('[alert-notifier] RESEND_API_KEY not configured, skipping email')
-    return
+    throw new NonRetryableDeliveryError(
+      'Email delivery is not configured because RESEND_API_KEY is missing.'
+    )
   }
 
   const { sendAlertNotificationEmail } = await import('@durabull/email')
@@ -162,8 +174,26 @@ async function sendLinearAlert(
     jobId: jobContext.jobId,
   })
 
+  const existingIssue = jobContext.jobId
+    ? await linearJobIssueRepository.findByJob({
+        organizationId: event.organizationId,
+        connectionId: event.connectionId,
+        queueName: event.queueName,
+        jobId: jobContext.jobId,
+      })
+    : null
+
+  if (existingIssue) {
+    await markLinearDeliveryDelivered(delivery, {
+      id: existingIssue.linearIssueId,
+      identifier: existingIssue.linearIssueIdentifier,
+      url: existingIssue.linearIssueUrl,
+    })
+    return
+  }
+
   const accessToken = await getValidLinearAccessToken(integration)
-  const issue = await createLinearIssue(accessToken, {
+  const issue = await createLinearIssueOnce(accessToken, {
     teamId,
     title: buildLinearIssueTitle(event, connection, ruleName, jobContext.jobName),
     description: buildLinearIssueDescription({
@@ -180,26 +210,81 @@ async function sendLinearAlert(
     priority: channel.priority ?? integration.defaultPriority,
   })
 
-  await alertDeliveryRepository.markDelivered(delivery.id, {
-    externalId: issue.id,
-    externalIdentifier: issue.identifier,
-    externalUrl: issue.url,
-    providerMetadata: {
-      ...((delivery.providerMetadata ?? {}) as Record<string, unknown>),
-      issue,
-    },
-  })
+  try {
+    const deliveredIssue = jobContext.jobId
+      ? linearJobIssueToDeliveryIssue(
+          await linearJobIssueRepository.createOrGet({
+            organizationId: event.organizationId,
+            connectionId: event.connectionId,
+            queueName: event.queueName,
+            jobId: jobContext.jobId,
+            alertEventId: event.id,
+            linearIssueId: issue.id,
+            linearIssueIdentifier: issue.identifier,
+            linearIssueUrl: issue.url,
+          })
+        )
+      : issue
 
-  if (jobContext.jobId) {
-    await linearJobIssueRepository.createOrGet({
-      organizationId: event.organizationId,
-      connectionId: event.connectionId,
-      queueName: event.queueName,
-      jobId: jobContext.jobId,
-      alertEventId: event.id,
-      linearIssueId: issue.id,
-      linearIssueIdentifier: issue.identifier,
-      linearIssueUrl: issue.url,
+    await markLinearDeliveryDelivered(delivery, deliveredIssue)
+  } catch {
+    throw new LinearApiError(
+      `Linear issue ${issue.identifier} was created, but Durabull could not record the delivery. Manual reconciliation is required before retrying.`,
+      { status: 500, retryable: false }
+    )
+  }
+}
+
+async function createLinearIssueOnce(
+  accessToken: string,
+  input: Parameters<typeof createLinearIssue>[1]
+): ReturnType<typeof createLinearIssue> {
+  try {
+    return await createLinearIssue(accessToken, input)
+  } catch (error) {
+    if (error instanceof LinearApiError && error.retryable && error.status !== 429) {
+      throw new LinearApiError(
+        'Linear issue creation returned an ambiguous failure. Manual reconciliation is required before retrying to avoid duplicate issues.',
+        { status: error.status, retryable: false }
+      )
+    }
+    throw error
+  }
+}
+
+function linearJobIssueToDeliveryIssue(issue: {
+  linearIssueId: string
+  linearIssueIdentifier: string
+  linearIssueUrl: string
+}): { id: string; identifier: string; url: string } {
+  return {
+    id: issue.linearIssueId,
+    identifier: issue.linearIssueIdentifier,
+    url: issue.linearIssueUrl,
+  }
+}
+
+async function markLinearDeliveryDelivered(
+  delivery: AlertDelivery,
+  issue: { id: string; identifier: string; url: string }
+): Promise<void> {
+  const marked = await alertDeliveryRepository.markDelivered(
+    delivery.id,
+    {
+      externalId: issue.id,
+      externalIdentifier: issue.identifier,
+      externalUrl: issue.url,
+      providerMetadata: {
+        ...((delivery.providerMetadata ?? {}) as Record<string, unknown>),
+        issue,
+      },
+    },
+    delivery.claimedAt
+  )
+  if (!marked) {
+    throw new LinearApiError('Alert delivery claim was lost before it could be completed.', {
+      status: 409,
+      retryable: false,
     })
   }
 }
@@ -294,7 +379,10 @@ function classifyDeliveryFailure(
   attemptCount: number
 ): { error: string; retryable: boolean; nextRetryAt?: Date | null } {
   const message = error instanceof Error ? error.message : String(error)
-  const retryable = error instanceof LinearApiError ? error.retryable : true
+  const retryable =
+    error instanceof LinearApiError
+      ? error.retryable
+      : !(error instanceof NonRetryableDeliveryError)
   if (!retryable) return { error: message, retryable: false }
 
   const resetAt = error instanceof LinearApiError ? error.rateLimitResetAt : null

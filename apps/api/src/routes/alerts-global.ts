@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import {
   alertDeliveryRepository,
   alertEventRepository,
@@ -7,8 +8,7 @@ import {
 } from '@durabull/dal'
 import { env } from '@durabull/env'
 import { zValidator } from '@hono/zod-validator'
-import { randomBytes } from 'node:crypto'
-import { Hono, type Context } from 'hono'
+import { type Context, Hono } from 'hono'
 import { z } from 'zod'
 import {
   exchangeLinearOauthCode,
@@ -257,9 +257,14 @@ const app = new Hono()
       await linearIntegrationRepository.markValidationStatus(organizationId, 'valid')
       return c.json({ ok: true, organizationName: result.organizationName })
     } catch (error) {
-      await linearIntegrationRepository.markValidationStatus(organizationId, 'invalid')
       if (error instanceof LinearApiError) {
-        return c.json({ error: error.message }, error.status === 401 ? 401 : 400)
+        if (!error.retryable) {
+          await linearIntegrationRepository.markValidationStatus(organizationId, 'invalid')
+        }
+        return c.json(
+          { error: error.message },
+          error.retryable ? 503 : error.status === 401 ? 401 : 400
+        )
       }
       throw error
     }

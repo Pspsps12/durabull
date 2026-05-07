@@ -1,7 +1,7 @@
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
   alertCheckCursorRepository,
   alertEventRepository,
@@ -132,6 +132,31 @@ describe('alerts routes', () => {
     expect(response.status).toBe(400)
     expect(await response.json()).toMatchObject({
       error: expect.stringContaining('Invalid config'),
+    })
+  })
+
+  it('rejects multiple Linear notification channels', async () => {
+    const app = await createAlertsRouteApp()
+
+    const response = await app.request(
+      '/rules',
+      jsonRequest({
+        name: 'Too many Linear routes',
+        type: 'job_failed',
+        queueName: 'email-send',
+        config: { maxIssuesPerPoll: 10 },
+        notificationChannels: [
+          { type: 'linear', target: 'org-default', teamId: 'team-1' },
+          { type: 'linear', target: 'org-default', teamId: 'team-2' },
+        ],
+        cooldownMinutes: 30,
+        enabled: true,
+      })
+    )
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({
+      error: 'Only one Linear notification channel is supported per rule.',
     })
   })
 
@@ -303,7 +328,19 @@ describe('alerts routes', () => {
       type: rule.type,
       status: 'firing',
       summary: 'Needs action',
-      context: {},
+      context: { jobId: 'job-1' },
+      firedAt: new Date(),
+    })
+
+    await alertEventRepository.create({
+      alertRuleId: rule.id,
+      organizationId: TEST_ORG_ID,
+      connectionId: TEST_CONNECTION_ID,
+      queueName: 'email-send',
+      type: rule.type,
+      status: 'firing',
+      summary: 'Different job',
+      context: { jobId: 'job-2' },
       firedAt: new Date(),
     })
 
@@ -312,6 +349,17 @@ describe('alerts routes', () => {
     const listResponse = await app.request('/events?status=firing')
     expect(listResponse.status).toBe(200)
     expect(await listResponse.json()).toMatchObject({
+      events: [
+        expect.objectContaining({ status: 'firing' }),
+        expect.objectContaining({ status: 'firing' }),
+      ],
+    })
+
+    const filteredResponse = await app.request(
+      '/events?status=firing&queueName=email-send&jobId=job-1'
+    )
+    expect(filteredResponse.status).toBe(200)
+    expect(await filteredResponse.json()).toMatchObject({
       events: [expect.objectContaining({ id: event.id, status: 'firing' })],
     })
 

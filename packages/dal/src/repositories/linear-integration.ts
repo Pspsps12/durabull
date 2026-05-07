@@ -111,19 +111,21 @@ export const linearIntegrationRepository = {
     }
   ): Promise<LinearIntegration | null> {
     const db = await getDb()
+    const update: Partial<LinearIntegration> = { updatedAt: new Date() }
+    if ('defaultTeamId' in defaults) update.defaultTeamId = defaults.defaultTeamId ?? null
+    if ('defaultProjectId' in defaults) update.defaultProjectId = defaults.defaultProjectId ?? null
+    if ('defaultLabelIds' in defaults) update.defaultLabelIds = defaults.defaultLabelIds ?? []
+    if ('defaultAssigneeId' in defaults)
+      update.defaultAssigneeId = defaults.defaultAssigneeId ?? null
+    if ('defaultStateId' in defaults) update.defaultStateId = defaults.defaultStateId ?? null
+    if ('defaultPriority' in defaults) update.defaultPriority = defaults.defaultPriority ?? null
+    if ('validationStatus' in defaults)
+      update.validationStatus = defaults.validationStatus ?? 'unknown'
+    if ('lastValidatedAt' in defaults) update.lastValidatedAt = defaults.lastValidatedAt ?? null
+
     const [row] = await db
       .update(linearIntegration)
-      .set({
-        defaultTeamId: defaults.defaultTeamId ?? null,
-        defaultProjectId: defaults.defaultProjectId ?? null,
-        defaultLabelIds: defaults.defaultLabelIds ?? [],
-        defaultAssigneeId: defaults.defaultAssigneeId ?? null,
-        defaultStateId: defaults.defaultStateId ?? null,
-        defaultPriority: defaults.defaultPriority ?? null,
-        validationStatus: defaults.validationStatus ?? 'unknown',
-        lastValidatedAt: defaults.lastValidatedAt ?? null,
-        updatedAt: new Date(),
-      })
+      .set(update)
       .where(eq(linearIntegration.organizationId, organizationId))
       .returning()
 

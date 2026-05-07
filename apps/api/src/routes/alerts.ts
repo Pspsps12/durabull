@@ -9,7 +9,7 @@ import {
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { evaluateRule, type CursorState, type QueueSnapshot } from '../lib/alert-evaluator'
+import { type CursorState, evaluateRule, type QueueSnapshot } from '../lib/alert-evaluator'
 import { getQueue } from '../lib/redis'
 
 const alertTypeSchema = z.enum(['failure_threshold', 'failure_rate', 'queue_stalled', 'job_failed'])
@@ -238,10 +238,12 @@ const app = new Hono()
         offset: z.coerce.number().int().min(0).default(0),
         limit: z.coerce.number().int().min(1).max(100).default(20),
         status: alertEventStatusSchema.optional(),
+        queueName: z.string().min(1).optional(),
+        jobId: z.string().min(1).optional(),
       })
     ),
     async (c) => {
-      const { offset, limit, status } = c.req.valid('query')
+      const { offset, limit, status, queueName, jobId } = c.req.valid('query')
       const connectionId = c.get('connectionId')
       const organizationId = c.get('organizationId')
       if (!organizationId) {
@@ -252,6 +254,8 @@ const app = new Hono()
         offset,
         limit,
         status,
+        queueName,
+        jobId,
       })
       return c.json({ events: await attachDeliveries(events) })
     }
@@ -322,15 +326,19 @@ async function validateNotificationChannels(
   channels: z.infer<typeof notificationChannelSchema>[],
   organizationId: string
 ): Promise<string | null> {
-  if (!channels.some((channel) => channel.type === 'linear')) return null
+  const linearChannels = channels.filter((channel) => channel.type === 'linear')
+  if (linearChannels.length > 1) {
+    return 'Only one Linear notification channel is supported per rule.'
+  }
+  if (linearChannels.length === 0) return null
 
   const integration = await linearIntegrationRepository.findByOrganization(organizationId)
   if (!integration || integration.validationStatus !== 'valid') {
     return 'Linear integration must be configured and valid before Linear alert routing can be enabled.'
   }
 
-  const missingTeam = channels.some(
-    (channel) => channel.type === 'linear' && !channel.teamId && !integration.defaultTeamId
+  const missingTeam = linearChannels.some(
+    (channel) => !channel.teamId && !integration.defaultTeamId
   )
   return missingTeam ? 'Linear alert routing requires a teamId or organization default team.' : null
 }

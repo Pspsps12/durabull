@@ -16,6 +16,23 @@ describe('buildAlertAppUrls', () => {
     expect(urls.muteUrl).toBe('https://app.durabull.io/acme-inc/c/conn_123/alerts?ruleId=rule_456')
   })
 
+  it('builds job-specific urls when a job id is supplied', () => {
+    const urls = buildAlertAppUrls({
+      appBaseUrl: 'https://app.durabull.io/',
+      organizationSlug: 'acme-inc',
+      connectionId: 'conn_123',
+      queueName: 'email-send',
+      alertRuleId: 'rule_456',
+      jobId: 'job_789',
+    })
+
+    expect(urls.dashboardUrl).toBe('https://app.durabull.io/acme-inc/c/conn_123/queues/email-send')
+    expect(urls.jobUrl).toBe(
+      'https://app.durabull.io/acme-inc/c/conn_123/queues/email-send/jobs/job_789'
+    )
+    expect(urls.jobUrl).not.toBe(urls.dashboardUrl)
+  })
+
   it('falls back to the app root if the organization slug is unavailable', () => {
     const urls = buildAlertAppUrls({
       appBaseUrl: 'https://app.durabull.io',

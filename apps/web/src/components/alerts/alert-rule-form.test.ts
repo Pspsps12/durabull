@@ -282,6 +282,42 @@ describe('alert rule form helpers', () => {
     })
   })
 
+  it('serializes Linear priority zero as an explicit value', () => {
+    const payload = serializeAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Create Linear issues',
+      queueFilterMode: 'exclude',
+      type: 'job_failed',
+      notificationRoutes: [
+        {
+          ...createLinearNotificationRouteDraft(),
+          priority: '0',
+        },
+      ],
+    })
+
+    expect(payload.notificationChannels).toEqual([
+      { type: 'linear', target: 'org-default', priority: 0 },
+    ])
+  })
+
+  it('rejects non-whole Linear priority values', () => {
+    const error = validateAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Create Linear issues',
+      queueFilterMode: 'exclude',
+      type: 'job_failed',
+      notificationRoutes: [
+        {
+          ...createLinearNotificationRouteDraft(),
+          priority: '1.5',
+        },
+      ],
+    })
+
+    expect(error).toBe('Linear priority must be a whole number between 0 and 4.')
+  })
+
   it('rejects out-of-range job failed poll caps', () => {
     const error = validateAlertRuleDraft({
       ...createAlertRuleDraft(),

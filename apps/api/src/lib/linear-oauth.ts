@@ -1,4 +1,4 @@
-import { decryptSecret, linearIntegrationRepository, type LinearIntegration } from '@durabull/dal'
+import { decryptSecret, type LinearIntegration, linearIntegrationRepository } from '@durabull/dal'
 import { env } from '@durabull/env'
 import { refreshLinearOauthToken } from './linear-client'
 
@@ -69,5 +69,5 @@ export async function getValidLinearAccessToken(integration: LinearIntegration):
     }
   )
 
-  return decryptSecret(refreshed?.encryptedAccessToken ?? integration.encryptedAccessToken)
+  return refreshed ? decryptSecret(refreshed.encryptedAccessToken) : token.accessToken
 }

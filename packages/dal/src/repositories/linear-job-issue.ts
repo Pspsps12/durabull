@@ -14,7 +14,39 @@ export interface CreateLinearJobIssueInput {
   linearIssueUrl: string
 }
 
+async function findLinearJobIssueByJob(input: {
+  organizationId: string
+  connectionId: string
+  queueName: string
+  jobId: string
+}): Promise<LinearJobIssue | null> {
+  const db = await getDb()
+  const rows = await db
+    .select()
+    .from(linearJobIssue)
+    .where(
+      and(
+        eq(linearJobIssue.organizationId, input.organizationId),
+        eq(linearJobIssue.connectionId, input.connectionId),
+        eq(linearJobIssue.queueName, input.queueName),
+        eq(linearJobIssue.jobId, input.jobId)
+      )
+    )
+    .limit(1)
+
+  return rows[0] ?? null
+}
+
 export const linearJobIssueRepository = {
+  async findByJob(input: {
+    organizationId: string
+    connectionId: string
+    queueName: string
+    jobId: string
+  }): Promise<LinearJobIssue | null> {
+    return findLinearJobIssueByJob(input)
+  },
+
   async createOrGet(input: CreateLinearJobIssueInput): Promise<LinearJobIssue> {
     const db = await getDb()
     const [inserted] = await db
@@ -32,24 +64,13 @@ export const linearJobIssueRepository = {
 
     if (inserted) return inserted
 
-    const rows = await db
-      .select()
-      .from(linearJobIssue)
-      .where(
-        and(
-          eq(linearJobIssue.organizationId, input.organizationId),
-          eq(linearJobIssue.connectionId, input.connectionId),
-          eq(linearJobIssue.queueName, input.queueName),
-          eq(linearJobIssue.jobId, input.jobId)
-        )
-      )
-      .limit(1)
+    const existing = await findLinearJobIssueByJob(input)
 
-    if (!rows[0]) {
+    if (!existing) {
       throw new Error('Linear job issue dedupe conflict could not be resolved.')
     }
 
-    return rows[0]
+    return existing
   },
 
   async findByEvent(alertEventId: string): Promise<LinearJobIssue[]> {

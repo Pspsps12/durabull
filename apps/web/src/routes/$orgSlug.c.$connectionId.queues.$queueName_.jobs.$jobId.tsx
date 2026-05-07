@@ -77,7 +77,11 @@ function JobDetailPage() {
 
   const { data: job, isLoading, error } = useJob(queueName, jobId)
   const { data: logsData } = useJobLogs(queueName, jobId)
-  const alertEventsQuery = useConnectionAlertEvents(connectionId, { limit: 100 })
+  const alertEventsQuery = useConnectionAlertEvents(connectionId, {
+    queueName,
+    jobId,
+    limit: 20,
+  })
 
   const retryMutation = useRetryJobs()
   const removeMutation = useRemoveJobs()
@@ -133,7 +137,6 @@ function JobDetailPage() {
 
   const linearIssueLinks = useMemo(() => {
     return (alertEventsQuery.data?.events ?? []).flatMap((event) => {
-      if (event.queueName !== queueName || event.context.jobId !== jobId) return []
       return event.deliveries
         .filter((delivery) => delivery.channelType === 'linear' && delivery.externalUrl)
         .map((delivery) => ({
@@ -142,7 +145,7 @@ function JobDetailPage() {
           url: delivery.externalUrl ?? '',
         }))
     })
-  }, [alertEventsQuery.data?.events, jobId, queueName])
+  }, [alertEventsQuery.data?.events])
 
   const handleRemove = useCallback(
     (removeScheduler = false) => {

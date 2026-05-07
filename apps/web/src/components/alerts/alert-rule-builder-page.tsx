@@ -3,19 +3,19 @@ import { BellRing, ChevronLeft, ChevronRight, Mail, Plus, TestTube2, Trash2 } fr
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
+  AlertStatusBadge,
+  AlertTypeBadge,
+  getAlertTypeMeta,
+} from '@/components/alerts/alert-primitives'
+import {
+  type AlertRuleDraft,
   createAlertRuleDraft,
   createLinearNotificationRouteDraft,
   createNotificationRouteDraft,
   normalizeNotificationEmails,
   serializeAlertRuleDraftsForMode,
   validateAlertRuleDraft,
-  type AlertRuleDraft,
 } from '@/components/alerts/alert-rule-form'
-import {
-  AlertStatusBadge,
-  AlertTypeBadge,
-  getAlertTypeMeta,
-} from '@/components/alerts/alert-primitives'
 import { QueueMultiSelect } from '@/components/alerts/queue-multi-select'
 import { useAppTopBar } from '@/components/app-top-bar'
 import { Badge } from '@/components/ui/badge'
@@ -144,6 +144,7 @@ export function AlertRuleBuilderPage({
     draft.notificationRoutes.filter((route) => route.type === 'email').map((route) => route.target)
   )
   const activeLinearRoutes = draft.notificationRoutes.filter((route) => route.type === 'linear')
+  const routeLimitReached = draft.notificationRoutes.length >= 10
 
   async function handleSubmit() {
     const validationError = validateAlertRuleDraft(draft)
@@ -497,12 +498,13 @@ export function AlertRuleBuilderPage({
             <Button
               type="button"
               variant="outline"
-              onClick={() =>
+              onClick={() => {
+                if (routeLimitReached) return
                 updateDraft({
                   notificationRoutes: [...draft.notificationRoutes, createNotificationRouteDraft()],
                 })
-              }
-              disabled={activeRecipients.length >= 10}
+              }}
+              disabled={routeLimitReached}
             >
               <Plus className="mr-1.5 h-4 w-4" />
               Add email route
@@ -510,21 +512,24 @@ export function AlertRuleBuilderPage({
             <Button
               type="button"
               variant="outline"
-              onClick={() =>
+              onClick={() => {
+                if (routeLimitReached || activeLinearRoutes.length >= 1) return
                 updateDraft({
                   notificationRoutes: [
                     ...draft.notificationRoutes,
                     createLinearNotificationRouteDraft(),
                   ],
                 })
+              }}
+              disabled={
+                !linearIntegrationConfigured || routeLimitReached || activeLinearRoutes.length >= 1
               }
-              disabled={!linearIntegrationConfigured || activeLinearRoutes.length >= 1}
             >
               <Plus className="mr-1.5 h-4 w-4" />
               Add Linear route
             </Button>
             <span className="text-sm text-muted-foreground">
-              Up to 10 email destinations and one Linear destination per rule.
+              Up to 10 total destinations and one Linear destination per rule.
             </span>
           </div>
 

@@ -1,6 +1,7 @@
 const LINEAR_GRAPHQL_ENDPOINT = 'https://api.linear.app/graphql'
 const LINEAR_TOKEN_ENDPOINT = 'https://api.linear.app/oauth/token'
 const LINEAR_REVOKE_ENDPOINT = 'https://api.linear.app/oauth/revoke'
+const LINEAR_REQUEST_TIMEOUT_MS = 30_000
 
 interface LinearGraphQLError {
   message?: string
@@ -119,23 +120,44 @@ function normalizeTokenPayload(payload: Record<string, unknown>): LinearOauthTok
   }
 }
 
-async function requestOauthToken(body: URLSearchParams): Promise<LinearOauthTokenResponse> {
-  let response: Response
+async function fetchLinear(
+  url: string,
+  init: RequestInit,
+  failureLabel: string
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), LINEAR_REQUEST_TIMEOUT_MS)
+
   try {
-    response = await fetch(LINEAR_TOKEN_ENDPOINT, {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    })
+  } catch (error) {
+    const aborted = error instanceof Error && error.name === 'AbortError'
+    throw new LinearApiError(
+      aborted
+        ? `${failureLabel} timed out after ${LINEAR_REQUEST_TIMEOUT_MS}ms`
+        : error instanceof Error
+          ? error.message
+          : failureLabel,
+      { status: 0, retryable: true }
+    )
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function requestOauthToken(body: URLSearchParams): Promise<LinearOauthTokenResponse> {
+  const response = await fetchLinear(
+    LINEAR_TOKEN_ENDPOINT,
+    {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body,
-    })
-  } catch (error) {
-    throw new LinearApiError(
-      error instanceof Error ? error.message : 'Linear OAuth network error',
-      {
-        status: 0,
-        retryable: true,
-      }
-    )
-  }
+    },
+    'Linear OAuth network error'
+  )
 
   const payload = (await response.json().catch(() => null)) as
     | (Record<string, unknown> & LinearOauthErrorResponse)
@@ -205,11 +227,15 @@ export async function revokeLinearOauthToken(input: {
     client_secret: input.clientSecret,
   })
 
-  const response = await fetch(LINEAR_REVOKE_ENDPOINT, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body,
-  })
+  const response = await fetchLinear(
+    LINEAR_REVOKE_ENDPOINT,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body,
+    },
+    'Linear OAuth revoke network error'
+  )
 
   if (!response.ok && response.status !== 400) {
     throw new LinearApiError(`Linear OAuth revoke failed (${response.status})`, {
@@ -224,22 +250,18 @@ async function linearGraphql<T>(
   query: string,
   variables: Record<string, unknown> = {}
 ): Promise<T> {
-  let response: Response
-  try {
-    response = await fetch(LINEAR_GRAPHQL_ENDPOINT, {
+  const response = await fetchLinear(
+    LINEAR_GRAPHQL_ENDPOINT,
+    {
       method: 'POST',
       headers: {
         authorization: `Bearer ${accessToken}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify({ query, variables }),
-    })
-  } catch (error) {
-    throw new LinearApiError(error instanceof Error ? error.message : 'Linear network error', {
-      status: 0,
-      retryable: true,
-    })
-  }
+    },
+    'Linear network error'
+  )
 
   const rateLimitResetAt = parseRateLimitReset(response.headers)
   const retryable =
@@ -352,11 +374,19 @@ export async function createLinearIssue(
         teamId: input.teamId,
         title: input.title,
         description: input.description,
-        ...(input.projectId ? { projectId: input.projectId } : {}),
+        ...(input.projectId !== null && input.projectId !== undefined
+          ? { projectId: input.projectId }
+          : {}),
         ...(input.labelIds?.length ? { labelIds: input.labelIds } : {}),
-        ...(input.assigneeId ? { assigneeId: input.assigneeId } : {}),
-        ...(input.stateId ? { stateId: input.stateId } : {}),
-        ...(input.priority ? { priority: input.priority } : {}),
+        ...(input.assigneeId !== null && input.assigneeId !== undefined
+          ? { assigneeId: input.assigneeId }
+          : {}),
+        ...(input.stateId !== null && input.stateId !== undefined
+          ? { stateId: input.stateId }
+          : {}),
+        ...(input.priority !== null && input.priority !== undefined
+          ? { priority: input.priority }
+          : {}),
       },
     }
   )

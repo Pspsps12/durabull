@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import { getDb } from '../db/client'
 import {
   alertDelivery,
@@ -12,6 +12,34 @@ const STALE_CLAIM_MS = 10 * 60 * 1000
 function toNumber(value: number | string | bigint | null | undefined): number {
   if (value === null || value === undefined) return 0
   return Number(value)
+}
+
+function rowsFromExecute<T>(result: unknown): T[] {
+  if (Array.isArray(result)) return result as T[]
+  if (
+    typeof result === 'object' &&
+    result !== null &&
+    Array.isArray((result as { rows?: unknown[] }).rows)
+  ) {
+    return (result as { rows: T[] }).rows
+  }
+  return []
+}
+
+function toDate(value: unknown): Date | null {
+  if (value instanceof Date) return value
+  if (typeof value === 'string') return new Date(value)
+  return null
+}
+
+function normalizeAlertDeliveryRow(row: AlertDelivery): AlertDelivery {
+  return {
+    ...row,
+    createdAt: toDate(row.createdAt) ?? row.createdAt,
+    updatedAt: toDate(row.updatedAt) ?? row.updatedAt,
+    nextRetryAt: toDate(row.nextRetryAt) ?? row.nextRetryAt,
+    claimedAt: toDate(row.claimedAt) ?? row.claimedAt,
+  }
 }
 
 export interface AlertDeliveryInput {
@@ -56,35 +84,55 @@ export const alertDeliveryRepository = {
     const now = new Date()
     const staleClaimCutoff = new Date(now.getTime() - STALE_CLAIM_MS)
 
-    const rows = await db
-      .select({ id: alertDelivery.id })
-      .from(alertDelivery)
-      .where(
-        and(
-          eq(alertDelivery.alertEventId, alertEventId),
-          or(
-            eq(alertDelivery.status, 'pending'),
-            eq(alertDelivery.status, 'failed'),
-            and(eq(alertDelivery.status, 'claimed'), lte(alertDelivery.claimedAt, staleClaimCutoff))
-          ),
-          or(isNull(alertDelivery.nextRetryAt), lte(alertDelivery.nextRetryAt, now))
-        )
+    const result = await db.execute(sql`
+      UPDATE ${alertDelivery} AS delivery
+      SET
+        status = 'claimed',
+        claimed_at = ${now},
+        updated_at = ${now}
+      WHERE delivery.id IN (
+        SELECT candidate.id
+        FROM ${alertDelivery} AS candidate
+        WHERE candidate.alert_event_id = ${alertEventId}
+          AND (
+            candidate.status = 'pending'
+            OR (
+              candidate.status = 'failed'
+              AND candidate.next_retry_at IS NOT NULL
+            )
+            OR (
+              candidate.status = 'claimed'
+              AND candidate.claimed_at <= ${staleClaimCutoff}
+            )
+          )
+          AND (
+            candidate.next_retry_at IS NULL
+            OR candidate.next_retry_at <= ${now}
+          )
+        ORDER BY candidate.created_at
+        LIMIT ${limit}
+        FOR UPDATE SKIP LOCKED
       )
-      .orderBy(asc(alertDelivery.createdAt))
-      .limit(limit)
+      RETURNING
+        delivery.id,
+        delivery.created_at AS "createdAt",
+        delivery.updated_at AS "updatedAt",
+        delivery.alert_event_id AS "alertEventId",
+        delivery.organization_id AS "organizationId",
+        delivery.channel_type AS "channelType",
+        delivery.target,
+        delivery.status,
+        delivery.attempt_count AS "attemptCount",
+        delivery.next_retry_at AS "nextRetryAt",
+        delivery.claimed_at AS "claimedAt",
+        delivery.last_error AS "lastError",
+        delivery.provider_metadata AS "providerMetadata",
+        delivery.external_id AS "externalId",
+        delivery.external_identifier AS "externalIdentifier",
+        delivery.external_url AS "externalUrl"
+    `)
 
-    if (rows.length === 0) return []
-    const ids = rows.map((row) => row.id)
-
-    return db
-      .update(alertDelivery)
-      .set({
-        status: 'claimed',
-        claimedAt: now,
-        updatedAt: now,
-      })
-      .where(inArray(alertDelivery.id, ids))
-      .returning()
+    return rowsFromExecute<AlertDelivery>(result).map(normalizeAlertDeliveryRow)
   },
 
   async markDelivered(
@@ -94,10 +142,11 @@ export const alertDeliveryRepository = {
       externalIdentifier?: string | null
       externalUrl?: string | null
       providerMetadata?: Record<string, unknown>
-    } = {}
-  ): Promise<void> {
+    } = {},
+    expectedClaimedAt?: Date | null
+  ): Promise<boolean> {
     const db = await getDb()
-    await db
+    const rows = await db
       .update(alertDelivery)
       .set({
         status: 'delivered',
@@ -110,16 +159,32 @@ export const alertDeliveryRepository = {
         providerMetadata: metadata.providerMetadata ?? {},
         updatedAt: new Date(),
       })
-      .where(eq(alertDelivery.id, id))
+      .where(
+        expectedClaimedAt
+          ? and(
+              eq(alertDelivery.id, id),
+              eq(alertDelivery.status, 'claimed'),
+              eq(alertDelivery.claimedAt, expectedClaimedAt)
+            )
+          : eq(alertDelivery.id, id)
+      )
+      .returning({ id: alertDelivery.id })
+
+    return rows.length > 0
   },
 
   async markFailed(
     id: string,
-    options: { error: string; retryable: boolean; nextRetryAt?: Date | null }
-  ): Promise<void> {
+    options: {
+      error: string
+      retryable: boolean
+      nextRetryAt?: Date | null
+      expectedClaimedAt?: Date | null
+    }
+  ): Promise<boolean> {
     const db = await getDb()
     const now = new Date()
-    await db
+    const rows = await db
       .update(alertDelivery)
       .set({
         status: 'failed',
@@ -129,7 +194,18 @@ export const alertDeliveryRepository = {
         lastError: options.error.slice(0, 1000),
         updatedAt: now,
       })
-      .where(eq(alertDelivery.id, id))
+      .where(
+        options.expectedClaimedAt
+          ? and(
+              eq(alertDelivery.id, id),
+              eq(alertDelivery.status, 'claimed'),
+              eq(alertDelivery.claimedAt, options.expectedClaimedAt)
+            )
+          : eq(alertDelivery.id, id)
+      )
+      .returning({ id: alertDelivery.id })
+
+    return rows.length > 0
   },
 
   async countByStatuses(alertEventId: string): Promise<Record<AlertDeliveryStatus, number>> {
