@@ -462,6 +462,42 @@ export function AlertRuleBuilderPage({
                         placeholder="Project ID"
                       />
                       <Input
+                        aria-label={`Linear labels override ${index + 1}`}
+                        value={route.labelIds?.join(', ') ?? ''}
+                        onChange={(event) => {
+                          const notificationRoutes = draft.notificationRoutes.slice()
+                          notificationRoutes[index] = {
+                            ...route,
+                            labelIds: event.target.value
+                              .split(',')
+                              .map((label) => label.trim())
+                              .filter(Boolean),
+                          }
+                          updateDraft({ notificationRoutes })
+                        }}
+                        placeholder="Label IDs"
+                      />
+                      <Input
+                        aria-label={`Linear assignee override ${index + 1}`}
+                        value={route.assigneeId ?? ''}
+                        onChange={(event) => {
+                          const notificationRoutes = draft.notificationRoutes.slice()
+                          notificationRoutes[index] = { ...route, assigneeId: event.target.value }
+                          updateDraft({ notificationRoutes })
+                        }}
+                        placeholder="Assignee ID"
+                      />
+                      <Input
+                        aria-label={`Linear state override ${index + 1}`}
+                        value={route.stateId ?? ''}
+                        onChange={(event) => {
+                          const notificationRoutes = draft.notificationRoutes.slice()
+                          notificationRoutes[index] = { ...route, stateId: event.target.value }
+                          updateDraft({ notificationRoutes })
+                        }}
+                        placeholder="State ID"
+                      />
+                      <Input
                         aria-label={`Linear priority override ${index + 1}`}
                         value={route.priority ?? ''}
                         onChange={(event) => {

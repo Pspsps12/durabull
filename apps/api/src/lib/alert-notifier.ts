@@ -184,6 +184,16 @@ async function sendLinearAlert(
     : null
 
   if (existingIssue) {
+    await linearJobIssueRepository.createOrGet({
+      organizationId: event.organizationId,
+      connectionId: event.connectionId,
+      queueName: event.queueName,
+      jobId: existingIssue.jobId,
+      alertEventId: event.id,
+      linearIssueId: existingIssue.linearIssueId,
+      linearIssueIdentifier: existingIssue.linearIssueIdentifier,
+      linearIssueUrl: existingIssue.linearIssueUrl,
+    })
     await markLinearDeliveryDelivered(delivery, {
       id: existingIssue.linearIssueId,
       identifier: existingIssue.linearIssueIdentifier,

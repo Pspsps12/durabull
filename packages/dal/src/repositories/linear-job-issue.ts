@@ -62,7 +62,15 @@ export const linearJobIssueRepository = {
     const db = await getDb()
     const [inserted] = await db
       .insert(linearJobIssue)
-      .values(input)
+      .values({
+        organizationId: input.organizationId,
+        connectionId: input.connectionId,
+        queueName: input.queueName,
+        jobId: input.jobId,
+        linearIssueId: input.linearIssueId,
+        linearIssueIdentifier: input.linearIssueIdentifier,
+        linearIssueUrl: input.linearIssueUrl,
+      })
       .onConflictDoNothing({
         target: [
           linearJobIssue.organizationId,

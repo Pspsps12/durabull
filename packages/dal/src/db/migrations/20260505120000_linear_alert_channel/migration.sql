@@ -82,19 +82,14 @@ CREATE TABLE "linear_job_issue" (
   "connection_id" uuid NOT NULL,
   "queue_name" text NOT NULL,
   "job_id" text NOT NULL,
-  "alert_event_id" uuid NOT NULL,
   "linear_issue_id" text NOT NULL,
   "linear_issue_identifier" text NOT NULL,
   "linear_issue_url" text NOT NULL,
   CONSTRAINT "linear_job_issue_organization_id_organization_id_fk"
     FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE cascade,
   CONSTRAINT "linear_job_issue_connection_id_redis_connection_id_fk"
-    FOREIGN KEY ("connection_id") REFERENCES "redis_connection"("id") ON DELETE cascade,
-  CONSTRAINT "linear_job_issue_alert_event_id_alert_event_id_fk"
-    FOREIGN KEY ("alert_event_id") REFERENCES "alert_event"("id") ON DELETE cascade
+    FOREIGN KEY ("connection_id") REFERENCES "redis_connection"("id") ON DELETE cascade
 );
---> statement-breakpoint
-CREATE INDEX "linear_job_issue_alert_event_id_idx" ON "linear_job_issue" ("alert_event_id");
 --> statement-breakpoint
 CREATE UNIQUE INDEX "linear_job_issue_job_unique_idx"
   ON "linear_job_issue" ("organization_id", "connection_id", "queue_name", "job_id");
