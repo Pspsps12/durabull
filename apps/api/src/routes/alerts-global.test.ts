@@ -1,7 +1,7 @@
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import {
   alertEventRepository,
   alertRuleRepository,
@@ -335,7 +335,8 @@ describe('global alerts routes', () => {
 
     const response = await app.request('/integrations/linear')
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({
+    const body = await response.json()
+    expect(body).toMatchObject({
       integration: {
         connected: true,
         validationStatus: 'valid',
@@ -343,6 +344,12 @@ describe('global alerts routes', () => {
         linearOrganizationName: 'Acme',
       },
     })
+    expect(body.integration).not.toHaveProperty('encryptedAccessToken')
+    expect(body.integration).not.toHaveProperty('encryptedRefreshToken')
+    expect(body.integration).not.toHaveProperty('accessToken')
+    expect(body.integration).not.toHaveProperty('refreshToken')
+    expect(body.integration).not.toHaveProperty('token')
+    expect(body.integration).not.toHaveProperty('secret')
 
     const stored = await linearIntegrationRepository.findByOrganization(TEST_ORG_ID)
     expect(stored?.encryptedAccessToken).not.toContain('linear-access-token')
