@@ -496,4 +496,52 @@ describe('alert monitor', () => {
     expect(events).toHaveLength(1)
     expect(events[0]?.queueName).toBe('email-send')
   })
+
+  it('creates at most one job_failed event per failed job id', async () => {
+    const dispatchAlertNotificationMock = mock(async () => {})
+    mock.module('./alert-notifier', () => ({
+      dispatchAlertNotification: dispatchAlertNotificationMock,
+      processAlertDeliveries: mock(async () => {}),
+    }))
+
+    const { __alertMonitorTestUtils } = await loadMonitorModule()
+    const rule = await alertRuleRepository.create({
+      organizationId: TEST_ORG_ID,
+      connectionId: testConnectionId,
+      queueName: 'email-send',
+      name: 'Failed job issues',
+      type: 'job_failed',
+      config: { maxIssuesPerPoll: 100 },
+      cooldownMinutes: 30,
+      notificationChannels: [{ type: 'linear', target: 'org-default', teamId: 'team-1' }],
+    })
+
+    const failedJob = {
+      id: 'job-1',
+      name: 'send-email',
+      failedReason: 'SMTP rejected recipient',
+      attemptsMade: 2,
+      finishedOn: Date.now(),
+      opts: { attempts: 3 },
+    }
+    const queue = {
+      getJobs: mock(async () => [failedJob]),
+    }
+    const connection = createConnection()
+
+    await __alertMonitorTestUtils.scanFailedJobsAndMaybeAlert(rule, queue, connection, 'email-send')
+    await __alertMonitorTestUtils.scanFailedJobsAndMaybeAlert(rule, queue, connection, 'email-send')
+
+    const events = await listRuleEvents(rule.id)
+    expect(events).toHaveLength(1)
+    expect(events[0]?.dedupeKey).toBe(`job:${testConnectionId}:email-send:job-1`)
+    expect(events[0]?.context).toMatchObject({
+      jobId: 'job-1',
+      jobName: 'send-email',
+      failedReason: 'SMTP rejected recipient',
+      attemptsMade: 2,
+      attempts: 3,
+    })
+    expect(dispatchAlertNotificationMock).toHaveBeenCalledTimes(1)
+  })
 })

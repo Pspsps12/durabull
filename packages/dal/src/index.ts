@@ -34,6 +34,14 @@ export type {
 export { alertCheckCursor } from './db/schemas/alert-check-cursor/schema'
 export type { AlertCheckCursor, NewAlertCheckCursor } from './db/schemas/alert-check-cursor/types'
 export {
+  type AlertDeliveryChannelType,
+  type AlertDeliveryStatus,
+  alertDelivery,
+  alertDeliveryChannelTypes,
+  alertDeliveryStatuses,
+} from './db/schemas/alert-delivery/schema'
+export type { AlertDelivery, NewAlertDelivery } from './db/schemas/alert-delivery/types'
+export {
   type AlertEventStatus,
   alertEvent,
   alertEventStatuses,
@@ -59,6 +67,24 @@ export type {
   NewAuthSession,
   NewAuthVerification,
 } from './db/schemas/auth/types'
+export {
+  type LinearIntegrationValidationStatus,
+  linearIntegration,
+  linearIntegrationValidationStatuses,
+} from './db/schemas/linear-integration/schema'
+export type {
+  LinearIntegration,
+  NewLinearIntegration,
+} from './db/schemas/linear-integration/types'
+export { linearJobIssue } from './db/schemas/linear-job-issue/schema'
+export type { LinearJobIssue, NewLinearJobIssue } from './db/schemas/linear-job-issue/types'
+export { linearJobIssueEvent } from './db/schemas/linear-job-issue-event/schema'
+export type {
+  LinearJobIssueEvent,
+  NewLinearJobIssueEvent,
+} from './db/schemas/linear-job-issue-event/types'
+export { linearOauthState } from './db/schemas/linear-oauth-state/schema'
+export type { LinearOauthState, NewLinearOauthState } from './db/schemas/linear-oauth-state/types'
 // Organization schema exports for Better Auth organization plugin
 export * as organizationSchema from './db/schemas/organization/schema'
 export { invitation, member, organization } from './db/schemas/organization/schema'
@@ -90,9 +116,21 @@ export * as userSchema from './db/schemas/user/schema'
 // User schema exports
 export { user } from './db/schemas/user/schema'
 export type { NewUser, User } from './db/schemas/user/types'
+export {
+  assertSecretEncryptionKeyConfigured,
+  decryptSecret,
+  encryptSecret,
+  isSecretEncrypted,
+  isSecretEncryptionKeyConfigured,
+  maskSecretPreview,
+} from './db/secret-encryption'
 export { alertCheckCursorRepository } from './repositories/alert-check-cursor'
+export { alertDeliveryRepository } from './repositories/alert-delivery'
 export { alertEventRepository } from './repositories/alert-event'
 export { alertRuleRepository } from './repositories/alert-rule'
+export { linearIntegrationRepository } from './repositories/linear-integration'
+export { linearJobIssueRepository } from './repositories/linear-job-issue'
+export { linearOauthStateRepository } from './repositories/linear-oauth-state'
 // Repositories
 export { redisConnectionRepository } from './repositories/redis-connection'
 export { redisDiscoveredQueueRepository } from './repositories/redis-discovered-queue'

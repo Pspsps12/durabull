@@ -30,6 +30,12 @@ const ALERT_TYPE_META: Record<
     icon: Siren,
     description: 'Fires when work is backing up and the queue stops completing jobs.',
   },
+  job_failed: {
+    label: 'Job Failed',
+    shortLabel: 'Job',
+    icon: BellRing,
+    description: 'Creates a deduplicated incident for each failed job id.',
+  },
 }
 
 export function getAlertTypeMeta(type: AlertRuleType) {

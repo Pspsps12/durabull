@@ -31,6 +31,7 @@ description: Complete runtime environment variable reference for local and produ
 | `DATABASE_URL` | Optional | Enables PostgreSQL mode when set |
 | `REDIS_URL` | Optional | Generic Redis URL used by scripts/defaults |
 | `DURABULL_REDIS_URL_ENCRYPTION_KEY` | Required when persisting connections | 32-byte key (hex/base64) used to encrypt Redis connection URLs at rest |
+| `DURABULL_SECRET_ENCRYPTION_KEY` | Required for Linear alert integrations | 32-byte key (hex/base64) used to encrypt third-party OAuth tokens at rest |
 | `DURABULL_PGLITE_DIR` | Optional | Override PGlite data directory |
 
 ## Connection Mode
@@ -47,10 +48,32 @@ description: Complete runtime environment variable reference for local and produ
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `RESEND_API_KEY` | Optional | Invitation email delivery |
+| `LINEAR_OAUTH_CLIENT_ID` | Required for Linear alert integrations | Linear OAuth application client ID |
+| `LINEAR_OAUTH_CLIENT_SECRET` | Required for Linear alert integrations | Linear OAuth application client secret |
+| `LINEAR_OAUTH_REDIRECT_URI` | Optional | Explicit Linear OAuth callback URL; defaults to `${APP_BASE_URL}/api/alerts/integrations/linear/callback` |
+| `LINEAR_OAUTH_ACTOR` | Optional | Linear OAuth actor mode: `user` by default, or `app` for service-account style app actor authorization |
 | `POSTHOG_KEY` | Optional | PostHog project API key |
 | `POSTHOG_HOST` | Optional | PostHog upstream host for the reverse proxy (defaults to `https://us.i.posthog.com`) |
 
 > **Note:** The web app receives PostHog configuration from the API at `/api/app/config`. You only need to set the server-side `POSTHOG_KEY` and `POSTHOG_HOST` variables — no `VITE_` prefix is required. Set `POSTHOG_HOST` to PostHog's ingestion domain (for example `https://us.i.posthog.com`), not your own app `/ingest` URL. The API reverse-proxies analytics traffic through `/ingest` to bypass ad blockers.
+
+### Linear OAuth callback
+
+For Linear alert integrations, register this callback URL in your Linear OAuth application:
+
+```txt
+https://your-domain.example/api/alerts/integrations/linear/callback
+```
+
+Durabull derives that URL from `APP_BASE_URL` by default. Set `LINEAR_OAUTH_REDIRECT_URI`
+explicitly when your self-hosted API is served from a different public origin than the web app.
+The redirect URI configured in Linear must exactly match the value Durabull sends during OAuth.
+By default, Durabull uses Linear's user actor OAuth flow and omits the `actor` authorize
+parameter. Set `LINEAR_OAUTH_ACTOR=app` only when the Linear application is configured for app
+actor authorization and you want alert-created issues attributed to the app.
+
+For the full connection, alert delivery, retry, and idempotency model, see
+[Linear Integration](/documentation/integrations/linear).
 
 ## Anonymous Usage Telemetry
 
@@ -85,6 +108,7 @@ VITE_PUBLIC_APP_URL=https://your-domain.example
 DURABULL_AUTHLESS=false
 BETTER_AUTH_SECRET=<long-random-secret>
 DURABULL_REDIS_URL_ENCRYPTION_KEY=<openssl-rand-hex-32>
+DURABULL_SECRET_ENCRYPTION_KEY=<openssl-rand-hex-32>
 DURABULL_ENV_CONNECTIONS=true
 DURABULL_REDIS_URL_MAIN=redis://...
 DURABULL_REDIS_URL_MAIN_ENVIRONMENT=production

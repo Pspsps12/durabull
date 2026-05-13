@@ -1,0 +1,226 @@
+---
+title: Linear Integration
+description: Connect Linear to Durabull alerts so queue and job failures create actionable Linear issues.
+---
+
+The Linear integration turns Durabull alert events into Linear issues. It is designed for
+teams that want failed BullMQ work to land in their existing incident, triage, or engineering
+backlog without wiring Linear calls into every worker.
+
+Durabull owns the integration from the outside of your queue system. Your BullMQ workers do
+not need to import Durabull packages or change their failure handling.
+
+## What It Does
+
+When an alert rule routes to Linear, Durabull can create Linear issues for:
+
+- job failures from `job_failed` alert rules
+- queue failure thresholds
+- queue failure-rate alerts
+- stalled queue alerts
+
+For job-failed alerts, Durabull records a durable mapping between the failed BullMQ job and
+the Linear issue. That keeps repeated alert processing from creating a new Linear issue for
+the same failed job.
+
+## How It Works
+
+<div className="not-prose my-6 overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+  <div className="flex min-w-[760px] items-center gap-3 text-sm">
+    <div className="rounded-md border border-zinc-700 bg-zinc-900 px-4 py-3 text-center text-zinc-100">
+      BullMQ queue
+    </div>
+    <div className="text-zinc-500">-&gt;</div>
+    <div className="rounded-md border border-zinc-700 bg-zinc-900 px-4 py-3 text-center text-zinc-100">
+      Alert monitor
+    </div>
+    <div className="text-zinc-500">-&gt;</div>
+    <div className="rounded-md border border-zinc-700 bg-zinc-900 px-4 py-3 text-center text-zinc-100">
+      Alert rule
+    </div>
+    <div className="text-zinc-500">-&gt;</div>
+    <div className="rounded-md border border-zinc-700 bg-zinc-900 px-4 py-3 text-center text-zinc-100">
+      Alert event
+    </div>
+    <div className="text-zinc-500">-&gt;</div>
+    <div className="rounded-md border border-zinc-700 bg-zinc-900 px-4 py-3 text-center text-zinc-100">
+      Delivery outbox
+    </div>
+    <div className="text-zinc-500">-&gt;</div>
+    <div className="rounded-md border border-zinc-700 bg-zinc-900 px-4 py-3 text-center text-zinc-100">
+      Linear issue
+    </div>
+  </div>
+  <div className="mt-4 flex min-w-[760px] items-center justify-center gap-3 text-sm">
+    <div className="rounded-md border border-emerald-900/70 bg-emerald-950/50 px-4 py-3 text-center text-emerald-100">
+      Job-to-issue mapping keeps later retries tied to the same Linear issue
+    </div>
+  </div>
+</div>
+
+At a high level:
+
+1. A BullMQ job fails or a queue crosses an alert threshold.
+2. Durabull's alert monitor polls the connected Redis/BullMQ data.
+3. Enabled alert rules decide whether an alert should fire.
+4. Durabull persists an alert event in its database.
+5. Durabull creates delivery records for the configured notification channels.
+6. A Linear delivery claims one outbox record, loads a valid Linear OAuth token, and creates
+   a Linear issue through the Linear GraphQL API.
+7. The delivery row stores the Linear issue id, identifier, URL, and provider metadata.
+8. For job-failed alerts, Durabull stores a job-to-issue mapping so later retries or poll
+   cycles reuse the same Linear issue.
+
+## Setup Requirements
+
+Self-hosted deployments need these environment variables:
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DURABULL_SECRET_ENCRYPTION_KEY` | Yes | Encrypts Linear OAuth access and refresh tokens at rest. |
+| `APP_BASE_URL` | Recommended | Used to derive the default Linear OAuth callback URL and issue deep links. |
+| `LINEAR_OAUTH_CLIENT_ID` | Yes | Linear OAuth application client ID. |
+| `LINEAR_OAUTH_CLIENT_SECRET` | Yes | Linear OAuth application client secret. |
+| `LINEAR_OAUTH_REDIRECT_URI` | Optional | Overrides the default callback URL when API and app origins differ. |
+| `LINEAR_OAUTH_ACTOR` | Optional | Defaults to user actor OAuth. Set to `app` only for app actor authorization. |
+
+Create a 32-byte secret for `DURABULL_SECRET_ENCRYPTION_KEY`:
+
+```bash
+openssl rand -hex 32
+```
+
+Register this callback URL in Linear:
+
+```txt
+https://your-domain.example/api/alerts/integrations/linear/callback
+```
+
+By default, Durabull derives that callback from `APP_BASE_URL`. If your self-hosted API is
+served from a different public origin than the web app, set `LINEAR_OAUTH_REDIRECT_URI`
+explicitly and register that exact URL in Linear.
+
+## OAuth Flow
+
+Durabull uses Linear OAuth 2.0 instead of storing user-supplied API keys.
+
+The connection flow:
+
+1. An organization admin starts the Linear connection from Durabull settings.
+2. Durabull creates an opaque, expiring OAuth state value.
+3. The user authorizes Durabull in Linear with `read` and `issues:create` scopes.
+4. Linear redirects back to Durabull's callback URL.
+5. Durabull validates and consumes the OAuth state before exchanging the code.
+6. Durabull validates the access token against Linear.
+7. Durabull stores encrypted access and refresh tokens with Linear organization metadata.
+
+Access tokens are refreshed automatically before Linear metadata lookup and issue creation
+when Durabull detects that the stored token is expired.
+
+Disconnecting Linear deletes Durabull's local integration state and attempts to revoke the
+Linear refresh and access tokens.
+
+## Configuring Linear Defaults
+
+After OAuth is connected, Durabull can store organization-level defaults for Linear issue
+creation:
+
+- default team
+- project
+- labels
+- assignee
+- workflow state
+- priority
+
+Alert rules can override these defaults for an individual Linear notification channel. A
+Linear team is always required, either from the alert channel or from the organization default.
+
+## Creating Linear Alert Rules
+
+To send alerts to Linear:
+
+1. Connect Linear in settings.
+2. Choose default Linear routing values.
+3. Create or edit an alert rule.
+4. Add a Linear notification channel.
+5. Select the team or rely on the configured default team.
+6. Save the rule.
+
+For job-specific issues, use the `job_failed` rule type. Durabull scans failed jobs in the
+matching BullMQ queues and creates one alert event per failed job subject.
+
+## Delivery, Retry, and Idempotency
+
+Durabull uses a database-backed delivery outbox for Linear notifications.
+
+Each alert event can have one or more delivery rows. A delivery row moves through these
+states:
+
+| State | Meaning |
+| --- | --- |
+| `pending` | The delivery has been created and is ready to send. |
+| `claimed` | A worker is currently processing the delivery. |
+| `delivered` | The target provider accepted the notification. |
+| `failed` | The delivery failed. It may retry later or remain failed for operator review. |
+
+The outbox gives Durabull a safe place to retry transient failures. Rate limits and clear
+network retry cases are scheduled with backoff. Non-retryable configuration and validation
+errors remain failed until an operator fixes the integration or alert channel.
+
+For job-failed Linear alerts, Durabull uses three persistence layers to avoid duplicates:
+
+| Layer | Purpose |
+| --- | --- |
+| Alert event dedupe | Keeps one alert event per rule and failed job subject. |
+| Delivery outbox dedupe | Keeps one delivery row per event, channel, and target. |
+| Linear job issue mapping | Keeps one Linear issue per organization, connection, queue, and job id. |
+
+Linear issue creation does not use a provider-side idempotency key. Durabull compensates by
+checking its local job-to-issue mapping before calling Linear, then recording the Linear issue
+after a successful create.
+
+If a Linear issue may have been created but Durabull cannot prove it persisted the local
+mapping, Durabull stops automatic retry for that delivery. That protects teams from duplicate
+Linear issues and leaves a clear manual reconciliation error for operators.
+
+## What Gets Stored
+
+Durabull stores:
+
+- encrypted Linear OAuth access and refresh tokens
+- Linear organization metadata
+- default Linear routing settings
+- alert events and alert delivery state
+- Linear issue id, identifier, and URL for delivered notifications
+- job-to-issue mappings for job-failed alerts
+
+Durabull does not store a plain text Linear API key for this integration.
+
+## Troubleshooting
+
+If Linear connection fails:
+
+- verify `LINEAR_OAUTH_CLIENT_ID` and `LINEAR_OAUTH_CLIENT_SECRET`
+- confirm the Linear callback URL exactly matches Durabull's callback URL
+- confirm `APP_BASE_URL` is the public app origin, or set `LINEAR_OAUTH_REDIRECT_URI`
+- confirm `DURABULL_SECRET_ENCRYPTION_KEY` is set before connecting Linear
+
+If alert rules save but no Linear issue appears:
+
+- confirm the alert rule includes a Linear notification channel
+- confirm Linear is connected for the organization
+- confirm a Linear team is configured on the channel or as the organization default
+- check the alert event delivery status and last error in Durabull
+- fix any non-retryable integration error, then trigger a new alert or retry the failed job
+
+If duplicate BullMQ failures appear:
+
+- confirm the jobs have stable BullMQ job ids
+- confirm the alert rule is a `job_failed` rule when you expect one issue per job
+- check whether multiple alert rules intentionally target the same queue and job
+
+## Related Docs
+
+- [Environment Variables](/documentation/getting-started/environment-variables)
+- [Job Lifecycle and Debugging](/documentation/workflows/job-lifecycle-and-debugging)
+- [Troubleshooting](/documentation/operations/troubleshooting)

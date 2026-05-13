@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   createAlertRuleDraft,
+  createLinearNotificationRouteDraft,
   normalizeNotificationEmails,
   normalizeQueueNames,
   serializeAlertRuleDraft,
@@ -254,6 +255,108 @@ describe('alert rule form helpers', () => {
         stalledMinutes: 12,
       },
     })
+  })
+
+  it('serializes job failed rules and Linear notification routes', () => {
+    const payload = serializeAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Create Linear issues',
+      queueFilterMode: 'exclude',
+      type: 'job_failed',
+      jobFailedMaxIssuesPerPoll: '250',
+      notificationRoutes: [
+        createLinearNotificationRouteDraft(),
+        { id: 'route-1', type: 'email', target: 'ops@example.com' },
+      ],
+    })
+
+    expect(payload).toMatchObject({
+      type: 'job_failed',
+      config: {
+        maxIssuesPerPoll: 250,
+      },
+      notificationChannels: [
+        { type: 'email', target: 'ops@example.com' },
+        { type: 'linear', target: 'org-default' },
+      ],
+    })
+  })
+
+  it('serializes Linear priority zero as an explicit value', () => {
+    const payload = serializeAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Create Linear issues',
+      queueFilterMode: 'exclude',
+      type: 'job_failed',
+      notificationRoutes: [
+        {
+          ...createLinearNotificationRouteDraft(),
+          priority: '0',
+        },
+      ],
+    })
+
+    expect(payload.notificationChannels).toEqual([
+      { type: 'linear', target: 'org-default', priority: 0 },
+    ])
+  })
+
+  it('trims blank Linear overrides before serialization', () => {
+    const payload = serializeAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Create Linear issues',
+      queueFilterMode: 'exclude',
+      type: 'job_failed',
+      notificationRoutes: [
+        {
+          ...createLinearNotificationRouteDraft(),
+          teamId: '   ',
+          projectId: ' project-1 ',
+          labelIds: [' label-1 ', '  '],
+          assigneeId: ' user-1 ',
+          stateId: '',
+        },
+      ],
+    })
+
+    expect(payload.notificationChannels).toEqual([
+      {
+        type: 'linear',
+        target: 'org-default',
+        projectId: 'project-1',
+        labelIds: ['label-1'],
+        assigneeId: 'user-1',
+      },
+    ])
+  })
+
+  it('rejects non-whole Linear priority values', () => {
+    const error = validateAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Create Linear issues',
+      queueFilterMode: 'exclude',
+      type: 'job_failed',
+      notificationRoutes: [
+        {
+          ...createLinearNotificationRouteDraft(),
+          priority: '1.5',
+        },
+      ],
+    })
+
+    expect(error).toBe('Linear priority must be a whole number between 0 and 4.')
+  })
+
+  it('rejects out-of-range job failed poll caps', () => {
+    const error = validateAlertRuleDraft({
+      ...createAlertRuleDraft(),
+      name: 'Too many issues',
+      queueFilterMode: 'exclude',
+      type: 'job_failed',
+      jobFailedMaxIssuesPerPoll: '501',
+    })
+
+    expect(error).toBe('Max Linear issues per poll must be a whole number between 1 and 500.')
   })
 
   it('normalizes notification emails and queue names by trimming and deduping', () => {

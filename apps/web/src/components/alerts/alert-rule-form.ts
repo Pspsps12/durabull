@@ -10,8 +10,14 @@ const emailSchema = z.string().email()
 
 export interface NotificationRouteDraft {
   id: string
-  type: 'email'
+  type: 'email' | 'linear'
   target: string
+  teamId?: string
+  projectId?: string
+  labelIds?: string[]
+  assigneeId?: string
+  stateId?: string
+  priority?: string
 }
 
 export interface AlertRuleDraft {
@@ -28,6 +34,7 @@ export interface AlertRuleDraft {
   failureRateWindowMinutes: string
   failureRateMinSample: string
   stalledMinutes: string
+  jobFailedMaxIssuesPerPoll: string
 }
 
 export function createAlertRuleDraft(rule?: AlertRuleRecord | null): AlertRuleDraft {
@@ -62,6 +69,7 @@ export function createAlertRuleDraft(rule?: AlertRuleRecord | null): AlertRuleDr
     failureRateWindowMinutes: stringifyNumber(config.windowMinutes, 15),
     failureRateMinSample: stringifyNumber(config.minSample, 100),
     stalledMinutes: stringifyNumber(config.stalledMinutes, 10),
+    jobFailedMaxIssuesPerPoll: stringifyNumber(config.maxIssuesPerPoll, 100),
   }
 }
 
@@ -70,13 +78,29 @@ function extractNotificationRoutes(rule?: AlertRuleRecord | null): NotificationR
     return [createNotificationRouteDraft()]
   }
 
-  const emails = rule.notificationChannels
-    .map((channel) => (typeof channel.target === 'string' ? channel.target : ''))
-    .filter(Boolean)
+  const routes = rule.notificationChannels.flatMap((channel, index) => {
+    if (channel.type === 'email' && typeof channel.target === 'string') {
+      return [createNotificationRouteDraft(index + 1, channel.target)]
+    }
+    if (channel.type === 'linear') {
+      return [
+        {
+          id: `linear-route-${index + 1}`,
+          type: 'linear' as const,
+          target: 'org-default',
+          teamId: channel.teamId,
+          projectId: channel.projectId,
+          labelIds: channel.labelIds ?? [],
+          assigneeId: channel.assigneeId,
+          stateId: channel.stateId,
+          priority: channel.priority !== undefined ? String(channel.priority) : '',
+        },
+      ]
+    }
+    return []
+  })
 
-  return emails.length > 0
-    ? emails.map((email, index) => createNotificationRouteDraft(index + 1, email))
-    : [createNotificationRouteDraft()]
+  return routes.length > 0 ? routes : [createNotificationRouteDraft()]
 }
 
 export function createNotificationRouteDraft(sequence = 0, target = ''): NotificationRouteDraft {
@@ -87,6 +111,19 @@ export function createNotificationRouteDraft(sequence = 0, target = ''): Notific
         : `email-route-${Math.random().toString(36).slice(2, 10)}`,
     type: 'email',
     target,
+  }
+}
+
+export function createLinearNotificationRouteDraft(sequence = 0): NotificationRouteDraft {
+  return {
+    id:
+      sequence > 0
+        ? `linear-route-${sequence}`
+        : `linear-route-${Math.random().toString(36).slice(2, 10)}`,
+    type: 'linear',
+    target: 'org-default',
+    labelIds: [],
+    priority: '',
   }
 }
 
@@ -121,9 +158,8 @@ export function validateAlertRuleDraft(draft: AlertRuleDraft): string | null {
     return 'Choose at least one queue or switch to "all except" mode.'
   }
 
-  const notificationEmails = normalizeNotificationEmails(
-    draft.notificationRoutes.map((route) => route.target)
-  )
+  const emailRoutes = draft.notificationRoutes.filter((route) => route.type === 'email')
+  const notificationEmails = normalizeNotificationEmails(emailRoutes.map((route) => route.target))
   if (notificationEmails.length > 10) {
     return 'You can configure up to 10 notification email recipients.'
   }
@@ -132,6 +168,15 @@ export function validateAlertRuleDraft(draft: AlertRuleDraft): string | null {
     const result = emailSchema.safeParse(email)
     if (!result.success) {
       return `Invalid notification email: ${email}`
+    }
+  }
+
+  for (const route of draft.notificationRoutes.filter((item) => item.type === 'linear')) {
+    if (route.priority?.trim()) {
+      const priority = parseWholeNumber(route.priority)
+      if (priority === null || priority < 0 || priority > 4) {
+        return 'Linear priority must be a whole number between 0 and 4.'
+      }
     }
   }
 
@@ -169,20 +214,60 @@ export function validateAlertRuleDraft(draft: AlertRuleDraft): string | null {
       }
       return null
     }
+    case 'job_failed': {
+      const maxIssuesPerPoll = parseWholeNumber(draft.jobFailedMaxIssuesPerPoll)
+      if (!maxIssuesPerPoll || maxIssuesPerPoll < 1 || maxIssuesPerPoll > 500) {
+        return 'Max Linear issues per poll must be a whole number between 1 and 500.'
+      }
+      return null
+    }
     default:
       return 'Unsupported alert type.'
   }
 }
 
+function trimOrUndefined(value?: string): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : undefined
+}
+
+function trimStringArray(values?: string[]): string[] {
+  return values?.map((value) => value.trim()).filter(Boolean) ?? []
+}
+
 export function serializeAlertRuleDraft(draft: AlertRuleDraft): AlertRuleMutationInput {
   const type = draft.type
   const baseName = draft.name.trim()
-  const notificationChannels = normalizeNotificationEmails(
-    draft.notificationRoutes.map((route) => route.target)
-  ).map((target) => ({
-    type: 'email' as const,
-    target,
-  }))
+  const notificationChannels = [
+    ...normalizeNotificationEmails(
+      draft.notificationRoutes
+        .filter((route) => route.type === 'email')
+        .map((route) => route.target)
+    ).map((target) => ({
+      type: 'email' as const,
+      target,
+    })),
+    ...draft.notificationRoutes
+      .filter((route) => route.type === 'linear')
+      .map((route) => ({
+        type: 'linear' as const,
+        target: 'org-default' as const,
+        ...(trimOrUndefined(route.teamId) ? { teamId: trimOrUndefined(route.teamId) } : {}),
+        ...(trimOrUndefined(route.projectId)
+          ? { projectId: trimOrUndefined(route.projectId) }
+          : {}),
+        ...(trimStringArray(route.labelIds).length
+          ? { labelIds: trimStringArray(route.labelIds) }
+          : {}),
+        ...(trimOrUndefined(route.assigneeId)
+          ? { assigneeId: trimOrUndefined(route.assigneeId) }
+          : {}),
+        ...(trimOrUndefined(route.stateId) ? { stateId: trimOrUndefined(route.stateId) } : {}),
+        ...(route.priority?.trim()
+          ? { priority: parseWholeNumber(route.priority) ?? undefined }
+          : {}),
+      })),
+  ]
   const config = buildAlertRuleConfig(type, draft)
   const cooldownMinutes = parseWholeNumber(draft.cooldownMinutes) ?? 30
 
@@ -236,6 +321,10 @@ function buildAlertRuleConfig(type: AlertRuleType, draft: AlertRuleDraft): Recor
     case 'queue_stalled':
       return {
         stalledMinutes: parseWholeNumber(draft.stalledMinutes) ?? 10,
+      }
+    case 'job_failed':
+      return {
+        maxIssuesPerPoll: parseWholeNumber(draft.jobFailedMaxIssuesPerPoll) ?? 100,
       }
     default:
       return {}

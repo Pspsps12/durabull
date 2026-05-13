@@ -11,6 +11,7 @@ import {
   Clock,
   Copy,
   CopyPlus,
+  ExternalLink,
   FileJson2,
   History,
   Info,
@@ -43,6 +44,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useConnectionAlertEvents } from '@/hooks/use-alerts'
 import { useJob, useJobLogs, useRemoveJobs, useRetryJobs } from '@/hooks/use-queues'
 import { cn, formatDate, formatDuration, getTimezoneAbbreviation } from '@/lib/utils'
 
@@ -75,6 +77,11 @@ function JobDetailPage() {
 
   const { data: job, isLoading, error } = useJob(queueName, jobId)
   const { data: logsData } = useJobLogs(queueName, jobId)
+  const alertEventsQuery = useConnectionAlertEvents(connectionId, {
+    queueName,
+    jobId,
+    limit: 20,
+  })
 
   const retryMutation = useRetryJobs()
   const removeMutation = useRemoveJobs()
@@ -127,6 +134,18 @@ function JobDetailPage() {
   }, [connectionId, jobId, navigate, orgSlug, queueName, retryMutation])
 
   const isScheduledJob = jobId.startsWith('repeat:')
+
+  const linearIssueLinks = useMemo(() => {
+    return (alertEventsQuery.data?.events ?? []).flatMap((event) => {
+      return event.deliveries
+        .filter((delivery) => delivery.channelType === 'linear' && delivery.externalUrl)
+        .map((delivery) => ({
+          id: delivery.id,
+          label: delivery.externalIdentifier ?? 'Linear issue',
+          url: delivery.externalUrl ?? '',
+        }))
+    })
+  }, [alertEventsQuery.data?.events])
 
   const handleRemove = useCallback(
     (removeScheduler = false) => {
@@ -409,6 +428,27 @@ function JobDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {linearIssueLinks.length > 0 ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <ExternalLink className="h-4 w-4" />
+              Linked Linear issues
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {linearIssueLinks.map((issue) => (
+              <Button key={issue.id} asChild variant="outline" size="sm">
+                <a href={issue.url} target="_blank" rel="noreferrer">
+                  {issue.label}
+                  <ExternalLink className="ml-2 h-3.5 w-3.5" />
+                </a>
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Tabs */}
       <Tabs

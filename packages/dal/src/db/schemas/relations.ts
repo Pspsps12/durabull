@@ -40,6 +40,9 @@ export const relations = defineRelations(tables, (r) => ({
     redisConnections: r.many.redisConnection(),
     alertRules: r.many.alertRule(),
     alertEvents: r.many.alertEvent(),
+    linearIntegration: r.one.linearIntegration(),
+    linearOauthStates: r.many.linearOauthState(),
+    linearJobIssues: r.many.linearJobIssue(),
   },
   member: {
     user: r.one.user({
@@ -70,6 +73,7 @@ export const relations = defineRelations(tables, (r) => ({
     alertRules: r.many.alertRule(),
     alertEvents: r.many.alertEvent(),
     alertCheckCursors: r.many.alertCheckCursor(),
+    linearJobIssues: r.many.linearJobIssue(),
   },
   redisDiscoveredQueue: {
     connection: r.one.redisConnection({
@@ -101,11 +105,56 @@ export const relations = defineRelations(tables, (r) => ({
       from: r.alertEvent.connectionId,
       to: r.redisConnection.id,
     }),
+    deliveries: r.many.alertDelivery(),
+    linearJobIssueEvents: r.many.linearJobIssueEvent(),
   },
   alertCheckCursor: {
     connection: r.one.redisConnection({
       from: r.alertCheckCursor.connectionId,
       to: r.redisConnection.id,
+    }),
+  },
+  alertDelivery: {
+    event: r.one.alertEvent({
+      from: r.alertDelivery.alertEventId,
+      to: r.alertEvent.id,
+    }),
+    organization: r.one.organization({
+      from: r.alertDelivery.organizationId,
+      to: r.organization.id,
+    }),
+  },
+  linearIntegration: {
+    organization: r.one.organization({
+      from: r.linearIntegration.organizationId,
+      to: r.organization.id,
+    }),
+  },
+  linearOauthState: {
+    organization: r.one.organization({
+      from: r.linearOauthState.organizationId,
+      to: r.organization.id,
+    }),
+  },
+  linearJobIssue: {
+    organization: r.one.organization({
+      from: r.linearJobIssue.organizationId,
+      to: r.organization.id,
+    }),
+    connection: r.one.redisConnection({
+      from: r.linearJobIssue.connectionId,
+      to: r.redisConnection.id,
+    }),
+    eventLinks: r.many.linearJobIssueEvent(),
+  },
+  linearJobIssueEvent: {
+    issue: r.one.linearJobIssue({
+      from: r.linearJobIssueEvent.linearJobIssueId,
+      to: r.linearJobIssue.id,
+    }),
+    event: r.one.alertEvent({
+      from: r.linearJobIssueEvent.alertEventId,
+      to: r.alertEvent.id,
     }),
   },
 }))
