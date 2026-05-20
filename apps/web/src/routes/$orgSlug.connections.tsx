@@ -57,6 +57,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAppMode } from '@/hooks/use-app-mode'
+import { useAuth } from '@/hooks/use-auth'
 import {
   useConnectionDetail,
   useConnectionQueueDiscoveryStatus,
@@ -67,6 +68,7 @@ import {
   useTestConnection,
   useUpdateConnection,
 } from '@/hooks/use-connections'
+import { useOrganizationMembers } from '@/hooks/use-organization'
 import { cn } from '@/lib/utils'
 
 const connectionsSearchSchema = z.object({
@@ -128,12 +130,14 @@ function EnvironmentSection({
   envConfig,
   connections,
   readOnly,
+  canViewSecrets,
   onEdit,
   onDelete,
 }: {
   envConfig: (typeof environments)[0]
   connections: RedisConnection[]
   readOnly: boolean
+  canViewSecrets: boolean
   onEdit: (connection: RedisConnection) => void
   onDelete: (connection: RedisConnection) => void
 }) {
@@ -161,6 +165,7 @@ function EnvironmentSection({
             key={connection.id}
             connection={connection}
             readOnly={readOnly}
+            canViewSecrets={canViewSecrets}
             onEdit={() => onEdit(connection)}
             onDelete={() => onDelete(connection)}
           />
@@ -204,9 +209,16 @@ function EnvironmentSectionSkeleton({ envConfig }: { envConfig: (typeof environm
 }
 
 function ConnectionsPage() {
-  const { envConnections } = useAppMode()
+  const { envConnections, isAuthless } = useAppMode()
   const { create } = Route.useSearch()
   const { connections, isLoading, error } = useConnection()
+  const { user } = useAuth()
+  const { data: members } = useOrganizationMembers()
+  const currentMembership = members?.find((m) => m.userId === user?.id)
+  const canViewSecrets =
+    isAuthless ||
+    currentMembership?.role === 'owner' ||
+    currentMembership?.role === 'admin'
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editingConnection, setEditingConnection] = useState<RedisConnection | null>(null)
   const [deletingConnection, setDeletingConnection] = useState<RedisConnection | null>(null)
@@ -333,6 +345,7 @@ function ConnectionsPage() {
                 envConfig={env}
                 connections={envScopedConnections}
                 readOnly={envConnections}
+                canViewSecrets={canViewSecrets}
                 onEdit={setEditingConnection}
                 onDelete={setDeletingConnection}
               />
@@ -374,17 +387,19 @@ function ConnectionsPage() {
 function ConnectionCard({
   connection,
   readOnly,
+  canViewSecrets,
   onEdit,
   onDelete,
 }: {
   connection: RedisConnection
   readOnly: boolean
+  canViewSecrets: boolean
   onEdit: () => void
   onDelete: () => void
 }) {
   const [showUrl, setShowUrl] = useState(false)
   const { data: detail, isLoading: detailLoading } = useConnectionDetail(
-    showUrl ? connection.id : null
+    showUrl && canViewSecrets ? connection.id : null
   )
   const setDefaultMutation = useSetDefaultConnection()
   const envConfig = getEnvironmentConfig(connection.environment)
@@ -438,51 +453,62 @@ function ConnectionCard({
       </CardHeader>
 
       <CardContent className="space-y-3">
-        {/* Connection URL (hidden by default) */}
+        {/* Connection URL (admins/owners only) */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <Label className="text-xs text-muted-foreground">Connection URL</Label>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs gap-1"
-              onClick={() => {
-                trackEvent(AnalyticsEvents.CONNECTION_URL_TOGGLED, {
-                  visible: !showUrl,
-                  connection_id: connection.id,
-                })
-                setShowUrl(!showUrl)
-              }}
-            >
-              {showUrl ? (
-                <>
-                  <EyeOff className="h-3 w-3" />
-                  Hide
-                </>
-              ) : (
-                <>
-                  <Eye className="h-3 w-3" />
-                  Show
-                </>
-              )}
-            </Button>
+            {canViewSecrets && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs gap-1"
+                onClick={() => {
+                  trackEvent(AnalyticsEvents.CONNECTION_URL_TOGGLED, {
+                    visible: !showUrl,
+                    connection_id: connection.id,
+                  })
+                  setShowUrl(!showUrl)
+                }}
+              >
+                {showUrl ? (
+                  <>
+                    <EyeOff className="h-3 w-3" />
+                    Hide
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-3 w-3" />
+                    Show
+                  </>
+                )}
+              </Button>
+            )}
           </div>
           <div className="relative">
             <div
               className={cn(
                 'font-mono text-xs p-2 rounded-md bg-muted/50 border overflow-hidden transition-all',
-                !showUrl && 'blur-sm select-none'
+                (!showUrl || !canViewSecrets) && 'blur-sm select-none'
               )}
             >
-              {detailLoading ? (
+              {!canViewSecrets ? (
+                <span className="text-muted-foreground">
+                  ••••••••••••••••••••••••
+                </span>
+              ) : detailLoading ? (
                 <span className="text-muted-foreground">Loading...</span>
-              ) : showUrl && detail ? (
+              ) : showUrl && detail?.url ? (
                 <span className="break-all">{detail.url}</span>
               ) : (
                 <span className="text-muted-foreground">••••••••••••••••••••••••</span>
               )}
             </div>
           </div>
+          {!canViewSecrets && (
+            <p className="text-[10px] text-muted-foreground">
+              Only organization admins can view connection URLs.
+            </p>
+          )}
         </div>
 
         {/* Actions */}
@@ -575,7 +601,7 @@ function ConnectionFormDialog({
   useEffect(() => {
     if (mode === 'edit' && existingConnection) {
       setName(existingConnection.name)
-      setUrl(existingConnection.url)
+      setUrl(existingConnection.url ?? '')
       setPrefix(existingConnection.prefix ?? 'bull')
       setEnvironment(existingConnection.environment ?? 'development')
       setIsDefault(existingConnection.isDefault)
