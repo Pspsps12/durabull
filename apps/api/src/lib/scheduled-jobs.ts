@@ -1,35 +1,18 @@
 import type { JobSchedulerJson, RepeatOptions } from 'bullmq'
 import { z } from 'zod'
+import {
+  optionalJobTemplateOptionsSchema,
+  type JobTemplateOptionsInput,
+} from './job-options'
 
 const MAX_SCHEDULER_ID_LENGTH = 128
 const MAX_JOB_NAME_LENGTH = 120
-const MAX_JOB_ATTEMPTS = 100
-const MAX_JOB_PRIORITY = 2_097_152
-const MAX_BACKOFF_DELAY_MS = 7 * 24 * 60 * 60 * 1000
-const MAX_RETENTION_COUNT = 1_000_000
 const MAX_SCHEDULE_LIMIT = 1_000_000
 const MIN_EVERY_MS = 1_000
 const MAX_EVERY_MS = 365 * 24 * 60 * 60 * 1000
 const SCHEDULER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_.-]*$/
 
 const timestampInputSchema = z.union([z.string(), z.number().int().safe()])
-
-const retentionSchema = z.union([z.boolean(), z.number().int().min(0).max(MAX_RETENTION_COUNT)])
-
-const backoffSchema = z.object({
-  type: z.enum(['fixed', 'exponential']),
-  delay: z.number().int().min(0).max(MAX_BACKOFF_DELAY_MS),
-})
-
-const templateOptionsSchema = z
-  .object({
-    attempts: z.number().int().min(1).max(MAX_JOB_ATTEMPTS).optional(),
-    priority: z.number().int().min(0).max(MAX_JOB_PRIORITY).optional(),
-    backoff: backoffSchema.optional(),
-    removeOnComplete: retentionSchema.optional(),
-    removeOnFail: retentionSchema.optional(),
-  })
-  .optional()
 
 const scheduleSchema = z.discriminatedUnion('type', [
   z.object({
@@ -54,7 +37,7 @@ const scheduledJobPayloadSchema = z.object({
   name: z.string().trim().min(1, 'Job name is required.').max(MAX_JOB_NAME_LENGTH),
   data: z.unknown().default({}),
   schedule: scheduleSchema,
-  options: templateOptionsSchema,
+  options: optionalJobTemplateOptionsSchema,
 })
 
 function validateScheduledJobPayload(
@@ -122,16 +105,7 @@ export const updateScheduledJobSchema = scheduledJobPayloadSchema.superRefine(
 export type CreateScheduledJobInput = z.infer<typeof createScheduledJobSchema>
 export type UpdateScheduledJobInput = z.infer<typeof updateScheduledJobSchema>
 
-export interface ScheduledJobTemplateOptions {
-  attempts?: number
-  priority?: number
-  backoff?: {
-    type: 'fixed' | 'exponential'
-    delay: number
-  }
-  removeOnComplete?: boolean | number
-  removeOnFail?: boolean | number
-}
+export type ScheduledJobTemplateOptions = JobTemplateOptionsInput
 
 export interface ScheduledJobSummary {
   schedulerId: string

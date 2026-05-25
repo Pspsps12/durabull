@@ -1,8 +1,9 @@
 import { AnalyticsEvents, DialogType, trackEvent } from '@durabull/analytics'
 import { Loader2, Plus } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { JsonEditor } from '@/components/json-editor'
+import { JobOptionsFields } from '@/components/job-options-fields'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -16,6 +17,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAddJob } from '@/hooks/use-queues'
 import { ApiError } from '@/lib/api'
+import {
+  createDefaultJobOptionsFormValue,
+  formValueToJobOptions,
+  hasJobOptionsValidationErrors,
+  validateJobOptionsFormValue,
+  type JobOptionsFormValue,
+} from '@/lib/job-options'
 
 interface AddJobDialogProps {
   open: boolean
@@ -28,20 +36,20 @@ export function AddJobDialog({ open, onOpenChange, queueName, onSuccess }: AddJo
   const [jobName, setJobName] = useState('')
   const [jobData, setJobData] = useState<unknown>({})
   const [isJsonValid, setIsJsonValid] = useState(true)
-  const [delay, setDelay] = useState('0')
-  const [priority, setPriority] = useState('0')
-  const [attempts, setAttempts] = useState('1')
+  const [jobOptions, setJobOptions] = useState<JobOptionsFormValue>(createDefaultJobOptionsFormValue())
 
   const addJobMutation = useAddJob()
+  const jobOptionsErrors = useMemo(
+    () => validateJobOptionsFormValue(jobOptions, { includeDelay: true }),
+    [jobOptions]
+  )
 
   useEffect(() => {
     if (open) {
       setJobName('')
       setJobData({})
       setIsJsonValid(true)
-      setDelay('0')
-      setPriority('0')
-      setAttempts('1')
+      setJobOptions(createDefaultJobOptionsFormValue())
     }
   }, [open])
 
@@ -51,22 +59,16 @@ export function AddJobDialog({ open, onOpenChange, queueName, onSuccess }: AddJo
   }
 
   const handleSubmit = async () => {
-    if (!isJsonValid || !jobName.trim()) return
-
-    const delayMs = Number.parseInt(delay, 10) || 0
-    const priorityNum = Number.parseInt(priority, 10) || 0
-    const attemptsNum = Number.parseInt(attempts, 10) || 1
+    if (!isJsonValid || !jobName.trim() || hasJobOptionsValidationErrors(jobOptionsErrors)) {
+      return
+    }
 
     try {
       const result = await addJobMutation.mutateAsync({
         queueName,
         name: jobName.trim(),
         jobData,
-        options: {
-          delay: delayMs > 0 ? delayMs : undefined,
-          priority: priorityNum > 0 ? priorityNum : undefined,
-          attempts: attemptsNum > 1 ? attemptsNum : undefined,
-        },
+        options: formValueToJobOptions(jobOptions),
       })
 
       toast.success('Job created successfully', {
@@ -93,7 +95,11 @@ export function AddJobDialog({ open, onOpenChange, queueName, onSuccess }: AddJo
   }
 
   const isSubmitting = addJobMutation.isPending
-  const canSubmit = isJsonValid && jobName.trim() && !isSubmitting
+  const canSubmit =
+    isJsonValid &&
+    jobName.trim() &&
+    !isSubmitting &&
+    !hasJobOptionsValidationErrors(jobOptionsErrors)
 
   return (
     <Dialog
@@ -115,7 +121,6 @@ export function AddJobDialog({ open, onOpenChange, queueName, onSuccess }: AddJo
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Job Name */}
           <div className="space-y-2">
             <Label htmlFor="job-name">Job Name</Label>
             <Input
@@ -126,56 +131,21 @@ export function AddJobDialog({ open, onOpenChange, queueName, onSuccess }: AddJo
             />
           </div>
 
-          {/* Job Data */}
           <div className="space-y-2">
             <Label>Job Data (JSON)</Label>
             <JsonEditor value={jobData} onChange={handleJsonChange} minHeight="180px" />
           </div>
 
-          {/* Options */}
           <div className="space-y-4">
             <Label className="text-sm font-medium">Options</Label>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="delay" className="text-xs text-muted-foreground">
-                  Delay (ms)
-                </Label>
-                <Input
-                  id="delay"
-                  type="number"
-                  min="0"
-                  value={delay}
-                  onChange={(e) => setDelay(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="priority" className="text-xs text-muted-foreground">
-                  Priority
-                </Label>
-                <Input
-                  id="priority"
-                  type="number"
-                  min="0"
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="attempts" className="text-xs text-muted-foreground">
-                  Max Attempts
-                </Label>
-                <Input
-                  id="attempts"
-                  type="number"
-                  min="1"
-                  value={attempts}
-                  onChange={(e) => setAttempts(e.target.value)}
-                  placeholder="1"
-                />
-              </div>
-            </div>
+            <JobOptionsFields
+              value={jobOptions}
+              onChange={setJobOptions}
+              errors={jobOptionsErrors}
+              showDelay
+              compact
+              idPrefix="add-job"
+            />
           </div>
         </div>
 

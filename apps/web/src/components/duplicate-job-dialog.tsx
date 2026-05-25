@@ -1,8 +1,9 @@
 import { AnalyticsEvents, DialogType, trackEvent } from '@durabull/analytics'
 import { Copy, Loader2, Play } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { JsonEditor } from '@/components/json-editor'
+import { JobOptionsFields } from '@/components/job-options-fields'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -15,6 +16,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAddJob } from '@/hooks/use-queues'
+import {
+  formValueToJobOptions,
+  hasJobOptionsValidationErrors,
+  jobOptsToFormValue,
+  validateJobOptionsFormValue,
+  type JobOptionsFormValue,
+} from '@/lib/job-options'
 
 interface DuplicateJobDialogProps {
   open: boolean
@@ -23,11 +31,8 @@ interface DuplicateJobDialogProps {
   originalJobId: string
   originalJobName: string
   originalJobData: Record<string, unknown>
-  originalOptions?: {
-    delay?: number
-    priority?: number
-    attempts?: number
-  }
+  originalJobOpts?: Record<string, unknown>
+  originalDelay?: number
   onSuccess?: (newJobId: string) => void
 }
 
@@ -38,29 +43,31 @@ export function DuplicateJobDialog({
   originalJobId,
   originalJobName,
   originalJobData,
-  originalOptions,
+  originalJobOpts,
+  originalDelay = 0,
   onSuccess,
 }: DuplicateJobDialogProps) {
   const [jobName, setJobName] = useState(originalJobName)
   const [jobData, setJobData] = useState<unknown>(originalJobData)
   const [isJsonValid, setIsJsonValid] = useState(true)
-  const [delay, setDelay] = useState<string>(String(originalOptions?.delay ?? 0))
-  const [priority, setPriority] = useState<string>(String(originalOptions?.priority ?? 0))
-  const [attempts, setAttempts] = useState<string>(String(originalOptions?.attempts ?? 1))
+  const [jobOptions, setJobOptions] = useState<JobOptionsFormValue>(() =>
+    jobOptsToFormValue(originalJobOpts, originalDelay)
+  )
 
   const addJobMutation = useAddJob()
+  const jobOptionsErrors = useMemo(
+    () => validateJobOptionsFormValue(jobOptions, { includeDelay: true }),
+    [jobOptions]
+  )
 
-  // Reset form when dialog opens with new job
   useEffect(() => {
     if (open) {
       setJobName(originalJobName)
       setJobData(originalJobData)
       setIsJsonValid(true)
-      setDelay(String(originalOptions?.delay ?? 0))
-      setPriority(String(originalOptions?.priority ?? 0))
-      setAttempts(String(originalOptions?.attempts ?? 1))
+      setJobOptions(jobOptsToFormValue(originalJobOpts, originalDelay))
     }
-  }, [open, originalJobName, originalJobData, originalOptions])
+  }, [open, originalJobName, originalJobData, originalJobOpts, originalDelay])
 
   const handleJsonChange = (value: unknown, isValid: boolean) => {
     setJobData(value)
@@ -68,22 +75,16 @@ export function DuplicateJobDialog({
   }
 
   const handleSubmit = async () => {
-    if (!isJsonValid || !jobName.trim()) return
-
-    const delayMs = Number.parseInt(delay, 10) || 0
-    const priorityNum = Number.parseInt(priority, 10) || 0
-    const attemptsNum = Number.parseInt(attempts, 10) || 1
+    if (!isJsonValid || !jobName.trim() || hasJobOptionsValidationErrors(jobOptionsErrors)) {
+      return
+    }
 
     try {
       const result = await addJobMutation.mutateAsync({
         queueName,
         name: jobName.trim(),
         jobData,
-        options: {
-          delay: delayMs > 0 ? delayMs : undefined,
-          priority: priorityNum > 0 ? priorityNum : undefined,
-          attempts: attemptsNum > 1 ? attemptsNum : undefined,
-        },
+        options: formValueToJobOptions(jobOptions),
       })
 
       toast.success('Job created successfully', {
@@ -100,7 +101,11 @@ export function DuplicateJobDialog({
   }
 
   const isSubmitting = addJobMutation.isPending
-  const canSubmit = isJsonValid && jobName.trim() && !isSubmitting
+  const canSubmit =
+    isJsonValid &&
+    jobName.trim() &&
+    !isSubmitting &&
+    !hasJobOptionsValidationErrors(jobOptionsErrors)
 
   return (
     <Dialog
@@ -125,13 +130,11 @@ export function DuplicateJobDialog({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Original Job ID (read-only reference) */}
           <div className="rounded-lg border bg-muted/50 p-3">
             <p className="text-xs text-muted-foreground mb-1">Duplicating from job:</p>
             <p className="font-mono text-sm break-all">{originalJobId}</p>
           </div>
 
-          {/* Job Name */}
           <div className="space-y-2">
             <Label htmlFor="job-name">Job Name</Label>
             <Input
@@ -142,56 +145,21 @@ export function DuplicateJobDialog({
             />
           </div>
 
-          {/* Job Data */}
           <div className="space-y-2">
             <Label>Job Data (JSON)</Label>
             <JsonEditor value={jobData} onChange={handleJsonChange} minHeight="180px" />
           </div>
 
-          {/* Options */}
           <div className="space-y-4">
             <Label className="text-sm font-medium">Options</Label>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="delay" className="text-xs text-muted-foreground">
-                  Delay (ms)
-                </Label>
-                <Input
-                  id="delay"
-                  type="number"
-                  min="0"
-                  value={delay}
-                  onChange={(e) => setDelay(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="priority" className="text-xs text-muted-foreground">
-                  Priority
-                </Label>
-                <Input
-                  id="priority"
-                  type="number"
-                  min="0"
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="attempts" className="text-xs text-muted-foreground">
-                  Max Attempts
-                </Label>
-                <Input
-                  id="attempts"
-                  type="number"
-                  min="1"
-                  value={attempts}
-                  onChange={(e) => setAttempts(e.target.value)}
-                  placeholder="1"
-                />
-              </div>
-            </div>
+            <JobOptionsFields
+              value={jobOptions}
+              onChange={setJobOptions}
+              errors={jobOptionsErrors}
+              showDelay
+              compact
+              idPrefix="duplicate-job"
+            />
           </div>
         </div>
 

@@ -138,6 +138,26 @@ All routes below are under:
 - `POST /queues/:queueName/jobs/remove`
 - `POST /queues/:queueName/jobs/invoke`
 
+`POST /queues/:queueName/jobs` accepts optional BullMQ job options alongside `name` and `data`:
+
+```json
+{
+  "name": "send-welcome-email",
+  "data": { "userId": "123" },
+  "delay": 5000,
+  "priority": 5,
+  "attempts": 3,
+  "backoff": {
+    "type": "exponential",
+    "delay": 1000
+  },
+  "removeOnComplete": 100,
+  "removeOnFail": true
+}
+```
+
+Supported option fields match scheduled job template options plus `delay`: `attempts`, `priority`, `backoff`, `removeOnComplete`, and `removeOnFail`.
+
 ### Scheduled Jobs
 
 - `GET /scheduled-jobs`

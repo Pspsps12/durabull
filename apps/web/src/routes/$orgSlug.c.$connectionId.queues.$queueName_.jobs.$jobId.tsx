@@ -597,11 +597,8 @@ function JobDetailPage() {
           originalJobId={job.id}
           originalJobName={job.name}
           originalJobData={job.data}
-          originalOptions={{
-            delay: job.delay,
-            priority: job.priority,
-            attempts: job.maxAttempts,
-          }}
+          originalJobOpts={job.opts}
+          originalDelay={job.delay}
           onSuccess={() => {
             navigate({
               to: '/$orgSlug/c/$connectionId/queues/$queueName',
