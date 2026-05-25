@@ -1,4 +1,5 @@
 import {
+  alertDeliveryRepository,
   alertCheckCursorRepository,
   alertEventRepository,
   alertRuleRepository,
@@ -8,8 +9,13 @@ import {
   type RedisConnection,
 } from '@durabull/dal'
 import { env } from '@durabull/env'
+import type { JobType } from 'bullmq'
 import { evaluateRule, type CursorState, type QueueSnapshot } from './alert-evaluator'
-import { dispatchAlertNotification, type NotificationChannel } from './alert-notifier'
+import {
+  dispatchAlertNotification,
+  processAlertDeliveries,
+  type NotificationChannel,
+} from './alert-notifier'
 import { getQueue } from './redis'
 import { toRedisConnectionOptions } from './connection-options'
 
@@ -21,6 +27,8 @@ const MAX_CONCURRENT_QUEUES = 5
 const METRICS_WINDOW_MINUTES = 60
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000
 const EVENT_RETENTION_DAYS = 90
+const DEFAULT_JOB_FAILED_MAX_ISSUES_PER_POLL = 100
+const HARD_CAP_JOB_FAILED_MAX_ISSUES_PER_POLL = 500
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let cleanupTimer: ReturnType<typeof setInterval> | null = null
@@ -251,7 +259,11 @@ async function processConnection(connectionId: string, rules: AlertRule[]): Prom
 
       const applicableRules = rules.filter((rule) => isRuleApplicableToQueue(rule, queueName))
       for (const rule of applicableRules) {
-        await evaluateAndMaybeAlert(rule, snapshot, cursor, connection)
+        if (rule.type === 'job_failed') {
+          await scanFailedJobsAndMaybeAlert(rule, queue, connection, queueName)
+        } else {
+          await evaluateAndMaybeAlert(rule, snapshot, cursor, connection)
+        }
       }
 
       await alertCheckCursorRepository.upsert({
@@ -322,9 +334,118 @@ async function evaluateAndMaybeAlert(
 
   try {
     await dispatchAlertNotification(event, channels, connection, rule.name)
-    await alertEventRepository.markNotificationSent(event.id)
+    await markLegacyNotificationSentIfComplete(event.id)
   } catch (error) {
     console.error('[alert-monitor] Notification dispatch failed:', error)
+  }
+}
+
+async function scanFailedJobsAndMaybeAlert(
+  rule: AlertRule,
+  queue: {
+    getJobs: (
+      types?: JobType | JobType[],
+      start?: number,
+      end?: number,
+      asc?: boolean
+    ) => Promise<unknown[]>
+  },
+  connection: RedisConnection,
+  queueName: string
+): Promise<void> {
+  const config = (rule.config ?? {}) as Record<string, unknown>
+  const requestedMax =
+    typeof config.maxIssuesPerPoll === 'number'
+      ? Math.floor(config.maxIssuesPerPoll)
+      : DEFAULT_JOB_FAILED_MAX_ISSUES_PER_POLL
+  const maxIssuesPerPoll = Math.min(
+    HARD_CAP_JOB_FAILED_MAX_ISSUES_PER_POLL,
+    Math.max(1, requestedMax)
+  )
+
+  const jobs = await queue.getJobs(['failed'], 0, maxIssuesPerPoll - 1, false)
+  for (const rawJob of jobs) {
+    const job = normalizeFailedJob(rawJob)
+    if (!job.id) continue
+
+    const dedupeKey = `job:${connection.id}:${queueName}:${job.id}`
+    const { event, created } = await alertEventRepository.createOrGetByDedupeKey({
+      alertRuleId: rule.id,
+      organizationId: rule.organizationId,
+      connectionId: rule.connectionId,
+      queueName,
+      type: rule.type,
+      status: 'firing',
+      summary: `Job ${job.id} failed in ${queueName}${job.failedReason ? `: ${job.failedReason}` : ''}`,
+      context: {
+        jobId: job.id,
+        jobName: job.name,
+        failedReason: job.failedReason,
+        attemptsMade: job.attemptsMade,
+        attempts: job.attempts,
+        failedAt: job.failedAt,
+      },
+      firedAt: job.failedAt ? new Date(job.failedAt) : new Date(),
+      dedupeKey,
+    })
+
+    if (!created) {
+      await processAlertDeliveries(event, connection, rule.name)
+      await markLegacyNotificationSentIfComplete(event.id)
+      continue
+    }
+
+    console.log(`[alert-monitor] Job failed alert fired: ${event.summary}`)
+
+    const channels = (rule.notificationChannels ?? []) as NotificationChannel[]
+    if (channels.length === 0) continue
+
+    try {
+      await dispatchAlertNotification(event, channels, connection, rule.name)
+      await markLegacyNotificationSentIfComplete(event.id)
+    } catch (error) {
+      console.error('[alert-monitor] Job failed notification dispatch failed:', error)
+    }
+  }
+}
+
+function normalizeFailedJob(rawJob: unknown): {
+  id: string | null
+  name: string | null
+  failedReason: string | null
+  attemptsMade: number | null
+  attempts: number | null
+  failedAt: string | null
+} {
+  const source =
+    typeof rawJob === 'object' && rawJob !== null ? (rawJob as Record<string, unknown>) : {}
+  const opts =
+    typeof source.opts === 'object' && source.opts !== null
+      ? (source.opts as Record<string, unknown>)
+      : {}
+  const failedAtMs =
+    typeof source.finishedOn === 'number'
+      ? source.finishedOn
+      : typeof source.processedOn === 'number'
+        ? source.processedOn
+        : null
+
+  return {
+    id: typeof source.id === 'string' || typeof source.id === 'number' ? String(source.id) : null,
+    name: typeof source.name === 'string' ? source.name : null,
+    failedReason:
+      typeof source.failedReason === 'string' ? source.failedReason.slice(0, 500) : null,
+    attemptsMade: typeof source.attemptsMade === 'number' ? source.attemptsMade : null,
+    attempts: typeof opts.attempts === 'number' ? opts.attempts : null,
+    failedAt: failedAtMs ? new Date(failedAtMs).toISOString() : null,
+  }
+}
+
+async function markLegacyNotificationSentIfComplete(eventId: string): Promise<void> {
+  const counts = await alertDeliveryRepository.countByStatuses(eventId)
+  const total = counts.pending + counts.claimed + counts.delivered + counts.failed
+  if (total === 0 || counts.delivered === total) {
+    await alertEventRepository.markNotificationSent(eventId)
   }
 }
 
@@ -362,6 +483,8 @@ export const __alertMonitorTestUtils = {
   getUniqueQueueNames,
   isRuleApplicableToQueue,
   evaluateAndMaybeAlert,
+  scanFailedJobsAndMaybeAlert,
+  normalizeFailedJob,
   processConnection,
   processWithConcurrency,
 }

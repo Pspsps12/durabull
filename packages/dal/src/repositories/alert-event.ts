@@ -1,7 +1,7 @@
 import { uuidv7 } from '@durabull/utils/uuid'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { getDb } from '../db/client'
-import { alertEvent, type AlertEventStatus } from '../db/schemas/alert-event/schema'
+import { type AlertEventStatus, alertEvent } from '../db/schemas/alert-event/schema'
 import type { AlertEvent, NewAlertEvent } from '../db/schemas/alert-event/types'
 
 function toNumber(value: number | string | bigint | null | undefined): number {
@@ -23,6 +23,42 @@ export const alertEventRepository = {
       .returning()
 
     return result
+  },
+
+  async createOrGetByDedupeKey(
+    data: Omit<NewAlertEvent, 'id' | 'createdAt' | 'updatedAt'> & { dedupeKey: string }
+  ): Promise<{ event: AlertEvent; created: boolean }> {
+    const db = await getDb()
+    const id = uuidv7()
+
+    const [inserted] = await db
+      .insert(alertEvent)
+      .values({
+        id,
+        ...data,
+      })
+      .onConflictDoNothing({
+        target: [alertEvent.alertRuleId, alertEvent.dedupeKey],
+      })
+      .returning()
+
+    if (inserted) {
+      return { event: inserted, created: true }
+    }
+
+    const rows = await db
+      .select()
+      .from(alertEvent)
+      .where(
+        and(eq(alertEvent.alertRuleId, data.alertRuleId), eq(alertEvent.dedupeKey, data.dedupeKey))
+      )
+      .limit(1)
+
+    if (!rows[0]) {
+      throw new Error('Alert event dedupe conflict could not be resolved.')
+    }
+
+    return { event: rows[0], created: false }
   },
 
   async findActiveFiring(alertRuleId: string, queueName: string): Promise<AlertEvent | null> {
@@ -58,7 +94,13 @@ export const alertEventRepository = {
   async findByConnection(
     connectionId: string,
     organizationId: string,
-    options: { offset: number; limit: number; status?: AlertEventStatus }
+    options: {
+      offset: number
+      limit: number
+      status?: AlertEventStatus
+      queueName?: string
+      jobId?: string
+    }
   ): Promise<AlertEvent[]> {
     const db = await getDb()
     return db
@@ -68,7 +110,9 @@ export const alertEventRepository = {
         and(
           eq(alertEvent.connectionId, connectionId),
           eq(alertEvent.organizationId, organizationId),
-          ...(options.status ? [eq(alertEvent.status, options.status)] : [])
+          ...(options.status ? [eq(alertEvent.status, options.status)] : []),
+          ...(options.queueName ? [eq(alertEvent.queueName, options.queueName)] : []),
+          ...(options.jobId ? [sql`${alertEvent.context}->>'jobId' = ${options.jobId}`] : [])
         )
       )
       .orderBy(desc(alertEvent.firedAt))

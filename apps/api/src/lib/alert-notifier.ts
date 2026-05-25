@@ -1,11 +1,41 @@
-import { eq, getDb, organization, type AlertEvent, type RedisConnection } from '@durabull/dal'
+import {
+  type AlertDelivery,
+  type AlertEvent,
+  alertDeliveryRepository,
+  eq,
+  getDb,
+  linearIntegrationRepository,
+  linearJobIssueRepository,
+  organization,
+  type RedisConnection,
+} from '@durabull/dal'
 import { isEmailConfigured } from '@durabull/email'
 import { env } from '@durabull/env'
+import { createLinearIssue, LinearApiError } from './linear-client'
+import { getValidLinearAccessToken } from './linear-oauth'
 
-export interface NotificationChannel {
-  type: 'email'
-  target: string
+class NonRetryableDeliveryError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'NonRetryableDeliveryError'
+  }
 }
+
+export type NotificationChannel =
+  | {
+      type: 'email'
+      target: string
+    }
+  | {
+      type: 'linear'
+      target: 'org-default'
+      teamId?: string
+      projectId?: string
+      labelIds?: string[]
+      assigneeId?: string
+      stateId?: string
+      priority?: number
+    }
 
 export async function dispatchAlertNotification(
   event: AlertEvent,
@@ -13,17 +43,66 @@ export async function dispatchAlertNotification(
   connection: RedisConnection,
   ruleName: string
 ): Promise<void> {
+  const deliveries = channels.map((channel) => ({
+    alertEventId: event.id,
+    organizationId: event.organizationId,
+    channelType: channel.type,
+    target: getDeliveryTarget(channel),
+    providerMetadata: channel,
+  }))
+
+  await alertDeliveryRepository.enqueueMany(deliveries)
+  await processAlertDeliveries(event, connection, ruleName)
+}
+
+export async function processAlertDeliveries(
+  event: AlertEvent,
+  connection: RedisConnection,
+  ruleName: string
+): Promise<void> {
+  const dueDeliveries = await alertDeliveryRepository.claimDueForEvent(event.id)
+  if (dueDeliveries.length === 0) return
+
   const organizationSlug = await getOrganizationSlug(event.organizationId)
 
-  for (const channel of channels) {
-    switch (channel.type) {
-      case 'email':
-        await sendAlertEmail(channel.target, event, connection, ruleName, organizationSlug)
-        break
-      default:
-        console.warn(`[alert-notifier] Unknown channel type: ${String(channel)}`)
+  for (const delivery of dueDeliveries) {
+    try {
+      switch (delivery.channelType) {
+        case 'email':
+          await sendAlertEmail(delivery.target, event, connection, ruleName, organizationSlug)
+          await alertDeliveryRepository.markDelivered(delivery.id, {}, requireClaimedAt(delivery))
+          break
+        case 'linear':
+          await sendLinearAlert(delivery, event, connection, ruleName, organizationSlug)
+          break
+        default:
+          await alertDeliveryRepository.markFailed(delivery.id, {
+            error: `Unknown channel type: ${delivery.channelType}`,
+            retryable: false,
+            expectedClaimedAt: requireClaimedAt(delivery),
+          })
+      }
+    } catch (error) {
+      const retry = classifyDeliveryFailure(error, delivery.attemptCount + 1)
+      await alertDeliveryRepository.markFailed(delivery.id, {
+        ...retry,
+        expectedClaimedAt: requireClaimedAt(delivery),
+      })
     }
   }
+}
+
+function getDeliveryTarget(channel: NotificationChannel): string {
+  if (channel.type === 'email') return channel.target
+  return [
+    'org-default',
+    channel.teamId ?? '',
+    channel.projectId ?? '',
+    channel.assigneeId ?? '',
+    channel.stateId ?? '',
+    channel.priority ?? '',
+    ...(channel.labelIds ?? []),
+  ].join(':')
 }
 
 async function sendAlertEmail(
@@ -34,8 +113,9 @@ async function sendAlertEmail(
   organizationSlug: string | null
 ): Promise<void> {
   if (!isEmailConfigured()) {
-    console.warn('[alert-notifier] RESEND_API_KEY not configured, skipping email')
-    return
+    throw new NonRetryableDeliveryError(
+      'Email delivery is not configured because RESEND_API_KEY is missing.'
+    )
   }
 
   const { sendAlertNotificationEmail } = await import('@durabull/email')
@@ -60,6 +140,292 @@ async function sendAlertEmail(
   })
 }
 
+async function sendLinearAlert(
+  delivery: AlertDelivery,
+  event: AlertEvent,
+  connection: RedisConnection,
+  ruleName: string,
+  organizationSlug: string | null
+): Promise<void> {
+  const integration = await linearIntegrationRepository.findByOrganization(event.organizationId)
+  if (!integration) {
+    throw new LinearApiError('Linear integration is not configured for this organization.', {
+      status: 400,
+      retryable: false,
+    })
+  }
+
+  const channel = parseLinearChannel(delivery.providerMetadata)
+  const teamId = channel.teamId ?? integration.defaultTeamId
+  if (!teamId) {
+    throw new LinearApiError('Linear team is required before alert delivery can create issues.', {
+      status: 400,
+      retryable: false,
+    })
+  }
+
+  const jobContext = getJobContext(event.context)
+  const { jobUrl } = buildAlertAppUrls({
+    appBaseUrl: env.APP_BASE_URL,
+    organizationSlug,
+    connectionId: connection.id,
+    queueName: event.queueName,
+    alertRuleId: event.alertRuleId,
+    jobId: jobContext.jobId,
+  })
+
+  const existingIssue = jobContext.jobId
+    ? await linearJobIssueRepository.findByJob({
+        organizationId: event.organizationId,
+        connectionId: event.connectionId,
+        queueName: event.queueName,
+        jobId: jobContext.jobId,
+      })
+    : null
+
+  if (existingIssue) {
+    await linearJobIssueRepository.createOrGet({
+      organizationId: event.organizationId,
+      connectionId: event.connectionId,
+      queueName: event.queueName,
+      jobId: existingIssue.jobId,
+      alertEventId: event.id,
+      linearIssueId: existingIssue.linearIssueId,
+      linearIssueIdentifier: existingIssue.linearIssueIdentifier,
+      linearIssueUrl: existingIssue.linearIssueUrl,
+    })
+    await markLinearDeliveryDelivered(delivery, {
+      id: existingIssue.linearIssueId,
+      identifier: existingIssue.linearIssueIdentifier,
+      url: existingIssue.linearIssueUrl,
+    })
+    return
+  }
+
+  const accessToken = await getValidLinearAccessToken(integration)
+  const issue = await createLinearIssueOnce(accessToken, {
+    teamId,
+    title: buildLinearIssueTitle(event, connection, ruleName, jobContext.jobName),
+    description: buildLinearIssueDescription({
+      event,
+      connection,
+      ruleName,
+      jobUrl,
+      jobContext,
+    }),
+    projectId: channel.projectId ?? integration.defaultProjectId,
+    labelIds: channel.labelIds?.length ? channel.labelIds : integration.defaultLabelIds,
+    assigneeId: channel.assigneeId ?? integration.defaultAssigneeId,
+    stateId: channel.stateId ?? integration.defaultStateId,
+    priority: channel.priority ?? integration.defaultPriority,
+  })
+
+  try {
+    const deliveredIssue = jobContext.jobId
+      ? linearJobIssueToDeliveryIssue(
+          await linearJobIssueRepository.createOrGet({
+            organizationId: event.organizationId,
+            connectionId: event.connectionId,
+            queueName: event.queueName,
+            jobId: jobContext.jobId,
+            alertEventId: event.id,
+            linearIssueId: issue.id,
+            linearIssueIdentifier: issue.identifier,
+            linearIssueUrl: issue.url,
+          })
+        )
+      : issue
+
+    await markLinearDeliveryDelivered(delivery, deliveredIssue)
+  } catch {
+    throw new LinearApiError(
+      `Linear issue ${issue.identifier} was created, but Durabull could not record the delivery. Manual reconciliation is required before retrying.`,
+      { status: 500, retryable: false }
+    )
+  }
+}
+
+async function createLinearIssueOnce(
+  accessToken: string,
+  input: Parameters<typeof createLinearIssue>[1]
+): ReturnType<typeof createLinearIssue> {
+  try {
+    return await createLinearIssue(accessToken, input)
+  } catch (error) {
+    if (error instanceof LinearApiError && error.retryable && error.status !== 429) {
+      throw new LinearApiError(
+        'Linear issue creation returned an ambiguous failure. Manual reconciliation is required before retrying to avoid duplicate issues.',
+        { status: error.status, retryable: false }
+      )
+    }
+    throw error
+  }
+}
+
+function linearJobIssueToDeliveryIssue(issue: {
+  linearIssueId: string
+  linearIssueIdentifier: string
+  linearIssueUrl: string
+}): { id: string; identifier: string; url: string } {
+  return {
+    id: issue.linearIssueId,
+    identifier: issue.linearIssueIdentifier,
+    url: issue.linearIssueUrl,
+  }
+}
+
+async function markLinearDeliveryDelivered(
+  delivery: AlertDelivery,
+  issue: { id: string; identifier: string; url: string }
+): Promise<void> {
+  const marked = await alertDeliveryRepository.markDelivered(
+    delivery.id,
+    {
+      externalId: issue.id,
+      externalIdentifier: issue.identifier,
+      externalUrl: issue.url,
+      providerMetadata: {
+        ...((delivery.providerMetadata ?? {}) as Record<string, unknown>),
+        issue,
+      },
+    },
+    requireClaimedAt(delivery)
+  )
+  if (!marked) {
+    throw new LinearApiError('Alert delivery claim was lost before it could be completed.', {
+      status: 409,
+      retryable: false,
+    })
+  }
+}
+
+function requireClaimedAt(delivery: AlertDelivery): Date {
+  if (delivery.claimedAt instanceof Date) return delivery.claimedAt
+  throw new LinearApiError('Alert delivery was not claimed before finalization.', {
+    status: 409,
+    retryable: false,
+  })
+}
+
+function parseLinearChannel(value: unknown): Extract<NotificationChannel, { type: 'linear' }> {
+  const source =
+    typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
+  return {
+    type: 'linear',
+    target: 'org-default',
+    teamId: typeof source.teamId === 'string' ? source.teamId : undefined,
+    projectId: typeof source.projectId === 'string' ? source.projectId : undefined,
+    labelIds: Array.isArray(source.labelIds)
+      ? source.labelIds.filter((label): label is string => typeof label === 'string')
+      : undefined,
+    assigneeId: typeof source.assigneeId === 'string' ? source.assigneeId : undefined,
+    stateId: typeof source.stateId === 'string' ? source.stateId : undefined,
+    priority: typeof source.priority === 'number' ? source.priority : undefined,
+  }
+}
+
+function getJobContext(context: unknown): {
+  jobId: string | null
+  jobName: string | null
+  failedReason: string | null
+  attemptsMade: number | null
+  attempts: number | null
+  failedAt: string | null
+} {
+  const source =
+    typeof context === 'object' && context !== null ? (context as Record<string, unknown>) : {}
+  return {
+    jobId: typeof source.jobId === 'string' ? source.jobId : null,
+    jobName: typeof source.jobName === 'string' ? source.jobName : null,
+    failedReason: typeof source.failedReason === 'string' ? source.failedReason : null,
+    attemptsMade: typeof source.attemptsMade === 'number' ? source.attemptsMade : null,
+    attempts: typeof source.attempts === 'number' ? source.attempts : null,
+    failedAt: typeof source.failedAt === 'string' ? source.failedAt : null,
+  }
+}
+
+function buildLinearIssueTitle(
+  event: AlertEvent,
+  connection: RedisConnection,
+  ruleName: string,
+  jobName: string | null
+): string {
+  if (event.type === 'job_failed') {
+    return `[Durabull] ${connection.name}/${event.queueName} job failed${
+      jobName ? `: ${safeLinearMarkdown(jobName, 200)}` : ''
+    }`
+  }
+
+  return `[Durabull] ${safeLinearMarkdown(ruleName, 200)} fired for ${connection.name}/${event.queueName}`
+}
+
+function buildLinearIssueDescription({
+  event,
+  connection,
+  ruleName,
+  jobUrl,
+  jobContext,
+}: {
+  event: AlertEvent
+  connection: RedisConnection
+  ruleName: string
+  jobUrl: string
+  jobContext: ReturnType<typeof getJobContext>
+}): string {
+  const lines = [
+    `Durabull alert rule **${safeLinearMarkdown(ruleName, 200)}** fired.`,
+    '',
+    `- Connection: ${connection.name}`,
+    `- Queue: ${event.queueName}`,
+    `- Summary: ${safeLinearMarkdown(event.summary)}`,
+    `- Fired at: ${event.firedAt.toISOString()}`,
+  ]
+
+  if (jobContext.jobId) lines.push(`- Job ID: ${jobContext.jobId}`)
+  if (jobContext.jobName) lines.push(`- Job name: ${safeLinearMarkdown(jobContext.jobName, 200)}`)
+  if (jobContext.failedReason) {
+    lines.push(`- Failure reason: ${safeLinearMarkdown(jobContext.failedReason)}`)
+  }
+  if (jobContext.attemptsMade !== null) {
+    lines.push(`- Attempts made: ${jobContext.attemptsMade}`)
+  }
+  if (jobContext.attempts !== null) lines.push(`- Max attempts: ${jobContext.attempts}`)
+  if (jobContext.failedAt) lines.push(`- Failed at: ${jobContext.failedAt}`)
+  lines.push('', `[Open in Durabull](${jobUrl})`)
+
+  return lines.join('\n')
+}
+
+function safeLinearMarkdown(value: string, maxLength = 1000): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  const truncated =
+    normalized.length > maxLength
+      ? `${normalized.slice(0, Math.max(0, maxLength - 1))}...`
+      : normalized
+  return truncated.replace(/([\\`*_{}[\]()#+\-.!>])/g, '\\$1')
+}
+
+function classifyDeliveryFailure(
+  error: unknown,
+  attemptCount: number
+): { error: string; retryable: boolean; nextRetryAt?: Date | null } {
+  const message = error instanceof Error ? error.message : String(error)
+  const retryable =
+    error instanceof LinearApiError
+      ? error.retryable
+      : !(error instanceof NonRetryableDeliveryError)
+  if (!retryable) return { error: message, retryable: false }
+
+  const resetAt = error instanceof LinearApiError ? error.rateLimitResetAt : null
+  const backoffMs = Math.min(60 * 60 * 1000, 2 ** Math.max(0, attemptCount - 1) * 30_000)
+  return {
+    error: message,
+    retryable: true,
+    nextRetryAt:
+      resetAt && resetAt.getTime() > Date.now() ? resetAt : new Date(Date.now() + backoffMs),
+  }
+}
+
 async function getOrganizationSlug(organizationId: string): Promise<string | null> {
   const db = await getDb()
   const rows = await db
@@ -77,13 +443,15 @@ export function buildAlertAppUrls({
   connectionId,
   queueName,
   alertRuleId,
+  jobId,
 }: {
   appBaseUrl: string
   organizationSlug: string | null
   connectionId: string
   queueName: string
   alertRuleId: string
-}): { dashboardUrl: string; muteUrl: string } {
+  jobId?: string | null
+}): { dashboardUrl: string; muteUrl: string; jobUrl: string } {
   const baseUrl = appBaseUrl.replace(/\/+$/, '')
 
   if (!organizationSlug) {
@@ -91,6 +459,7 @@ export function buildAlertAppUrls({
     return {
       dashboardUrl: baseUrl,
       muteUrl: baseUrl,
+      jobUrl: baseUrl,
     }
   }
 
@@ -101,6 +470,9 @@ export function buildAlertAppUrls({
 
   return {
     dashboardUrl: `${baseUrl}/${orgSegment}/c/${connectionSegment}/queues/${queueSegment}`,
+    jobUrl: jobId
+      ? `${baseUrl}/${orgSegment}/c/${connectionSegment}/queues/${queueSegment}/jobs/${encodeURIComponent(jobId)}`
+      : `${baseUrl}/${orgSegment}/c/${connectionSegment}/queues/${queueSegment}`,
     muteUrl: `${baseUrl}/${orgSegment}/c/${connectionSegment}/alerts?${ruleQuery}`,
   }
 }

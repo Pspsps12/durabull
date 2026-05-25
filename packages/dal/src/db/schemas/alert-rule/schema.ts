@@ -3,7 +3,12 @@ import { baseColumns } from '../common'
 import { organization } from '../organization/schema'
 import { redisConnection } from '../redis-connection/schema'
 
-export const alertRuleTypes = ['failure_threshold', 'failure_rate', 'queue_stalled'] as const
+export const alertRuleTypes = [
+  'failure_threshold',
+  'failure_rate',
+  'queue_stalled',
+  'job_failed',
+] as const
 export type AlertRuleType = (typeof alertRuleTypes)[number]
 
 export const queueFilterModes = ['include', 'exclude'] as const

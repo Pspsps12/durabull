@@ -2,7 +2,12 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { AlertRuleBuilderPage } from '@/components/alerts/alert-rule-builder-page'
 import { useConnection } from '@/components/connection-provider'
-import { useConnectionAlertRules, useTestAlertRule, useUpdateAlertRule } from '@/hooks/use-alerts'
+import {
+  useConnectionAlertRules,
+  useLinearIntegration,
+  useTestAlertRule,
+  useUpdateAlertRule,
+} from '@/hooks/use-alerts'
 import { useQueues } from '@/hooks/use-queues'
 
 export const Route = createFileRoute('/$orgSlug/c/$connectionId/alerts/$ruleId')({
@@ -17,6 +22,7 @@ export function EditAlertRuleRoute() {
   const queuesQuery = useQueues()
   const updateRuleMutation = useUpdateAlertRule(connectionId)
   const testRuleMutation = useTestAlertRule(connectionId)
+  const linearIntegrationQuery = useLinearIntegration()
   const rule = (rulesQuery.data?.rules ?? []).find((candidate) => candidate.id === ruleId) ?? null
 
   if (rulesQuery.isLoading) {
@@ -45,6 +51,9 @@ export function EditAlertRuleRoute() {
       rule={rule}
       isSaving={updateRuleMutation.isPending}
       isTesting={testRuleMutation.isPending}
+      linearIntegrationConfigured={
+        linearIntegrationQuery.data?.integration?.validationStatus === 'valid'
+      }
       onSave={async (inputs) => {
         const [input] = inputs
         if (!input) {

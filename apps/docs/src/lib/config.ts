@@ -9,9 +9,8 @@ export const WEB_APP_URL = process.env.NEXT_PUBLIC_WEB_APP_URL || 'https://app.d
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://durabull.io'
 
 // Desktop distribution and release links
-export const GITHUB_RELEASE_URL = 'https://github.com/durabullhq/durabull/releases/tag/v1.3.0'
-export const MAC_DOWNLOAD_URL =
-  'https://github.com/durabullhq/durabull/releases/download/v1.3.0/Durabull-1.3.0-arm64.dmg'
+export const GITHUB_RELEASE_URL = 'https://github.com/durabullhq/durabull/releases/latest'
+export const MAC_DOWNLOAD_URL = GITHUB_RELEASE_URL
 export const WINDOWS_DOWNLOAD_URL =
   'https://github.com/durabullhq/durabull/releases/download/v1.3.0/Durabull.Setup.1.3.0.exe'
 export const WINDOWS_ZIP_DOWNLOAD_URL =

@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { alertRule } from '../alert-rule/schema'
 import { baseColumns } from '../common'
 import { organization } from '../organization/schema'
@@ -25,6 +25,7 @@ export const alertEvent = pgTable(
     status: text('status').$type<AlertEventStatus>().notNull().default('firing'),
     summary: text('summary').notNull(),
     context: jsonb('context'),
+    dedupeKey: text('dedupe_key'),
     firedAt: timestamp('fired_at', { withTimezone: true }).notNull(),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     notificationSentAt: timestamp('notification_sent_at', { withTimezone: true }),
@@ -36,6 +37,10 @@ export const alertEvent = pgTable(
       table.connectionId,
       table.queueName,
       table.status
+    ),
+    ruleDedupeIdx: uniqueIndex('alert_event_rule_dedupe_key_idx').on(
+      table.alertRuleId,
+      table.dedupeKey
     ),
   })
 )

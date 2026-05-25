@@ -3,6 +3,15 @@
 // Alert Check Cursor schema exports
 export { alertCheckCursor } from './alert-check-cursor/schema'
 export type { AlertCheckCursor, NewAlertCheckCursor } from './alert-check-cursor/types'
+// Alert Delivery schema exports
+export {
+  type AlertDeliveryChannelType,
+  type AlertDeliveryStatus,
+  alertDelivery,
+  alertDeliveryChannelTypes,
+  alertDeliveryStatuses,
+} from './alert-delivery/schema'
+export type { AlertDelivery, NewAlertDelivery } from './alert-delivery/types'
 // Alert Event schema exports
 export { type AlertEventStatus, alertEvent, alertEventStatuses } from './alert-event/schema'
 export type { AlertEvent, NewAlertEvent } from './alert-event/types'
@@ -19,6 +28,25 @@ export type {
   NewAuthSession,
   NewAuthVerification,
 } from './auth/types'
+// Linear integration schema exports
+export {
+  type LinearIntegrationValidationStatus,
+  linearIntegration,
+  linearIntegrationValidationStatuses,
+} from './linear-integration/schema'
+export type {
+  LinearIntegration,
+  NewLinearIntegration,
+} from './linear-integration/types'
+export { linearJobIssue } from './linear-job-issue/schema'
+export type { LinearJobIssue, NewLinearJobIssue } from './linear-job-issue/types'
+export { linearJobIssueEvent } from './linear-job-issue-event/schema'
+export type {
+  LinearJobIssueEvent,
+  NewLinearJobIssueEvent,
+} from './linear-job-issue-event/types'
+export { linearOauthState } from './linear-oauth-state/schema'
+export type { LinearOauthState, NewLinearOauthState } from './linear-oauth-state/types'
 // Organization schema exports
 export { invitation, member, organization } from './organization/schema'
 export type {
