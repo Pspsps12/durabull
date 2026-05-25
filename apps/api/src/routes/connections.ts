@@ -1,4 +1,8 @@
 import {
+  and,
+  eq,
+  getDb,
+  member,
   redisConnectionRepository,
   redisDiscoveredQueueRepository,
   shouldUseEnvConnections,
@@ -13,6 +17,17 @@ import { resetQueueDiscoveryState } from '../lib/queue-discovery'
 import { validateRedisUrlForEnvironment } from '../lib/url-validation'
 import { requireOrganization } from '../middleware/auth'
 import { connectionTestRateLimiter } from '../middleware/rate-limit'
+
+async function isOrgAdmin(userId: string, organizationId: string): Promise<boolean> {
+  const db = await getDb()
+  const rows = await db
+    .select({ role: member.role })
+    .from(member)
+    .where(and(eq(member.userId, userId), eq(member.organizationId, organizationId)))
+    .limit(1)
+  const role = rows[0]?.role
+  return role === 'owner' || role === 'admin'
+}
 
 const connectionPrefixSchema = z.string().trim().min(1)
 
@@ -38,21 +53,24 @@ const app = new Hono()
     return c.json({ connections })
   })
 
-  // Get a single connection by ID (includes sensitive URL)
+  // Get a single connection by ID (includes sensitive URL for org admins/owners only)
   .get('/:id', async (c) => {
     const { id } = c.req.param()
     const organizationId = c.get('organizationId')!
+    const user = c.get('user')
 
     const conn = await redisConnectionRepository.findById(id, organizationId)
     if (!conn) {
       return c.json({ error: 'Connection not found' }, 404)
     }
 
+    const canViewSecret = user ? await isOrgAdmin(user.id, organizationId) : false
+
     return c.json({
       connection: {
         id: conn.id,
         name: conn.name,
-        url: conn.url,
+        url: canViewSecret ? conn.url : null,
         isDefault: conn.isDefault,
         environment: conn.environment,
         prefix: conn.prefix,
