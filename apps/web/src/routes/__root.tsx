@@ -38,7 +38,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Toaster } from '@/components/ui/sonner'
-import { useAlertSummary } from '@/hooks/use-alerts'
+import { getOpenAlertCount, useAlertSummary } from '@/hooks/use-alerts'
 import { useAppConfig } from '@/hooks/use-app-config'
 import { useAppMode } from '@/hooks/use-app-mode'
 import { useAuth } from '@/hooks/use-auth'
@@ -377,14 +377,14 @@ function SidebarNav() {
   const { isAuthless } = useAppMode()
   const { currentConnection } = useConnection()
   const { data: alertSummary } = useAlertSummary()
+  const params = useParams({ strict: false }) as { connectionId?: string }
   const connectionId = currentConnection?.id
   // Get orgSlug from route params or fall back to active organization
   const orgSlug = useCurrentOrgSlug()
-  const totalOpenAlerts =
-    alertSummary?.connections.reduce(
-      (sum: number, entry: { count: number }) => sum + entry.count,
-      0
-    ) ?? 0
+  const openAlertsBadgeCount = useMemo(
+    () => getOpenAlertCount(alertSummary?.connections, params.connectionId),
+    [alertSummary?.connections, params.connectionId]
+  )
 
   // If no connection or org is selected, we can still show nav but links won't work
   // The index page will handle redirecting to a connection
@@ -399,7 +399,7 @@ function SidebarNav() {
       <NavLink to={basePath} icon={Layers}>
         Queues
       </NavLink>
-      <NavLink to={`${basePath}/alerts`} icon={BellRing} badge={totalOpenAlerts}>
+      <NavLink to={`${basePath}/alerts`} icon={BellRing} badge={openAlertsBadgeCount}>
         Alerts
       </NavLink>
       <NavLink to={`${basePath}/analytics`} icon={BarChart3}>
@@ -434,14 +434,14 @@ function MobileSidebarNav({ onNavigate }: { onNavigate: () => void }) {
   const { isAuthless } = useAppMode()
   const { currentConnection } = useConnection()
   const { data: alertSummary } = useAlertSummary()
+  const params = useParams({ strict: false }) as { connectionId?: string }
   const connectionId = currentConnection?.id
   // Get orgSlug from route params or fall back to active organization
   const orgSlug = useCurrentOrgSlug()
-  const totalOpenAlerts =
-    alertSummary?.connections.reduce(
-      (sum: number, entry: { count: number }) => sum + entry.count,
-      0
-    ) ?? 0
+  const openAlertsBadgeCount = useMemo(
+    () => getOpenAlertCount(alertSummary?.connections, params.connectionId),
+    [alertSummary?.connections, params.connectionId]
+  )
 
   const basePath =
     orgSlug && connectionId ? `/${orgSlug}/c/${connectionId}` : orgSlug ? `/${orgSlug}` : '/'
@@ -458,7 +458,7 @@ function MobileSidebarNav({ onNavigate }: { onNavigate: () => void }) {
         to={`${basePath}/alerts`}
         icon={BellRing}
         onNavigate={onNavigate}
-        badge={totalOpenAlerts}
+        badge={openAlertsBadgeCount}
       >
         Alerts
       </MobileNavLink>

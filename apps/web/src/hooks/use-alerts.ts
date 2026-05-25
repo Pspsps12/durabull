@@ -360,6 +360,18 @@ function invalidateAlertQueries(queryClient: QueryClient, connectionId?: string)
   }
 }
 
+/** Open incident count for one connection, or org-wide when connectionId is omitted. */
+export function getOpenAlertCount(
+  connections: AlertSummaryConnection[] | undefined,
+  connectionId?: string
+): number {
+  const entries = connections ?? []
+  if (connectionId) {
+    return entries.find((entry) => entry.connectionId === connectionId)?.count ?? 0
+  }
+  return entries.reduce((sum, entry) => sum + entry.count, 0)
+}
+
 export function useAlertSummary(options?: { refetchInterval?: number }) {
   return useQuery({
     queryKey: alertKeys.summary(),

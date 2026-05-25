@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
+  getOpenAlertCount,
   useAlertSummary,
   useConnectionAlertEvents,
   useConnectionAlertRules,
@@ -66,8 +67,7 @@ export function ConnectionAlertsWorkspace({
   const deleteRuleMutation = useDeleteAlertRule(connectionId)
   const resolveEventMutation = useResolveAlertEvent()
 
-  const firingCount =
-    summaryQuery.data?.connections.find((entry) => entry.connectionId === connectionId)?.count ?? 0
+  const firingCount = getOpenAlertCount(summaryQuery.data?.connections, connectionId)
   const rules = rulesQuery.data?.rules ?? []
   const events = eventsQuery.data?.events ?? []
 
