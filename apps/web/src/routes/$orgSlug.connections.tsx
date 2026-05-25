@@ -27,6 +27,7 @@ import {
   Pencil,
   Plus,
   Server,
+  ShieldAlert,
   Star,
   Trash2,
   Wifi,
@@ -546,6 +547,7 @@ function ConnectionFormDialog({
   const [showUrl, setShowUrl] = useState(false)
   const [environment, setEnvironment] = useState<ConnectionEnvironment>('development')
   const [isDefault, setIsDefault] = useState(false)
+  const [allowSelfSignedCerts, setAllowSelfSignedCerts] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
   const [discoveryConnectionId, setDiscoveryConnectionId] = useState<string | null>(null)
 
@@ -579,12 +581,14 @@ function ConnectionFormDialog({
       setPrefix(existingConnection.prefix ?? 'bull')
       setEnvironment(existingConnection.environment ?? 'development')
       setIsDefault(existingConnection.isDefault)
+      setAllowSelfSignedCerts(existingConnection.allowSelfSignedCerts ?? false)
     } else if (mode === 'create' && open) {
       setName('')
       setUrl('')
       setPrefix('bull')
       setEnvironment('development')
       setIsDefault(false)
+      setAllowSelfSignedCerts(false)
       setDiscoveryConnectionId(null)
     }
     setTestResult(null)
@@ -601,6 +605,7 @@ function ConnectionFormDialog({
           environment,
           isDefault,
           prefix,
+          allowSelfSignedCerts,
         })
         setDiscoveryConnectionId(created.connection.id)
         await runQueueDiscoveryMutation.mutateAsync(created.connection.id)
@@ -613,6 +618,7 @@ function ConnectionFormDialog({
             environment,
             isDefault,
             prefix,
+            allowSelfSignedCerts,
           },
         })
         onOpenChange(false)
@@ -625,7 +631,7 @@ function ConnectionFormDialog({
   const handleTestConnection = async () => {
     setTestResult(null)
     try {
-      const result = await testMutation.mutateAsync(url)
+      const result = await testMutation.mutateAsync({ url, allowSelfSignedCerts })
       setTestResult(result)
     } catch (error) {
       setTestResult({
@@ -874,6 +880,30 @@ function ConnectionFormDialog({
             </div>
 
             {/* Default toggle */}
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium">Allow self-signed TLS certificates</Label>
+                <p className="text-xs text-muted-foreground">
+                  Enable for providers like Heroku Key-Value Store that use self-signed TLS certs
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant={allowSelfSignedCerts ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  setAllowSelfSignedCerts(!allowSelfSignedCerts)
+                  setTestResult(null)
+                }}
+                className="gap-1.5"
+              >
+                <ShieldAlert
+                  className={cn('h-3.5 w-3.5', allowSelfSignedCerts && 'fill-current')}
+                />
+                {allowSelfSignedCerts ? 'Enabled' : 'Disabled'}
+              </Button>
+            </div>
+
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div className="space-y-0.5">
                 <Label className="text-sm font-medium">Set as default</Label>

@@ -17,6 +17,7 @@ import {
   type NotificationChannel,
 } from './alert-notifier'
 import { getQueue } from './redis'
+import { toRedisConnectionOptions } from './connection-options'
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000
 const MAX_STARTUP_JITTER_MS = 30_000
@@ -214,7 +215,13 @@ async function processConnection(connectionId: string, rules: AlertRule[]): Prom
     const cursorMap = new Map(cursors.map((cursor) => [cursor.queueName, cursor]))
 
     await processWithConcurrency(queueNames, MAX_CONCURRENT_QUEUES, async (queueName) => {
-      const queue = await getQueue(connectionId, connection.url, queueName, connection.prefix)
+      const queue = await getQueue(
+        connectionId,
+        connection.url,
+        queueName,
+        connection.prefix,
+        toRedisConnectionOptions(connection.allowSelfSignedCerts)
+      )
 
       const [jobCountsRaw, failedMetricsRaw, completedMetricsRaw] = await Promise.all([
         queue.getJobCounts('failed', 'waiting', 'active', 'completed'),

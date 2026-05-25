@@ -1,0 +1,1 @@
+ALTER TABLE "redis_connection" ADD COLUMN "allow_self_signed_certs" boolean DEFAULT false NOT NULL;

@@ -12,6 +12,7 @@ const ENV_DEFAULT_KEY = 'DURABULL_REDIS_URL_DEFAULT'
 const ENV_ENCRYPTION_KEY = 'DURABULL_REDIS_URL_ENCRYPTION_KEY'
 const ENVIRONMENT_SUFFIX = '_ENVIRONMENT'
 const PREFIX_SUFFIX = '_PREFIX'
+const ALLOW_SELF_SIGNED_CERTS_SUFFIX = '_ALLOW_SELF_SIGNED_CERTS'
 const ENV_NAMESPACE_UUID = '2a48b9e7-32fa-4d5a-8f61-7e7a2f6c3f0b'
 
 export interface EnvRedisConnection {
@@ -20,6 +21,7 @@ export interface EnvRedisConnection {
   url: string
   environment: ConnectionEnvironment
   prefix: string
+  allowSelfSignedCerts: boolean
   isDefault: boolean
 }
 
@@ -43,6 +45,11 @@ function toDisplayName(envName: string): string {
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ')
+}
+
+function parseBoolean(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase()
+  return normalized === '1' || normalized === 'true' || normalized === 'yes'
 }
 
 function parseEnvironment(value: string | undefined): ConnectionEnvironment {
@@ -73,7 +80,8 @@ export function getEnvRedisConnections(): EnvRedisConnection[] {
       key === ENV_DEFAULT_KEY ||
       key === ENV_ENCRYPTION_KEY ||
       key.endsWith(ENVIRONMENT_SUFFIX) ||
-      key.endsWith(PREFIX_SUFFIX)
+      key.endsWith(PREFIX_SUFFIX) ||
+      key.endsWith(ALLOW_SELF_SIGNED_CERTS_SUFFIX)
     ) {
       continue
     }
@@ -95,6 +103,9 @@ export function getEnvRedisConnections(): EnvRedisConnection[] {
     const envName = match[1]
     const environment = parseEnvironment(process.env[`${key}${ENVIRONMENT_SUFFIX}`])
     const prefix = process.env[`${key}${PREFIX_SUFFIX}`]?.trim() || 'bull'
+    const allowSelfSignedCerts = parseBoolean(
+      process.env[`${key}${ALLOW_SELF_SIGNED_CERTS_SUFFIX}`]
+    )
 
     connections.push({
       envName,
@@ -102,6 +113,7 @@ export function getEnvRedisConnections(): EnvRedisConnection[] {
       url,
       environment,
       prefix,
+      allowSelfSignedCerts,
       isDefault: false,
     })
   }
@@ -202,6 +214,7 @@ export async function syncEnvConnectionsForOrganization(
       url: string
       environment: ConnectionEnvironment
       prefix: string
+      allowSelfSignedCerts: boolean
       isDefault: boolean
       updatedAt: Date
     }> = {
@@ -209,6 +222,7 @@ export async function syncEnvConnectionsForOrganization(
       url: encryptRedisUrl(connection.url),
       environment: connection.environment,
       prefix: connection.prefix,
+      allowSelfSignedCerts: connection.allowSelfSignedCerts,
       isDefault,
       updatedAt: now,
     }
@@ -221,6 +235,7 @@ export async function syncEnvConnectionsForOrganization(
         url: encryptRedisUrl(connection.url),
         environment: connection.environment,
         prefix: connection.prefix,
+        allowSelfSignedCerts: connection.allowSelfSignedCerts,
         isDefault,
         organizationId,
         createdAt: now,

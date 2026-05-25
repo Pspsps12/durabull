@@ -2,6 +2,7 @@ import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { getRedis } from '../lib/redis'
+import { getConnectionRedisOptions } from '../lib/connection-options'
 
 const DEFAULT_PAGE_SIZE = 50
 const MAX_PAGE_SIZE = 100
@@ -33,9 +34,10 @@ const app = new Hono()
     async (c) => {
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
+      const redisOptions = getConnectionRedisOptions(c)
       const { pattern, cursor, pageSize, excludeBull } = c.req.valid('query')
 
-      const redis = await getRedis(connectionId, connectionUrl)
+      const redis = await getRedis(connectionId, connectionUrl, undefined, redisOptions)
 
       // Use SCAN for efficient key discovery
       // When excluding bull keys, we need to scan more to get enough non-bull keys
@@ -105,13 +107,14 @@ const app = new Hono()
     async (c) => {
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
+      const redisOptions = getConnectionRedisOptions(c)
       const { key } = c.req.valid('param')
       const { limit, offset } = c.req.valid('query')
 
       // URL decode the key since it might contain special characters
       const decodedKey = decodeURIComponent(key)
 
-      const redis = await getRedis(connectionId, connectionUrl)
+      const redis = await getRedis(connectionId, connectionUrl, undefined, redisOptions)
 
       // Get key type and TTL
       const [type, ttl] = await Promise.all([redis.type(decodedKey), redis.ttl(decodedKey)])
@@ -261,6 +264,7 @@ const app = new Hono()
     async (c) => {
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
+      const redisOptions = getConnectionRedisOptions(c)
       const { key } = c.req.valid('param')
       const decodedKey = decodeURIComponent(key)
 
@@ -276,7 +280,7 @@ const app = new Hono()
         )
       }
 
-      const redis = await getRedis(connectionId, connectionUrl)
+      const redis = await getRedis(connectionId, connectionUrl, undefined, redisOptions)
       const deleted = await redis.del(decodedKey)
 
       return c.json({ success: deleted > 0, deleted })

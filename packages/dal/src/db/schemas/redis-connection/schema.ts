@@ -20,6 +20,7 @@ export const redisConnection = pgTable('redis_connection', {
   isDefault: boolean('is_default').notNull().default(false),
   environment: text('environment').$type<ConnectionEnvironment>().default('development'),
   prefix: text('prefix').notNull().default('bull'),
+  allowSelfSignedCerts: boolean('allow_self_signed_certs').notNull().default(false),
   // Organization that owns this connection
   organizationId: text('organization_id')
     .notNull()

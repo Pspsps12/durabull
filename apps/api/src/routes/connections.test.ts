@@ -28,6 +28,7 @@ interface ConnectionResponseBody {
   connection: {
     id: string
     prefix: string
+    allowSelfSignedCerts?: boolean
   }
 }
 
@@ -131,6 +132,41 @@ describe('connections prefix API', () => {
     expect(updateNameResponse.status).toBe(200)
     const updateNameBody = (await updateNameResponse.json()) as ConnectionResponseBody
     expect(updateNameBody.connection.prefix).toBe('tenant-b')
+  })
+
+  it('stores and updates allowSelfSignedCerts', async () => {
+    const { app } = await createApiApp({ enableLogging: false })
+
+    const createResponse = await app.request('/api/connections', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Heroku Redis',
+        url: 'rediss://example.heroku.com:6379',
+        allowSelfSignedCerts: true,
+      }),
+    })
+
+    expect(createResponse.status).toBe(201)
+    const createBody = (await createResponse.json()) as ConnectionResponseBody
+    expect(createBody.connection.allowSelfSignedCerts).toBe(true)
+
+    const getResponse = await app.request(`/api/connections/${createBody.connection.id}`)
+    expect(getResponse.status).toBe(200)
+    const getBody = (await getResponse.json()) as {
+      connection: { allowSelfSignedCerts: boolean }
+    }
+    expect(getBody.connection.allowSelfSignedCerts).toBe(true)
+
+    const updateResponse = await app.request(`/api/connections/${createBody.connection.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ allowSelfSignedCerts: false }),
+    })
+
+    expect(updateResponse.status).toBe(200)
+    const updateBody = (await updateResponse.json()) as ConnectionResponseBody
+    expect(updateBody.connection.allowSelfSignedCerts).toBe(false)
   })
 
   it('rejects blank prefixes', async () => {
