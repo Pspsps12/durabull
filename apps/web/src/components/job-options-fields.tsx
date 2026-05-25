@@ -7,7 +7,7 @@ import type {
   JobOptionsFormValue,
   JobOptionsValidationErrors,
   RetentionMode,
-} from '`@/lib/job-options`'
+} from '@/lib/job-options'
 
 const RETENTION_PRESETS = [25, 100, 500] as const
 
