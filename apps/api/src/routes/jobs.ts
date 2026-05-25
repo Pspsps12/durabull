@@ -105,7 +105,7 @@ const app = new Hono()
       if (job) {
         const state = await job.getState()
 
-        if ((status && state !== status) || (name && job.name !== name)) {
+        if ((status && state !== status) || (name && !job.name.toLowerCase().includes(name.toLowerCase()))) {
           return c.json({
             jobs: [],
             total: 0,
@@ -165,20 +165,69 @@ const app = new Hono()
       states = [status as JobState]
     }
 
-    const jobs = await queue.getJobs(states, start, end)
+    const needsClientFilter = !!(name || jobId)
 
-    const mappedJobs = await Promise.all(
-      jobs
-        // Filter out undefined jobs (can happen when jobs are removed during listing)
-        .filter((job): job is NonNullable<typeof job> => job != null)
-        .filter((job) => (name ? job.name === name : true))
-        .filter((job) =>
+    if (needsClientFilter) {
+      // Fetch each state separately so we know the status without per-job getState() calls,
+      // then return all filtered results in one response for client-side pagination.
+      const jobsWithState: Array<{ job: NonNullable<Awaited<ReturnType<typeof queue.getJobs>>[number]>; state: JobState }> = []
+      for (const state of states) {
+        const stateJobs = await queue.getJobs([state])
+        for (const job of stateJobs) {
+          if (job != null) {
+            jobsWithState.push({ job, state })
+          }
+        }
+      }
+
+      const filtered = jobsWithState
+        .filter(({ job }) =>
+          name
+            ? job.name.toLowerCase().includes(name.toLowerCase())
+            : true
+        )
+        .filter(({ job }) =>
           jobId
             ? String(job.id ?? '')
                 .toLowerCase()
                 .includes(jobId.toLowerCase())
             : true
         )
+
+      const mappedJobs = filtered.map(({ job, state }) => ({
+        id: job.id ?? '',
+        name: job.name,
+        status: state,
+        data: job.data as Record<string, unknown>,
+        progress: job.progress,
+        attemptsMade: job.attemptsMade,
+        maxAttempts: job.opts.attempts ?? 1,
+        failedReason: job.failedReason,
+        processedOn: job.processedOn,
+        finishedOn: job.finishedOn,
+        timestamp: job.timestamp,
+        delay: job.delay ?? 0,
+        priority: job.opts.priority ?? 0,
+      }))
+
+      return c.json({
+        jobs: mappedJobs,
+        total: filtered.length,
+        page: 1,
+        cursor: '0',
+        nextCursor: null,
+        hasMore: false,
+        pageSize: filtered.length,
+        totalPages: 1,
+      })
+    }
+
+    // Without filters we rely on BullMQ's native range for efficient server-side pagination.
+    const jobs = await queue.getJobs(states, start, end)
+
+    const mappedJobs = await Promise.all(
+      jobs
+        .filter((job): job is NonNullable<typeof job> => job != null)
         .map(async (job) => {
           const state = await job.getState()
           return {
@@ -199,8 +248,7 @@ const app = new Hono()
         })
     )
 
-    const total = jobId ? mappedJobs.length : await queue.getJobCountByTypes(...states)
-    // Always advance by pageSize to avoid repeating the same cursor when this slice maps to 0 rows.
+    const total = await queue.getJobCountByTypes(...states)
     const nextStart = start + pageSize
     const hasMore = nextStart < total
 
