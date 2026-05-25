@@ -1,4 +1,5 @@
 import { organization } from '@durabull/auth/client'
+import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { AlertCircle, Building2, Check, Loader2, LogOut, Mail, Plus, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -82,6 +83,7 @@ export const Route = createFileRoute('/setup-organization')({
 
 function SetupOrganizationPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { isAuthenticated, isLoading: sessionLoading, user, signOut } = useAuth()
 
   const { isLoading: orgsLoading } = useOrganizations()
@@ -201,9 +203,35 @@ function SetupOrganizationPage() {
 
   const handleAcceptInvitation = async (invitationId: string) => {
     try {
+      const invitation = invitations?.find((inv) => inv.id === invitationId)
       await acceptInvitation.mutateAsync(invitationId)
-      // After accepting, redirect to dashboard
-      navigate({ to: '/' })
+
+      // The accept mutation invalidates the org list cache but doesn't await
+      // a refetch. Pull a fresh list here so we can resolve the slug and set
+      // the org active before navigating, otherwise the index route reads
+      // stale data and bounces back to /setup-organization.
+      const orgsResult = await organization.list()
+      const orgs = orgsResult.data ?? []
+      const acceptedOrg = invitation
+        ? orgs.find((o) => o.id === invitation.organizationId)
+        : undefined
+
+      if (!acceptedOrg) {
+        // Fall back to the index route, which will re-resolve once caches refresh.
+        navigate({ to: '/' })
+        return
+      }
+
+      const setActiveResult = await organization.setActive({
+        organizationId: acceptedOrg.id,
+      })
+      if (setActiveResult.error) {
+        throw new Error(setActiveResult.error.message ?? 'Failed to activate organization')
+      }
+      queryClient.invalidateQueries({ queryKey: organizationKeys.active })
+      queryClient.invalidateQueries({ queryKey: organizationKeys.list() })
+
+      navigate({ to: '/$orgSlug', params: { orgSlug: acceptedOrg.slug } })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to accept invitation')
     }
