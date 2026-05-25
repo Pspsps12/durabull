@@ -44,7 +44,8 @@ export function resolveWebhookTestSecret(
   ruleChannels: unknown[] | null | undefined
 ): string | undefined {
   if (explicitSecret !== undefined) {
-    return explicitSecret.trim() === '' ? undefined : explicitSecret
+    const trimmed = explicitSecret.trim()
+    return trimmed === '' ? undefined : trimmed
   }
   return findWebhookSecretFromChannels(ruleChannels, url)
 }
