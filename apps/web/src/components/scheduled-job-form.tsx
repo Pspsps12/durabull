@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { JsonEditor } from '@/components/json-editor'
+import { JobOptionsFields } from '@/components/job-options-fields'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,6 +20,15 @@ import type {
   ScheduledJobMutationInput,
   ScheduledJobTemplateOptionsInput,
 } from '@/hooks/use-queues'
+import {
+  createDefaultJobOptionsFormValue,
+  formValueToTemplateOptions,
+  hasJobOptionsValidationErrors,
+  parseOptionalWholeNumber,
+  templateOptionsToFormValue,
+  validateJobOptionsFormValue,
+  type JobOptionsFormValue,
+} from '@/lib/job-options'
 import {
   fromDateTimeLocalValue,
   getCronDescription,
@@ -33,8 +43,6 @@ import {
 import { cn, formatDate } from '@/lib/utils'
 
 type ScheduleMode = 'cron' | 'every'
-type BackoffMode = 'none' | 'fixed' | 'exponential'
-type RetentionMode = 'keep' | 'remove' | 'count'
 
 export interface ScheduledJobFormInitialValue {
   schedulerId: string
@@ -77,103 +85,12 @@ const EVERY_PRESETS = [
   { label: '1 hour', value: '3600000' },
 ] as const
 
-const RETENTION_PRESETS = [25, 100, 500] as const
-
-function parseOptionalWholeNumber(value: string): number | undefined {
-  const normalized = value.trim()
-  if (!normalized) {
-    return undefined
-  }
-
-  if (!/^\d+$/.test(normalized)) {
-    return undefined
-  }
-
-  const parsed = Number.parseInt(normalized, 10)
-  return Number.isSafeInteger(parsed) ? parsed : undefined
-}
-
-function getRetentionMode(value: boolean | number | undefined): RetentionMode {
-  if (value === true) {
-    return 'remove'
-  }
-
-  if (typeof value === 'number') {
-    return 'count'
-  }
-
-  return 'keep'
-}
-
-function getRetentionCount(value: boolean | number | undefined): string {
-  return typeof value === 'number' ? String(value) : '100'
-}
-
 function FieldMessage({ message }: { message?: string }) {
   if (!message) {
     return null
   }
 
   return <p className="text-xs text-destructive">{message}</p>
-}
-
-function RetentionControl({
-  label,
-  description,
-  mode,
-  countValue,
-  onModeChange,
-  onCountChange,
-  error,
-}: {
-  label: string
-  description: string
-  mode: RetentionMode
-  countValue: string
-  onModeChange: (mode: RetentionMode) => void
-  onCountChange: (value: string) => void
-  error?: string
-}) {
-  return (
-    <div className="space-y-3 rounded-lg border border-border/70 bg-muted/15 p-4">
-      <div className="space-y-1">
-        <Label className="text-sm font-medium">{label}</Label>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
-
-      <Select value={mode} onChange={(event) => onModeChange(event.target.value as RetentionMode)}>
-        <option value="keep">Keep all</option>
-        <option value="remove">Remove immediately</option>
-        <option value="count">Keep latest N</option>
-      </Select>
-
-      {mode === 'count' ? (
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {RETENTION_PRESETS.map((value) => (
-              <Button
-                key={value}
-                type="button"
-                variant={countValue === String(value) ? 'secondary' : 'outline'}
-                size="xs"
-                onClick={() => onCountChange(String(value))}
-              >
-                {value}
-              </Button>
-            ))}
-          </div>
-          <Input
-            value={countValue}
-            onChange={(event) => onCountChange(event.target.value)}
-            inputMode="numeric"
-            placeholder="100"
-            className={error ? 'border-destructive focus-visible:ring-destructive' : undefined}
-          />
-          <FieldMessage message={error} />
-        </div>
-      ) : null}
-    </div>
-  )
 }
 
 export function ScheduledJobForm({
@@ -204,14 +121,7 @@ export function ScheduledJobForm({
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [limit, setLimit] = useState('')
-  const [attempts, setAttempts] = useState('1')
-  const [priority, setPriority] = useState('0')
-  const [backoffMode, setBackoffMode] = useState<BackoffMode>('none')
-  const [backoffDelay, setBackoffDelay] = useState('5000')
-  const [removeOnCompleteMode, setRemoveOnCompleteMode] = useState<RetentionMode>('keep')
-  const [removeOnCompleteCount, setRemoveOnCompleteCount] = useState('100')
-  const [removeOnFailMode, setRemoveOnFailMode] = useState<RetentionMode>('keep')
-  const [removeOnFailCount, setRemoveOnFailCount] = useState('100')
+  const [jobOptions, setJobOptions] = useState<JobOptionsFormValue>(createDefaultJobOptionsFormValue())
 
   useEffect(() => {
     if (mode === 'edit' && !initialValue) {
@@ -235,16 +145,10 @@ export function ScheduledJobForm({
     setStartDate(toDateTimeLocalValue(initialValue?.startDate))
     setEndDate(toDateTimeLocalValue(initialValue?.endDate))
     setLimit(initialValue?.limit ? String(initialValue.limit) : '')
-    setAttempts(templateOptions?.attempts ? String(templateOptions.attempts) : '1')
-    setPriority(templateOptions?.priority ? String(templateOptions.priority) : '0')
-    setBackoffMode(templateOptions?.backoff?.type ?? 'none')
-    setBackoffDelay(
-      templateOptions?.backoff?.delay ? String(templateOptions.backoff.delay) : '5000'
-    )
-    setRemoveOnCompleteMode(getRetentionMode(templateOptions?.removeOnComplete))
-    setRemoveOnCompleteCount(getRetentionCount(templateOptions?.removeOnComplete))
-    setRemoveOnFailMode(getRetentionMode(templateOptions?.removeOnFail))
-    setRemoveOnFailCount(getRetentionCount(templateOptions?.removeOnFail))
+    setJobOptions({
+      ...createDefaultJobOptionsFormValue(),
+      ...templateOptionsToFormValue(templateOptions),
+    })
   }, [browserTimeZone, initialValue, mode])
 
   useEffect(() => {
@@ -358,38 +262,10 @@ export function ScheduledJobForm({
     return undefined
   }, [limit, limitValue])
 
-  const attemptsValue = useMemo(() => parseOptionalWholeNumber(attempts), [attempts])
-  const attemptsError =
-    attemptsValue === undefined || attemptsValue < 1 ? 'Attempts must be at least 1.' : undefined
-
-  const priorityValue = useMemo(() => parseOptionalWholeNumber(priority), [priority])
-  const priorityError = priorityValue === undefined ? 'Priority must be a whole number.' : undefined
-
-  const backoffDelayValue = useMemo(() => parseOptionalWholeNumber(backoffDelay), [backoffDelay])
-  const backoffError =
-    backoffMode !== 'none' && (backoffDelayValue === undefined || backoffDelayValue < 1)
-      ? 'Backoff delay must be greater than 0.'
-      : undefined
-
-  const removeOnCompleteCountValue = useMemo(
-    () => parseOptionalWholeNumber(removeOnCompleteCount),
-    [removeOnCompleteCount]
+  const jobOptionsErrors = useMemo(
+    () => validateJobOptionsFormValue(jobOptions),
+    [jobOptions]
   )
-  const removeOnFailCountValue = useMemo(
-    () => parseOptionalWholeNumber(removeOnFailCount),
-    [removeOnFailCount]
-  )
-
-  const removeOnCompleteError =
-    removeOnCompleteMode === 'count' &&
-    (removeOnCompleteCountValue === undefined || removeOnCompleteCountValue < 1)
-      ? 'Enter how many completed jobs to retain.'
-      : undefined
-  const removeOnFailError =
-    removeOnFailMode === 'count' &&
-    (removeOnFailCountValue === undefined || removeOnFailCountValue < 1)
-      ? 'Enter how many failed jobs to retain.'
-      : undefined
 
   const canSubmit =
     isJsonValid &&
@@ -399,11 +275,7 @@ export function ScheduledJobForm({
     !timeZoneError &&
     !dateWindowError &&
     !limitError &&
-    !attemptsError &&
-    !priorityError &&
-    !backoffError &&
-    !removeOnCompleteError &&
-    !removeOnFailError &&
+    !hasJobOptionsValidationErrors(jobOptionsErrors) &&
     jobName.trim().length > 0 &&
     !isSubmitting
 
@@ -412,34 +284,7 @@ export function ScheduledJobForm({
       return
     }
 
-    const options: ScheduledJobTemplateOptionsInput = {}
-
-    if ((attemptsValue ?? 1) > 1) {
-      options.attempts = attemptsValue
-    }
-
-    if ((priorityValue ?? 0) > 0) {
-      options.priority = priorityValue
-    }
-
-    if (backoffMode !== 'none' && backoffDelayValue) {
-      options.backoff = {
-        type: backoffMode,
-        delay: backoffDelayValue,
-      }
-    }
-
-    if (removeOnCompleteMode === 'remove') {
-      options.removeOnComplete = true
-    } else if (removeOnCompleteMode === 'count' && removeOnCompleteCountValue) {
-      options.removeOnComplete = removeOnCompleteCountValue
-    }
-
-    if (removeOnFailMode === 'remove') {
-      options.removeOnFail = true
-    } else if (removeOnFailMode === 'count' && removeOnFailCountValue) {
-      options.removeOnFail = removeOnFailCountValue
-    }
+    const options = formValueToTemplateOptions(jobOptions)
 
     await onSubmit({
       schedulerId: schedulerId.trim(),
@@ -463,7 +308,7 @@ export function ScheduledJobForm({
               endDate: endDateIso,
               limit: limitValue,
             },
-      options: Object.keys(options).length > 0 ? options : undefined,
+      options,
     })
   }
 
@@ -770,89 +615,12 @@ export function ScheduledJobForm({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="scheduled-job-attempts">Attempts</Label>
-                  <Input
-                    id="scheduled-job-attempts"
-                    value={attempts}
-                    onChange={(event) => setAttempts(event.target.value)}
-                    inputMode="numeric"
-                    className={
-                      attemptsError
-                        ? 'border-destructive focus-visible:ring-destructive'
-                        : undefined
-                    }
-                  />
-                  <FieldMessage message={attemptsError} />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="scheduled-job-priority">Priority</Label>
-                  <Input
-                    id="scheduled-job-priority"
-                    value={priority}
-                    onChange={(event) => setPriority(event.target.value)}
-                    inputMode="numeric"
-                    className={
-                      priorityError
-                        ? 'border-destructive focus-visible:ring-destructive'
-                        : undefined
-                    }
-                  />
-                  <FieldMessage message={priorityError} />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="scheduled-job-backoff-type">Backoff</Label>
-                  <Select
-                    id="scheduled-job-backoff-type"
-                    value={backoffMode}
-                    onChange={(event) => setBackoffMode(event.target.value as BackoffMode)}
-                  >
-                    <option value="none">No backoff</option>
-                    <option value="fixed">Fixed</option>
-                    <option value="exponential">Exponential</option>
-                  </Select>
-                </div>
-              </div>
-
-              {backoffMode !== 'none' ? (
-                <div className="space-y-2">
-                  <Label htmlFor="scheduled-job-backoff-delay">Backoff Delay (ms)</Label>
-                  <Input
-                    id="scheduled-job-backoff-delay"
-                    value={backoffDelay}
-                    onChange={(event) => setBackoffDelay(event.target.value)}
-                    inputMode="numeric"
-                    className={
-                      backoffError ? 'border-destructive focus-visible:ring-destructive' : undefined
-                    }
-                  />
-                  <FieldMessage message={backoffError} />
-                </div>
-              ) : null}
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <RetentionControl
-                  label="Completed Job Retention"
-                  description="Keep history for successful runs or trim it automatically."
-                  mode={removeOnCompleteMode}
-                  countValue={removeOnCompleteCount}
-                  onModeChange={setRemoveOnCompleteMode}
-                  onCountChange={setRemoveOnCompleteCount}
-                  error={removeOnCompleteError}
-                />
-                <RetentionControl
-                  label="Failed Job Retention"
-                  description="Control how much failed-run history stays available for debugging."
-                  mode={removeOnFailMode}
-                  countValue={removeOnFailCount}
-                  onModeChange={setRemoveOnFailMode}
-                  onCountChange={setRemoveOnFailCount}
-                  error={removeOnFailError}
-                />
-              </div>
+              <JobOptionsFields
+                value={jobOptions}
+                onChange={setJobOptions}
+                errors={jobOptionsErrors}
+                idPrefix="scheduled-job"
+              />
             </CardContent>
           </Card>
         </div>

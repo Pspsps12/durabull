@@ -1,6 +1,7 @@
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { z } from 'zod'
+import { buildQueueAddOptions, jobOptionsSchema } from '../lib/job-options'
 import { getQueue } from '../lib/redis'
 import { getConnectionRedisOptions } from '../lib/connection-options'
 
@@ -884,13 +885,12 @@ const app = new Hono()
     '/:queueName/jobs',
     zValidator(
       'json',
-      z.object({
-        name: z.string(),
-        data: z.unknown(),
-        delay: z.number().optional(),
-        priority: z.number().optional(),
-        attempts: z.number().optional(),
-      })
+      z
+        .object({
+          name: z.string(),
+          data: z.unknown(),
+        })
+        .merge(jobOptionsSchema)
     ),
     async (c) => {
       const connectionId = c.get('connectionId')
@@ -898,10 +898,10 @@ const app = new Hono()
       const connectionPrefix = c.get('connectionPrefix')
     const redisOptions = getConnectionRedisOptions(c)
       const queueName = c.req.param('queueName')
-      const { name, data, delay, priority, attempts } = c.req.valid('json')
+      const { name, data, ...options } = c.req.valid('json')
 
       const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix, redisOptions)
-      const job = await queue.add(name, data, { delay, priority, attempts })
+      const job = await queue.add(name, data, buildQueueAddOptions(options))
 
       return c.json({
         jobId: job.id,

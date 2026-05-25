@@ -9,6 +9,7 @@ import { useParams } from '@tanstack/react-router'
 import { useConnection } from '@/components/connection-provider'
 import { ApiError, api, fetchApi, handleRes, type InferResponseType } from '@/lib/api'
 import { PAGINATION } from '@/lib/constants'
+import type { JobOptionsInput } from '@/lib/job-options'
 
 // Re-export ApiError for backward compatibility
 export { ApiError }
@@ -961,7 +962,7 @@ export function useAddJob() {
       queueName: string
       name: string
       jobData: unknown
-      options?: { delay?: number; priority?: number; attempts?: number }
+      options?: JobOptionsInput
     }) => {
       const res = await api.c[':connectionId'].queues[':queueName'].jobs.$post({
         param: { connectionId: connectionId!, queueName },
@@ -1045,13 +1046,7 @@ export type ScheduledJobScheduleInput =
       limit?: number
     }
 
-export interface ScheduledJobTemplateOptionsInput {
-  attempts?: number
-  priority?: number
-  backoff?: { type: 'fixed' | 'exponential'; delay: number }
-  removeOnComplete?: boolean | number
-  removeOnFail?: boolean | number
-}
+export type ScheduledJobTemplateOptionsInput = Omit<JobOptionsInput, 'delay'>
 
 export interface ScheduledJobMutationInput {
   queueName: string
