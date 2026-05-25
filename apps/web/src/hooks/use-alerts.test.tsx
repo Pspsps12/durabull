@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { PropsWithChildren } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  getOpenAlertCount,
   useConnectionAlertRules,
   useCreateAlertRule,
   useGlobalAlertEvents,
@@ -77,6 +78,35 @@ function createWrapper(queryClient: QueryClient) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
 }
+
+describe('getOpenAlertCount', () => {
+  it('returns org-wide total when connectionId is omitted', () => {
+    expect(
+      getOpenAlertCount([
+        { connectionId: 'conn-a', count: 2 },
+        { connectionId: 'conn-b', count: 1 },
+      ])
+    ).toBe(3)
+  })
+
+  it('returns only the selected connection count when connectionId is provided', () => {
+    expect(
+      getOpenAlertCount(
+        [
+          { connectionId: 'conn-a', count: 2 },
+          { connectionId: 'conn-b', count: 1 },
+        ],
+        'conn-b'
+      )
+    ).toBe(1)
+  })
+
+  it('returns zero when the connection has no open incidents', () => {
+    expect(
+      getOpenAlertCount([{ connectionId: 'conn-a', count: 2 }], 'conn-missing')
+    ).toBe(0)
+  })
+})
 
 function createQueryClient() {
   return new QueryClient({
