@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { BellRing, ChevronLeft, ChevronRight, Mail, Plus, TestTube2, Trash2 } from 'lucide-react'
+import { BellRing, ChevronLeft, ChevronRight, Mail, Plus, TestTube2, Trash2, Webhook } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -12,6 +12,7 @@ import {
   createAlertRuleDraft,
   createLinearNotificationRouteDraft,
   createNotificationRouteDraft,
+  createWebhookNotificationRouteDraft,
   normalizeNotificationEmails,
   serializeAlertRuleDraftsForMode,
   validateAlertRuleDraft,
@@ -28,6 +29,7 @@ import type {
   AlertRuleType,
   AlertTestResult,
 } from '@/hooks/use-alerts'
+import { useTestWebhook } from '@/hooks/use-alerts'
 import { cn, formatNumber } from '@/lib/utils'
 
 interface AlertRuleBuilderPageProps {
@@ -42,6 +44,173 @@ interface AlertRuleBuilderPageProps {
   isSaving?: boolean
   isTesting?: boolean
   linearIntegrationConfigured?: boolean
+}
+
+function NotificationRouteFields({
+  route,
+  index,
+  ruleId,
+  connectionId,
+  onUpdate,
+}: {
+  route: AlertRuleDraft['notificationRoutes'][number]
+  index: number
+  ruleId?: string
+  connectionId: string
+  onUpdate: (nextRoute: AlertRuleDraft['notificationRoutes'][number]) => void
+}) {
+  const testWebhookMutation = useTestWebhook(connectionId)
+  const [testingRouteId, setTestingRouteId] = useState<string | null>(null)
+
+  async function handleTestWebhook() {
+    const url = route.webhookUrl?.trim() ?? route.target.trim()
+    if (!url) {
+      toast.error('Webhook URL is required before testing.')
+      return
+    }
+
+    setTestingRouteId(route.id)
+    try {
+      const result = await testWebhookMutation.mutateAsync({
+        url,
+        secret: route.webhookSecret?.trim() || undefined,
+        ruleId,
+      })
+      if (result.success) {
+        toast.success('Test webhook delivered', {
+          description: `HTTP ${result.httpStatus ?? 'unknown'} in ${result.durationMs}ms`,
+        })
+      } else {
+        toast.error('Test webhook failed', {
+          description: result.error ?? `HTTP ${result.httpStatus ?? 'unknown'}`,
+        })
+      }
+    } catch (error) {
+      toast.error('Test webhook failed', {
+        description: error instanceof Error ? error.message : 'Unable to send test webhook.',
+      })
+    } finally {
+      setTestingRouteId(null)
+    }
+  }
+
+  if (route.type === 'email') {
+    return (
+      <>
+        <div className="inline-flex items-center gap-2 text-sm font-medium">
+          <Mail className="h-4 w-4 text-muted-foreground" />
+          Email
+        </div>
+        <Input
+          value={route.target}
+          onChange={(event) => onUpdate({ ...route, target: event.target.value })}
+          placeholder="oncall@example.com"
+          data-testid={`alert-rule-email-${index}`}
+        />
+      </>
+    )
+  }
+
+  if (route.type === 'webhook') {
+    return (
+      <>
+        <div className="inline-flex items-center gap-2 text-sm font-medium">
+          <Webhook className="h-4 w-4 text-muted-foreground" />
+          Webhook
+        </div>
+        <div className="grid gap-2">
+          <Input
+            aria-label={`Webhook URL ${index + 1}`}
+            value={route.webhookUrl ?? route.target}
+            onChange={(event) =>
+              onUpdate({
+                ...route,
+                target: event.target.value,
+                webhookUrl: event.target.value,
+              })
+            }
+            placeholder="https://example.com/webhooks/durabull"
+            data-testid={`alert-rule-webhook-url-${index}`}
+          />
+          <Input
+            aria-label={`Webhook signing secret ${index + 1}`}
+            type="password"
+            value={route.webhookSecret ?? ''}
+            onChange={(event) => onUpdate({ ...route, webhookSecret: event.target.value })}
+            placeholder={
+              route.secretConfigured
+                ? `Optional — leave blank to keep existing (…${route.secretLast4 ?? ''})`
+                : 'Optional signing secret (min 16 characters)'
+            }
+            data-testid={`alert-rule-webhook-secret-${index}`}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="justify-self-start"
+            onClick={() => void handleTestWebhook()}
+            disabled={testingRouteId === route.id || testWebhookMutation.isPending}
+          >
+            {testingRouteId === route.id ? 'Sending test...' : 'Send test webhook'}
+          </Button>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <div className="inline-flex items-center gap-2 text-sm font-medium">Linear</div>
+      <div className="grid gap-2 md:grid-cols-3">
+        <Input
+          aria-label={`Linear team override ${index + 1}`}
+          value={route.teamId ?? ''}
+          onChange={(event) => onUpdate({ ...route, teamId: event.target.value })}
+          placeholder="Team ID (optional)"
+          data-testid={`alert-rule-linear-team-${index}`}
+        />
+        <Input
+          aria-label={`Linear project override ${index + 1}`}
+          value={route.projectId ?? ''}
+          onChange={(event) => onUpdate({ ...route, projectId: event.target.value })}
+          placeholder="Project ID"
+        />
+        <Input
+          aria-label={`Linear labels override ${index + 1}`}
+          value={route.labelIds?.join(', ') ?? ''}
+          onChange={(event) =>
+            onUpdate({
+              ...route,
+              labelIds: event.target.value
+                .split(',')
+                .map((label) => label.trim())
+                .filter(Boolean),
+            })
+          }
+          placeholder="Label IDs"
+        />
+        <Input
+          aria-label={`Linear assignee override ${index + 1}`}
+          value={route.assigneeId ?? ''}
+          onChange={(event) => onUpdate({ ...route, assigneeId: event.target.value })}
+          placeholder="Assignee ID"
+        />
+        <Input
+          aria-label={`Linear state override ${index + 1}`}
+          value={route.stateId ?? ''}
+          onChange={(event) => onUpdate({ ...route, stateId: event.target.value })}
+          placeholder="State ID"
+        />
+        <Input
+          aria-label={`Linear priority override ${index + 1}`}
+          value={route.priority ?? ''}
+          onChange={(event) => onUpdate({ ...route, priority: event.target.value })}
+          placeholder="Priority 0-4"
+        />
+      </div>
+    </>
+  )
 }
 
 const RULE_TYPE_EXAMPLES: Record<
@@ -144,6 +313,7 @@ export function AlertRuleBuilderPage({
     draft.notificationRoutes.filter((route) => route.type === 'email').map((route) => route.target)
   )
   const activeLinearRoutes = draft.notificationRoutes.filter((route) => route.type === 'linear')
+  const activeWebhookRoutes = draft.notificationRoutes.filter((route) => route.type === 'webhook')
   const routeLimitReached = draft.notificationRoutes.length >= 10
 
   async function handleSubmit() {
@@ -417,99 +587,19 @@ export function AlertRuleBuilderPage({
             {draft.notificationRoutes.map((route, index) => (
               <div
                 key={route.id}
-                className="grid grid-cols-[140px_minmax(0,1fr)_auto] items-center gap-3"
+                className="grid grid-cols-[140px_minmax(0,1fr)_auto] items-start gap-3"
               >
-                {route.type === 'email' ? (
-                  <>
-                    <div className="inline-flex items-center gap-2 text-sm font-medium">
-                      <Mail className="h-4 w-4 text-muted-foreground" />
-                      Email
-                    </div>
-                    <Input
-                      value={route.target}
-                      onChange={(event) => {
-                        const notificationRoutes = draft.notificationRoutes.slice()
-                        notificationRoutes[index] = { ...route, target: event.target.value }
-                        updateDraft({ notificationRoutes })
-                      }}
-                      placeholder="oncall@example.com"
-                      data-testid={`alert-rule-email-${index}`}
-                    />
-                  </>
-                ) : (
-                  <>
-                    <div className="inline-flex items-center gap-2 text-sm font-medium">Linear</div>
-                    <div className="grid gap-2 md:grid-cols-3">
-                      <Input
-                        aria-label={`Linear team override ${index + 1}`}
-                        value={route.teamId ?? ''}
-                        onChange={(event) => {
-                          const notificationRoutes = draft.notificationRoutes.slice()
-                          notificationRoutes[index] = { ...route, teamId: event.target.value }
-                          updateDraft({ notificationRoutes })
-                        }}
-                        placeholder="Team ID (optional)"
-                        data-testid={`alert-rule-linear-team-${index}`}
-                      />
-                      <Input
-                        aria-label={`Linear project override ${index + 1}`}
-                        value={route.projectId ?? ''}
-                        onChange={(event) => {
-                          const notificationRoutes = draft.notificationRoutes.slice()
-                          notificationRoutes[index] = { ...route, projectId: event.target.value }
-                          updateDraft({ notificationRoutes })
-                        }}
-                        placeholder="Project ID"
-                      />
-                      <Input
-                        aria-label={`Linear labels override ${index + 1}`}
-                        value={route.labelIds?.join(', ') ?? ''}
-                        onChange={(event) => {
-                          const notificationRoutes = draft.notificationRoutes.slice()
-                          notificationRoutes[index] = {
-                            ...route,
-                            labelIds: event.target.value
-                              .split(',')
-                              .map((label) => label.trim())
-                              .filter(Boolean),
-                          }
-                          updateDraft({ notificationRoutes })
-                        }}
-                        placeholder="Label IDs"
-                      />
-                      <Input
-                        aria-label={`Linear assignee override ${index + 1}`}
-                        value={route.assigneeId ?? ''}
-                        onChange={(event) => {
-                          const notificationRoutes = draft.notificationRoutes.slice()
-                          notificationRoutes[index] = { ...route, assigneeId: event.target.value }
-                          updateDraft({ notificationRoutes })
-                        }}
-                        placeholder="Assignee ID"
-                      />
-                      <Input
-                        aria-label={`Linear state override ${index + 1}`}
-                        value={route.stateId ?? ''}
-                        onChange={(event) => {
-                          const notificationRoutes = draft.notificationRoutes.slice()
-                          notificationRoutes[index] = { ...route, stateId: event.target.value }
-                          updateDraft({ notificationRoutes })
-                        }}
-                        placeholder="State ID"
-                      />
-                      <Input
-                        aria-label={`Linear priority override ${index + 1}`}
-                        value={route.priority ?? ''}
-                        onChange={(event) => {
-                          const notificationRoutes = draft.notificationRoutes.slice()
-                          notificationRoutes[index] = { ...route, priority: event.target.value }
-                          updateDraft({ notificationRoutes })
-                        }}
-                        placeholder="Priority 0-4"
-                      />
-                    </div>
-                  </>
-                )}
+                <NotificationRouteFields
+                  route={route}
+                  index={index}
+                  ruleId={rule?.id}
+                  connectionId={connectionId}
+                  onUpdate={(nextRoute) => {
+                    const notificationRoutes = draft.notificationRoutes.slice()
+                    notificationRoutes[index] = nextRoute
+                    updateDraft({ notificationRoutes })
+                  }}
+                />
                 <Button
                   type="button"
                   variant="ghost"
@@ -567,6 +657,23 @@ export function AlertRuleBuilderPage({
               <Plus className="mr-1.5 h-4 w-4" />
               Add Linear route
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (routeLimitReached) return
+                updateDraft({
+                  notificationRoutes: [
+                    ...draft.notificationRoutes,
+                    createWebhookNotificationRouteDraft(),
+                  ],
+                })
+              }}
+              disabled={routeLimitReached}
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              Add webhook route
+            </Button>
             <span className="text-sm text-muted-foreground">
               Up to 10 total destinations and one Linear destination per rule.
             </span>
@@ -580,14 +687,12 @@ export function AlertRuleBuilderPage({
               />
               <div className="border border-border/70 bg-background/50 px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium">Linear</span>
-                  <Badge variant={linearIntegrationConfigured ? 'success' : 'secondary'}>
-                    {linearIntegrationConfigured ? 'Configured' : 'Setup required'}
-                  </Badge>
+                  <span className="text-sm font-medium">Webhook</span>
+                  <Badge variant="success">Available</Badge>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Open issues directly from alert policy routing with org defaults or rule
-                  overrides.
+                  POST signed JSON payloads to HTTPS endpoints for automation, paging, or custom
+                  incident workflows.
                 </p>
               </div>
             </div>
@@ -663,7 +768,9 @@ export function AlertRuleBuilderPage({
             <SummaryRow label="Rules on save" value="1" />
             <SummaryRow
               label="Routes"
-              value={String(activeRecipients.length + activeLinearRoutes.length)}
+              value={String(
+                activeRecipients.length + activeLinearRoutes.length + activeWebhookRoutes.length
+              )}
             />
           </div>
         </FlatPanel>

@@ -340,6 +340,58 @@ describe('alert monitor', () => {
     expect(await listRuleEvents(rule.id)).toHaveLength(1)
   })
 
+  it('retries due deliveries when an aggregate rule is still firing', async () => {
+    const processAlertDeliveriesMock = mock(
+      async (_event: { id: string }, _connection: RedisConnection, _ruleName: string) => {}
+    )
+    mock.module('./alert-notifier', () => ({
+      dispatchAlertNotification: mock(async () => {}),
+      processAlertDeliveries: processAlertDeliveriesMock,
+    }))
+
+    const { __alertMonitorTestUtils } = await loadMonitorModule()
+    const rule = await alertRuleRepository.create({
+      organizationId: TEST_ORG_ID,
+      connectionId: testConnectionId,
+      queueName: 'email-send',
+      name: 'Failure threshold',
+      type: 'failure_threshold',
+      config: { count: 5, windowMinutes: 5 },
+      cooldownMinutes: 30,
+    })
+
+    const activeEvent = await alertEventRepository.create({
+      alertRuleId: rule.id,
+      organizationId: TEST_ORG_ID,
+      connectionId: testConnectionId,
+      queueName: 'email-send',
+      type: rule.type,
+      status: 'firing',
+      summary: 'Already firing',
+      context: {},
+      firedAt: new Date(Date.now() - 5 * 60_000),
+    })
+
+    await __alertMonitorTestUtils.evaluateAndMaybeAlert(
+      rule,
+      createSnapshot(),
+      {
+        lastCheckedAt: new Date(Date.now() - 5 * 60_000),
+        lastFailedCount: 0,
+        lastCompletedCount: 100,
+      },
+      createConnection()
+    )
+
+    expect(processAlertDeliveriesMock).toHaveBeenCalledTimes(1)
+    expect(processAlertDeliveriesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: activeEvent.id }),
+      expect.anything(),
+      expect.anything()
+    )
+    expect(await listRuleEvents(rule.id)).toHaveLength(1)
+  })
+
   it('suppresses new events while the cooldown window is still active', async () => {
     const { __alertMonitorTestUtils } = await loadMonitorModule()
     const rule = await alertRuleRepository.create({

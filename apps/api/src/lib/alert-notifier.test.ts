@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { buildAlertAppUrls } from './alert-notifier'
+import { buildAlertAppUrls } from './alert-app-urls'
 
 describe('buildAlertAppUrls', () => {
   it('builds app routes that match the current web router', () => {

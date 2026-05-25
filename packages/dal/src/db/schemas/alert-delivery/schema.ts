@@ -15,7 +15,7 @@ import { organization } from '../organization/schema'
 export const alertDeliveryStatuses = ['pending', 'claimed', 'delivered', 'failed'] as const
 export type AlertDeliveryStatus = (typeof alertDeliveryStatuses)[number]
 
-export const alertDeliveryChannelTypes = ['email', 'linear'] as const
+export const alertDeliveryChannelTypes = ['email', 'linear', 'webhook'] as const
 export type AlertDeliveryChannelType = (typeof alertDeliveryChannelTypes)[number]
 
 export const alertDelivery = pgTable(

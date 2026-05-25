@@ -2,6 +2,7 @@ import {
   type AlertDelivery,
   type AlertEvent,
   alertDeliveryRepository,
+  alertRuleRepository,
   eq,
   getDb,
   linearIntegrationRepository,
@@ -13,6 +14,22 @@ import { isEmailConfigured } from '@durabull/email'
 import { env } from '@durabull/env'
 import { createLinearIssue, LinearApiError } from './linear-client'
 import { getValidLinearAccessToken } from './linear-oauth'
+import { buildAlertAppUrls } from './alert-app-urls'
+import {
+  deliverWebhookOrThrow,
+  isWebhookDeliveryExpired,
+  WEBHOOK_DELIVERY_ABANDONED_MESSAGE,
+  WebhookDeliveryError,
+} from './alert-webhook-client'
+import {
+  buildAlertWebhookPayloadFromEvent,
+  serializeAlertWebhookPayload,
+} from './alert-webhook-payload'
+import {
+  findWebhookSecretFromChannels,
+  toWebhookDeliveryMetadata,
+} from './alert-webhook-channels'
+import { getWebhookDeliveryTarget } from './alert-webhook-url'
 
 class NonRetryableDeliveryError extends Error {
   constructor(message: string) {
@@ -36,6 +53,11 @@ export type NotificationChannel =
       stateId?: string
       priority?: number
     }
+  | {
+      type: 'webhook'
+      url: string
+      secret?: string
+    }
 
 export async function dispatchAlertNotification(
   event: AlertEvent,
@@ -48,7 +70,7 @@ export async function dispatchAlertNotification(
     organizationId: event.organizationId,
     channelType: channel.type,
     target: getDeliveryTarget(channel),
-    providerMetadata: channel,
+    providerMetadata: getDeliveryProviderMetadata(channel),
   }))
 
   await alertDeliveryRepository.enqueueMany(deliveries)
@@ -66,6 +88,15 @@ export async function processAlertDeliveries(
   const organizationSlug = await getOrganizationSlug(event.organizationId)
 
   for (const delivery of dueDeliveries) {
+    if (delivery.channelType === 'webhook' && isWebhookDeliveryExpired(delivery.createdAt)) {
+      await alertDeliveryRepository.markFailed(delivery.id, {
+        error: WEBHOOK_DELIVERY_ABANDONED_MESSAGE,
+        retryable: false,
+        expectedClaimedAt: requireClaimedAt(delivery),
+      })
+      continue
+    }
+
     try {
       switch (delivery.channelType) {
         case 'email':
@@ -75,6 +106,9 @@ export async function processAlertDeliveries(
         case 'linear':
           await sendLinearAlert(delivery, event, connection, ruleName, organizationSlug)
           break
+        case 'webhook':
+          await sendWebhookAlert(delivery, event, connection, ruleName, organizationSlug)
+          break
         default:
           await alertDeliveryRepository.markFailed(delivery.id, {
             error: `Unknown channel type: ${delivery.channelType}`,
@@ -83,7 +117,7 @@ export async function processAlertDeliveries(
           })
       }
     } catch (error) {
-      const retry = classifyDeliveryFailure(error, delivery.attemptCount + 1)
+      const retry = classifyDeliveryFailure(error, delivery.attemptCount + 1, delivery)
       await alertDeliveryRepository.markFailed(delivery.id, {
         ...retry,
         expectedClaimedAt: requireClaimedAt(delivery),
@@ -92,8 +126,16 @@ export async function processAlertDeliveries(
   }
 }
 
+function getDeliveryProviderMetadata(channel: NotificationChannel): Record<string, unknown> {
+  if (channel.type === 'webhook') {
+    return { ...toWebhookDeliveryMetadata(channel) }
+  }
+  return channel as Record<string, unknown>
+}
+
 function getDeliveryTarget(channel: NotificationChannel): string {
   if (channel.type === 'email') return channel.target
+  if (channel.type === 'webhook') return getWebhookDeliveryTarget(channel.url)
   return [
     'org-default',
     channel.teamId ?? '',
@@ -307,6 +349,91 @@ function requireClaimedAt(delivery: AlertDelivery): Date {
   })
 }
 
+async function sendWebhookAlert(
+  delivery: AlertDelivery,
+  event: AlertEvent,
+  connection: RedisConnection,
+  ruleName: string,
+  organizationSlug: string | null
+): Promise<void> {
+  const channel = parseWebhookChannel(delivery.providerMetadata)
+  const secret = await resolveWebhookSigningSecret(
+    event,
+    channel.url,
+    delivery.providerMetadata
+  )
+  const payload = buildAlertWebhookPayloadFromEvent(
+    event,
+    delivery.id,
+    connection,
+    ruleName,
+    organizationSlug,
+    env.APP_BASE_URL
+  )
+  const body = serializeAlertWebhookPayload(payload)
+
+  const result = await deliverWebhookOrThrow({
+    url: channel.url,
+    body,
+    secret,
+    deliveryId: delivery.id,
+    idempotencyKey: event.id,
+  })
+
+  const marked = await alertDeliveryRepository.markDelivered(
+    delivery.id,
+    {
+      providerMetadata: {
+        ...((delivery.providerMetadata ?? {}) as Record<string, unknown>),
+        httpStatus: result.httpStatus,
+        responseTimeMs: result.durationMs,
+        responseBodySnippet: result.responseBodySnippet,
+      },
+    },
+    requireClaimedAt(delivery)
+  )
+  if (!marked) {
+    throw new WebhookDeliveryError('Alert delivery claim was lost before it could be completed.', {
+      httpStatus: 409,
+      retryable: false,
+    })
+  }
+}
+
+function parseWebhookChannel(value: unknown): Extract<NotificationChannel, { type: 'webhook' }> {
+  const source =
+    typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
+  const url = typeof source.url === 'string' ? source.url : ''
+  if (!url) {
+    throw new NonRetryableDeliveryError('Webhook delivery is missing a target URL.')
+  }
+  return {
+    type: 'webhook',
+    url,
+  }
+}
+
+async function resolveWebhookSigningSecret(
+  event: AlertEvent,
+  url: string,
+  metadata: unknown
+): Promise<string | undefined> {
+  const source =
+    typeof metadata === 'object' && metadata !== null ? (metadata as Record<string, unknown>) : {}
+  const legacySecret = typeof source.secret === 'string' ? source.secret.trim() : ''
+  if (legacySecret.length > 0) {
+    return legacySecret
+  }
+
+  const rule = await alertRuleRepository.findById(event.alertRuleId, event.organizationId)
+  if (!rule) return undefined
+
+  return findWebhookSecretFromChannels(
+    Array.isArray(rule.notificationChannels) ? rule.notificationChannels : [],
+    url
+  )
+}
+
 function parseLinearChannel(value: unknown): Extract<NotificationChannel, { type: 'linear' }> {
   const source =
     typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
@@ -407,13 +534,23 @@ function safeLinearMarkdown(value: string, maxLength = 1000): string {
 
 function classifyDeliveryFailure(
   error: unknown,
-  attemptCount: number
+  attemptCount: number,
+  delivery?: Pick<AlertDelivery, 'channelType' | 'createdAt'>
 ): { error: string; retryable: boolean; nextRetryAt?: Date | null } {
+  if (
+    delivery?.channelType === 'webhook' &&
+    isWebhookDeliveryExpired(delivery.createdAt)
+  ) {
+    return { error: WEBHOOK_DELIVERY_ABANDONED_MESSAGE, retryable: false }
+  }
+
   const message = error instanceof Error ? error.message : String(error)
   const retryable =
     error instanceof LinearApiError
       ? error.retryable
-      : !(error instanceof NonRetryableDeliveryError)
+      : error instanceof WebhookDeliveryError
+        ? error.retryable
+        : !(error instanceof NonRetryableDeliveryError)
   if (!retryable) return { error: message, retryable: false }
 
   const resetAt = error instanceof LinearApiError ? error.rateLimitResetAt : null
@@ -437,42 +574,4 @@ async function getOrganizationSlug(organizationId: string): Promise<string | nul
   return rows[0]?.slug ?? null
 }
 
-export function buildAlertAppUrls({
-  appBaseUrl,
-  organizationSlug,
-  connectionId,
-  queueName,
-  alertRuleId,
-  jobId,
-}: {
-  appBaseUrl: string
-  organizationSlug: string | null
-  connectionId: string
-  queueName: string
-  alertRuleId: string
-  jobId?: string | null
-}): { dashboardUrl: string; muteUrl: string; jobUrl: string } {
-  const baseUrl = appBaseUrl.replace(/\/+$/, '')
-
-  if (!organizationSlug) {
-    console.warn('[alert-notifier] Missing organization slug for alert email links')
-    return {
-      dashboardUrl: baseUrl,
-      muteUrl: baseUrl,
-      jobUrl: baseUrl,
-    }
-  }
-
-  const orgSegment = encodeURIComponent(organizationSlug)
-  const connectionSegment = encodeURIComponent(connectionId)
-  const queueSegment = encodeURIComponent(queueName)
-  const ruleQuery = new URLSearchParams({ ruleId: alertRuleId }).toString()
-
-  return {
-    dashboardUrl: `${baseUrl}/${orgSegment}/c/${connectionSegment}/queues/${queueSegment}`,
-    jobUrl: jobId
-      ? `${baseUrl}/${orgSegment}/c/${connectionSegment}/queues/${queueSegment}/jobs/${encodeURIComponent(jobId)}`
-      : `${baseUrl}/${orgSegment}/c/${connectionSegment}/queues/${queueSegment}`,
-    muteUrl: `${baseUrl}/${orgSegment}/c/${connectionSegment}/alerts?${ruleQuery}`,
-  }
-}
+export { buildAlertAppUrls } from './alert-app-urls'
