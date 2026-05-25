@@ -167,6 +167,26 @@ function DeliverySummary({ event }: { event: AlertEventRecord }) {
     )
   }
 
+  const webhookDelivery = event.deliveries.find((delivery) => delivery.channelType === 'webhook')
+  if (webhookDelivery) {
+    const httpStatus = webhookDelivery.providerMetadata?.httpStatus
+    if (webhookDelivery.status === 'delivered') {
+      return (
+        <span className="text-xs text-muted-foreground">
+          Webhook {typeof httpStatus === 'number' ? `HTTP ${httpStatus}` : 'delivered'}
+        </span>
+      )
+    }
+    if (webhookDelivery.status === 'failed') {
+      return (
+        <span className="text-xs text-destructive">
+          Webhook failed{webhookDelivery.lastError ? `: ${webhookDelivery.lastError}` : ''}
+        </span>
+      )
+    }
+    return <span className="text-xs text-muted-foreground">Webhook pending</span>
+  }
+
   if (event.deliveries.length > 0) {
     const delivered = event.deliveries.filter((delivery) => delivery.status === 'delivered').length
     return (

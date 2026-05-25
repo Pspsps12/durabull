@@ -92,6 +92,7 @@ const envSchema = z.object({
   DURABULL_DEMO_ACCOUNT_REDIS_CONNECTION_STRING: optionalString,
   DURABULL_ALERT_ENABLED: optionalBoolean,
   DURABULL_ALERT_POLL_INTERVAL_MS: optionalInt,
+  DURABULL_WEBHOOK_ALLOW_HTTP: optionalBoolean,
   LINEAR_OAUTH_CLIENT_ID: optionalString,
   LINEAR_OAUTH_CLIENT_SECRET: optionalString,
   LINEAR_OAUTH_REDIRECT_URI: optionalString,

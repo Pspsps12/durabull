@@ -62,15 +62,23 @@ export type AlertNotificationChannel =
       stateId?: string
       priority?: number
     }
+  | {
+      type: 'webhook'
+      url: string
+      secret?: string
+      secretConfigured?: boolean
+      secretLast4?: string
+    }
 
 export interface AlertDeliveryRecord {
   id: string
-  channelType: 'email' | 'linear'
+  channelType: 'email' | 'linear' | 'webhook'
   status: 'pending' | 'claimed' | 'delivered' | 'failed'
   target: string
   externalIdentifier?: string | null
   externalUrl?: string | null
   lastError?: string | null
+  providerMetadata?: Record<string, unknown>
 }
 
 export interface AlertRuleRecord {
@@ -143,6 +151,20 @@ export interface AlertTestResult {
     failedMetrics: { count: number; dataPoints: number[] }
     completedMetrics: { count: number; dataPoints: number[] }
   }
+  webhookTests?: Array<{
+    url: string
+    success: boolean
+    httpStatus: number | null
+    durationMs: number
+    error?: string
+  }>
+}
+
+export interface WebhookTestResult {
+  success: boolean
+  httpStatus: number | null
+  durationMs: number
+  error?: string
 }
 
 export interface AlertRuleMutationInput {
@@ -213,6 +235,16 @@ function normalizeNotificationChannels(value: unknown): AlertNotificationChannel
           assigneeId: typeof entry.assigneeId === 'string' ? entry.assigneeId : undefined,
           stateId: typeof entry.stateId === 'string' ? entry.stateId : undefined,
           priority: typeof entry.priority === 'number' ? entry.priority : undefined,
+        },
+      ]
+    }
+    if (entry.type === 'webhook' && typeof entry.url === 'string') {
+      return [
+        {
+          type: 'webhook',
+          url: entry.url,
+          secretConfigured: entry.secretConfigured === true,
+          secretLast4: typeof entry.secretLast4 === 'string' ? entry.secretLast4 : undefined,
         },
       ]
     }
@@ -294,7 +326,9 @@ function normalizeAlertDeliveries(value: unknown): AlertDeliveryRecord[] {
   if (!Array.isArray(value)) return []
   return value.flatMap((entry) => {
     if (!isRecord(entry)) return []
-    if (entry.channelType !== 'email' && entry.channelType !== 'linear') return []
+    if (entry.channelType !== 'email' && entry.channelType !== 'linear' && entry.channelType !== 'webhook') {
+      return []
+    }
     return [
       {
         id: typeof entry.id === 'string' ? entry.id : '',
@@ -311,6 +345,7 @@ function normalizeAlertDeliveries(value: unknown): AlertDeliveryRecord[] {
           typeof entry.externalIdentifier === 'string' ? entry.externalIdentifier : null,
         externalUrl: typeof entry.externalUrl === 'string' ? entry.externalUrl : null,
         lastError: typeof entry.lastError === 'string' ? entry.lastError : null,
+        providerMetadata: isRecord(entry.providerMetadata) ? entry.providerMetadata : undefined,
       },
     ]
   })
@@ -482,12 +517,25 @@ export function useResolveAlertEvent() {
 
 export function useTestAlertRule(connectionId: string | undefined) {
   return useMutation({
-    mutationFn: async (ruleId: string) => {
+    mutationFn: async ({ ruleId, deliver = false }: { ruleId: string; deliver?: boolean }) => {
       const res = await api.c[':connectionId'].alerts.rules[':ruleId'].test.$post({
         param: { connectionId: connectionId!, ruleId },
+        query: deliver ? { deliver: 'true' } : {},
       })
       const data = await handleRes<TestAlertRuleResponse>(res)
       return data as AlertTestResult
+    },
+  })
+}
+
+export function useTestWebhook(connectionId: string | undefined) {
+  return useMutation({
+    mutationFn: async (input: { url: string; secret?: string; ruleId?: string }) => {
+      const res = await api.c[':connectionId'].alerts.webhooks.test.$post({
+        param: { connectionId: connectionId! },
+        json: input,
+      })
+      return handleRes<WebhookTestResult>(res)
     },
   })
 }

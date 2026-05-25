@@ -3,13 +3,24 @@ import {
   alertDeliveryRepository,
   alertEventRepository,
   alertRuleRepository,
+  eq,
+  getDb,
   linearIntegrationRepository,
+  organization,
   redisDiscoveredQueueRepository,
 } from '@durabull/dal'
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { type CursorState, evaluateRule, type QueueSnapshot } from '../lib/alert-evaluator'
+import {
+  mergeWebhookSecretsOnUpdate,
+  resolveWebhookTestSecret,
+  sanitizeDeliveryProviderMetadata,
+  sanitizeNotificationChannels,
+  validateWebhookUrls,
+} from '../lib/alert-webhook-channels'
+import { sendRateLimitedTestWebhook } from '../lib/alert-webhook-rate-limit'
 import { getConnectionRedisOptions } from '../lib/connection-options'
 import { getQueue } from '../lib/redis'
 
@@ -30,10 +41,22 @@ const linearNotificationChannelSchema = z.object({
   stateId: z.string().min(1).optional(),
   priority: z.number().int().min(0).max(4).optional(),
 })
+const webhookNotificationChannelSchema = z.object({
+  type: z.literal('webhook'),
+  url: z.string().url().max(2048),
+  secret: z.string().min(16).max(256).optional(),
+})
 const notificationChannelSchema = z.discriminatedUnion('type', [
   emailNotificationChannelSchema,
   linearNotificationChannelSchema,
+  webhookNotificationChannelSchema,
 ])
+
+const testWebhookSchema = z.object({
+  url: z.string().url().max(2048),
+  secret: z.string().min(16).max(256).optional(),
+  ruleId: z.string().uuid().optional(),
+})
 
 const createRuleSchema = z.object({
   name: z.string().min(1).max(200),
@@ -68,7 +91,14 @@ const app = new Hono()
     }
 
     const rules = await alertRuleRepository.findByConnection(connectionId, organizationId)
-    return c.json({ rules })
+    return c.json({
+      rules: rules.map((rule) => ({
+        ...rule,
+        notificationChannels: sanitizeNotificationChannels(
+          Array.isArray(rule.notificationChannels) ? rule.notificationChannels : []
+        ),
+      })),
+    })
   })
   .post('/rules', zValidator('json', createRuleSchema), async (c) => {
     const body = c.req.valid('json')
@@ -101,7 +131,17 @@ const app = new Hono()
       organizationId,
     })
 
-    return c.json({ rule }, 201)
+    return c.json(
+      {
+        rule: {
+          ...rule,
+          notificationChannels: sanitizeNotificationChannels(
+            Array.isArray(rule.notificationChannels) ? rule.notificationChannels : []
+          ),
+        },
+      },
+      201
+    )
   })
   .patch('/rules/:ruleId', zValidator('json', updateRuleSchema), async (c) => {
     const { ruleId } = c.req.param()
@@ -132,6 +172,10 @@ const app = new Hono()
       if (channelError) {
         return c.json({ error: channelError }, 400)
       }
+      body.notificationChannels = mergeWebhookSecretsOnUpdate(
+        body.notificationChannels,
+        (existingRule.notificationChannels ?? []) as unknown[]
+      )
     }
 
     const rule = await alertRuleRepository.update(ruleId, organizationId, body)
@@ -143,7 +187,14 @@ const app = new Hono()
       await alertEventRepository.resolveAllForRule(rule.id)
     }
 
-    return c.json({ rule })
+    return c.json({
+      rule: {
+        ...rule,
+        notificationChannels: sanitizeNotificationChannels(
+          Array.isArray(rule.notificationChannels) ? rule.notificationChannels : []
+        ),
+      },
+    })
   })
   .delete('/rules/:ruleId', async (c) => {
     const { ruleId } = c.req.param()
@@ -162,8 +213,18 @@ const app = new Hono()
 
     return c.json({ success: true })
   })
-  .post('/rules/:ruleId/test', async (c) => {
+  .post(
+    '/rules/:ruleId/test',
+    zValidator(
+      'query',
+      z.object({
+        deliver: z.enum(['true', 'false']).optional(),
+      })
+    ),
+    async (c) => {
     const { ruleId } = c.req.param()
+    const { deliver: deliverQuery } = c.req.valid('query')
+    const deliver = deliverQuery === 'true'
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
     const connectionPrefix = c.get('connectionPrefix')
@@ -230,7 +291,110 @@ const app = new Hono()
       : null
 
     const evaluation = evaluateRule(rule, snapshot, cursor)
-    return c.json({ evaluation, snapshot })
+
+    const webhookChannels = (Array.isArray(rule.notificationChannels) ? rule.notificationChannels : [])
+      .filter(
+        (channel): channel is { type: 'webhook'; url: string; secret?: string } =>
+          typeof channel === 'object' &&
+          channel !== null &&
+          (channel as { type?: string }).type === 'webhook' &&
+          typeof (channel as { url?: string }).url === 'string'
+      )
+
+    let webhookTests:
+      | Array<{
+          url: string
+          success: boolean
+          httpStatus: number | null
+          durationMs: number
+          error?: string
+        }>
+      | undefined
+
+    if (deliver && webhookChannels.length > 0) {
+      const organizationSlug = await getOrganizationSlug(organizationId)
+      webhookTests = await Promise.all(
+        webhookChannels.map(async (channel) => {
+          const result = await sendRateLimitedTestWebhook({
+            url: channel.url,
+            secret: channel.secret,
+            organizationId,
+            organizationSlug,
+            connectionId,
+            connectionName,
+            ruleId: rule.id,
+            ruleName: rule.name,
+            ruleType: rule.type,
+            queueName,
+          })
+          return {
+            url: channel.url,
+            success: result.success,
+            httpStatus: result.httpStatus,
+            durationMs: result.durationMs,
+            error: result.error,
+          }
+        })
+      )
+    }
+
+    return c.json({ evaluation, snapshot, webhookTests })
+  })
+  .post('/webhooks/test', zValidator('json', testWebhookSchema), async (c) => {
+    const body = c.req.valid('json')
+    const connectionId = c.get('connectionId')
+    const connectionName = c.get('connectionName')
+    const organizationId = c.get('organizationId')
+    if (!organizationId) {
+      return c.json({ error: 'Organization is required' }, 403)
+    }
+
+    let ruleName = 'Webhook test'
+    let ruleType = 'job_failed'
+    let queueName = 'example-queue'
+    let ruleChannels: unknown[] | null = null
+
+    if (body.ruleId) {
+      const rule = await alertRuleRepository.findById(body.ruleId, organizationId)
+      if (!rule) {
+        return c.json({ error: 'Rule not found' }, 404)
+      }
+      ruleName = rule.name
+      ruleType = rule.type
+      queueName = rule.queueName ?? queueName
+      ruleChannels = Array.isArray(rule.notificationChannels) ? rule.notificationChannels : []
+    }
+
+    const secret = resolveWebhookTestSecret(body.url, body.secret, ruleChannels)
+    const urlError = await validateWebhookUrls([{ type: 'webhook', url: body.url, secret }])
+    if (urlError) {
+      return c.json({ error: urlError }, 400)
+    }
+
+    const organizationSlug = await getOrganizationSlug(organizationId)
+    const result = await sendRateLimitedTestWebhook({
+      url: body.url,
+      secret,
+      organizationId,
+      organizationSlug,
+      connectionId,
+      connectionName,
+      ruleId: body.ruleId,
+      ruleName,
+      ruleType,
+      queueName,
+    })
+
+    if (result.error?.includes('rate limit')) {
+      return c.json({ error: result.error }, 429)
+    }
+
+    return c.json({
+      success: result.success,
+      httpStatus: result.httpStatus,
+      durationMs: result.durationMs,
+      error: result.error,
+    })
   })
   .get(
     '/events',
@@ -281,7 +445,12 @@ async function attachDeliveries<T extends { id: string }>(events: T[]) {
   return Promise.all(
     events.map(async (event) => ({
       ...event,
-      deliveries: await alertDeliveryRepository.listByEvent(event.id),
+      deliveries: (await alertDeliveryRepository.listByEvent(event.id)).map((delivery) => ({
+        ...delivery,
+        providerMetadata: sanitizeDeliveryProviderMetadata(
+          delivery.providerMetadata as Record<string, unknown> | null | undefined
+        ),
+      })),
     }))
   )
 }
@@ -328,6 +497,11 @@ async function validateNotificationChannels(
   channels: z.infer<typeof notificationChannelSchema>[],
   organizationId: string
 ): Promise<string | null> {
+  const webhookError = await validateWebhookUrls(
+    channels.filter((channel) => channel.type === 'webhook')
+  )
+  if (webhookError) return webhookError
+
   const linearChannels = channels.filter((channel) => channel.type === 'linear')
   if (linearChannels.length > 1) {
     return 'Only one Linear notification channel is supported per rule.'
@@ -343,6 +517,17 @@ async function validateNotificationChannels(
     (channel) => !channel.teamId && !integration.defaultTeamId
   )
   return missingTeam ? 'Linear alert routing requires a teamId or organization default team.' : null
+}
+
+async function getOrganizationSlug(organizationId: string): Promise<string | null> {
+  const db = await getDb()
+  const rows = await db
+    .select({ slug: organization.slug })
+    .from(organization)
+    .where(eq(organization.id, organizationId))
+    .limit(1)
+
+  return rows[0]?.slug ?? null
 }
 
 export default app

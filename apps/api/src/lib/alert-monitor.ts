@@ -301,7 +301,15 @@ async function evaluateAndMaybeAlert(
   }
 
   const activeEvent = await alertEventRepository.findActiveFiring(rule.id, snapshot.queueName)
-  if (activeEvent) return
+  if (activeEvent) {
+    try {
+      await processAlertDeliveries(activeEvent, connection, rule.name)
+      await markLegacyNotificationSentIfComplete(activeEvent.id)
+    } catch (error) {
+      console.error('[alert-monitor] Delivery retry failed:', error)
+    }
+    return
+  }
 
   const recentEvent = await alertEventRepository.findMostRecentForRule(rule.id, snapshot.queueName)
   if (recentEvent) {

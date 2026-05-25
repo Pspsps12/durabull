@@ -1,0 +1,107 @@
+---
+title: Webhook Notifications
+description: Route Durabull alert events to HTTPS webhook endpoints with signed JSON payloads.
+---
+
+Webhook notifications let alert rules POST structured JSON to any HTTPS endpoint you control.
+Use them for custom paging, automation (Zapier, n8n), internal incident systems, or middleware
+that forwards alerts into Slack or PagerDuty.
+
+## Setup
+
+1. Open a connection's alert rule builder.
+2. Add a **Webhook route** with your endpoint URL.
+3. Optionally add a signing secret (minimum 16 characters).
+4. Use **Send test webhook** to verify delivery before enabling the rule.
+
+Webhook routes are configured per alert rule, alongside email and Linear destinations.
+
+## Payload format
+
+Durabull sends versioned JSON with `schemaVersion: 1`.
+
+```json
+{
+  "schemaVersion": 1,
+  "event": "alert.fired",
+  "id": "alert-event-uuid",
+  "deliveryId": "delivery-uuid",
+  "occurredAt": "2026-05-25T12:00:00.000Z",
+  "organization": { "id": "org_123", "slug": "acme" },
+  "connection": { "id": "conn_123", "name": "Production Redis" },
+  "rule": { "id": "rule_123", "name": "High failure rate", "type": "failure_rate" },
+  "queue": { "name": "email-send" },
+  "alert": {
+    "status": "firing",
+    "summary": "Failure rate exceeded threshold",
+    "context": { "jobId": "42", "failedReason": "SMTP timeout" },
+    "firedAt": "2026-05-25T12:00:00.000Z",
+    "dedupeKey": null
+  },
+  "links": {
+    "dashboard": "https://app.durabull.io/acme/c/conn_123/queues/email-send",
+    "job": "https://app.durabull.io/acme/c/conn_123/queues/email-send/jobs/42",
+    "muteRule": "https://app.durabull.io/acme/c/conn_123/alerts?ruleId=rule_123"
+  }
+}
+```
+
+Test deliveries use `event: "alert.test"` with synthetic context.
+
+Durabull does not include full BullMQ `job.data` payloads in webhook bodies.
+
+## Request headers
+
+| Header | Description |
+| --- | --- |
+| `Content-Type` | `application/json` |
+| `User-Agent` | `Durabull-Alerts/1.0` |
+| `Idempotency-Key` | Alert event id — use to dedupe retries |
+| `X-Durabull-Delivery-Id` | Delivery attempt id |
+| `X-Durabull-Timestamp` | Unix seconds (when signing is enabled) |
+| `X-Durabull-Signature` | `sha256=<hex>` HMAC (when signing is enabled) |
+
+## Verifying signatures
+
+When a signing secret is configured, verify:
+
+```
+signature = HMAC-SHA256(secret, "{timestamp}.{rawBody}")
+```
+
+Reject requests older than five minutes to limit replay attacks.
+
+```typescript
+import { createHmac, timingSafeEqual } from 'node:crypto'
+
+function verifyDurabullWebhook(rawBody: string, headers: Headers, secret: string): boolean {
+  const timestamp = headers.get('x-durabull-timestamp')
+  const signature = headers.get('x-durabull-signature')
+  if (!timestamp || !signature) return false
+  if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false
+
+  const expected = createHmac('sha256', secret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest('hex')
+
+  const provided = signature.replace(/^sha256=/, '')
+  return timingSafeEqual(Buffer.from(provided), Buffer.from(expected))
+}
+```
+
+## Delivery behavior
+
+- Durabull uses at-least-once delivery with exponential backoff retries.
+- Respond with any `2xx` status to acknowledge receipt.
+- `408`, `429`, and `5xx` responses are retried.
+- Most other `4xx` responses are treated as permanent failures.
+- Requests time out after 10 seconds.
+- Retry attempts stop after **7 days** from the first delivery enqueue. The delivery row is marked permanently failed so dead endpoints do not retry forever.
+
+## Security notes
+
+- Production webhook URLs must use HTTPS.
+- Durabull blocks private and localhost targets (SSRF protection).
+- Signing secrets are stored on the alert rule and masked in API responses after save.
+
+For local development only, set `DURABULL_WEBHOOK_ALLOW_HTTP=true` to permit HTTP webhook URLs.

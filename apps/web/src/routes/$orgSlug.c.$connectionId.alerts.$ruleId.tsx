@@ -70,7 +70,12 @@ export function EditAlertRuleRoute() {
           search: { tab: 'rules' },
         })
       }}
-      onTest={() => testRuleMutation.mutateAsync(ruleId)}
+      onTest={() =>
+        testRuleMutation.mutateAsync({
+          ruleId,
+          deliver: (rule.notificationChannels ?? []).some((channel) => channel.type === 'webhook'),
+        })
+      }
     />
   )
 }

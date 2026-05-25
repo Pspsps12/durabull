@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   alertCheckCursorRepository,
+  alertDeliveryRepository,
   alertEventRepository,
   alertRuleRepository,
   closeDb,
@@ -368,5 +369,137 @@ describe('alerts routes', () => {
     expect(await resolveResponse.json()).toMatchObject({
       event: expect.objectContaining({ id: event.id, status: 'resolved' }),
     })
+  })
+
+  it('rejects webhook URLs that target private networks', async () => {
+    const app = await createAlertsRouteApp()
+
+    const response = await app.request(
+      '/rules',
+      jsonRequest({
+        name: 'Webhook SSRF guard',
+        type: 'job_failed',
+        queueName: 'email-send',
+        config: { maxIssuesPerPoll: 10 },
+        notificationChannels: [{ type: 'webhook', url: 'https://127.0.0.1/hook' }],
+        cooldownMinutes: 30,
+        enabled: true,
+      })
+    )
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      error: expect.stringContaining('private or local IP'),
+    })
+  })
+
+  it('masks webhook secrets when returning alert rules', async () => {
+    const app = await createAlertsRouteApp()
+
+    const createResponse = await app.request(
+      '/rules',
+      jsonRequest({
+        name: 'Webhook secret masking',
+        type: 'job_failed',
+        queueName: 'email-send',
+        config: { maxIssuesPerPoll: 10 },
+        notificationChannels: [
+          {
+            type: 'webhook',
+            url: 'https://example.com/hook',
+            secret: 'abcdefghijklmnop',
+          },
+        ],
+        cooldownMinutes: 30,
+        enabled: true,
+      })
+    )
+
+    expect(createResponse.status).toBe(201)
+    const createBody = (await createResponse.json()) as {
+      rule: { notificationChannels: Array<Record<string, unknown>> }
+    }
+    expect(createBody.rule.notificationChannels[0]).toEqual({
+      type: 'webhook',
+      url: 'https://example.com/hook',
+      secretConfigured: true,
+      secretLast4: 'mnop',
+    })
+
+    const listResponse = await app.request('/rules')
+    const listBody = (await listResponse.json()) as {
+      rules: Array<{ notificationChannels: Array<Record<string, unknown>> }>
+    }
+    expect(listBody.rules[0]?.notificationChannels[0]).toEqual({
+      type: 'webhook',
+      url: 'https://example.com/hook',
+      secretConfigured: true,
+      secretLast4: 'mnop',
+    })
+  })
+
+  it('masks webhook secrets in event delivery metadata', async () => {
+    const rule = await alertRuleRepository.create({
+      organizationId: TEST_ORG_ID,
+      connectionId: TEST_CONNECTION_ID,
+      queueName: 'email-send',
+      name: 'Webhook delivery masking',
+      type: 'job_failed',
+      config: { maxIssuesPerPoll: 10 },
+      notificationChannels: [
+        {
+          type: 'webhook',
+          url: 'https://example.com/hook',
+          secret: 'abcdefghijklmnop',
+        },
+      ],
+      cooldownMinutes: 30,
+    })
+
+    const event = await alertEventRepository.create({
+      alertRuleId: rule.id,
+      organizationId: TEST_ORG_ID,
+      connectionId: TEST_CONNECTION_ID,
+      queueName: 'email-send',
+      type: rule.type,
+      status: 'firing',
+      summary: 'Webhook delivery test',
+      context: {},
+      firedAt: new Date(),
+    })
+
+    await alertDeliveryRepository.enqueueMany([
+      {
+        alertEventId: event.id,
+        organizationId: TEST_ORG_ID,
+        channelType: 'webhook',
+        target: 'https://example.com/hook',
+        providerMetadata: {
+          type: 'webhook',
+          url: 'https://example.com/hook',
+          secret: 'abcdefghijklmnop',
+          httpStatus: 503,
+        },
+      },
+    ])
+
+    const app = await createAlertsRouteApp()
+    const response = await app.request('/events?status=firing')
+    expect(response.status).toBe(200)
+
+    const body = (await response.json()) as {
+      events: Array<{
+        deliveries: Array<{ providerMetadata?: Record<string, unknown> }>
+      }>
+    }
+    const delivery = body.events.find((entry) => entry.deliveries.length > 0)?.deliveries[0]
+    expect(delivery?.providerMetadata).toEqual({
+      type: 'webhook',
+      url: 'https://example.com/hook',
+      httpStatus: 503,
+      secretConfigured: true,
+      secretLast4: 'mnop',
+    })
+    expect(delivery?.providerMetadata?.secret).toBeUndefined()
   })
 })

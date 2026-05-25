@@ -28,6 +28,7 @@ export default function RoadmapPage() {
             items: [
               'Latency improvements for busy dashboards',
               'Queue health alerts',
+              'Webhook alert notifications',
               'Faster job replays',
             ],
           },
@@ -37,7 +38,7 @@ export default function RoadmapPage() {
             items: [
               'Role-based access controls',
               'Saved views and filters',
-              'Slack and webhook notifications',
+              'Slack notifications',
             ],
           },
           {

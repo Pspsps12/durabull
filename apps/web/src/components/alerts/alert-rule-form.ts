@@ -10,7 +10,7 @@ const emailSchema = z.string().email()
 
 export interface NotificationRouteDraft {
   id: string
-  type: 'email' | 'linear'
+  type: 'email' | 'linear' | 'webhook'
   target: string
   teamId?: string
   projectId?: string
@@ -18,6 +18,10 @@ export interface NotificationRouteDraft {
   assigneeId?: string
   stateId?: string
   priority?: string
+  webhookUrl?: string
+  webhookSecret?: string
+  secretConfigured?: boolean
+  secretLast4?: string
 }
 
 export interface AlertRuleDraft {
@@ -97,6 +101,14 @@ function extractNotificationRoutes(rule?: AlertRuleRecord | null): NotificationR
         },
       ]
     }
+    if (channel.type === 'webhook' && typeof channel.url === 'string') {
+      return [
+        createWebhookNotificationRouteDraft(index + 1, channel.url, {
+          secretConfigured: channel.secretConfigured === true,
+          secretLast4: channel.secretLast4,
+        }),
+      ]
+    }
     return []
   })
 
@@ -111,6 +123,24 @@ export function createNotificationRouteDraft(sequence = 0, target = ''): Notific
         : `email-route-${Math.random().toString(36).slice(2, 10)}`,
     type: 'email',
     target,
+  }
+}
+
+export function createWebhookNotificationRouteDraft(
+  sequence = 0,
+  webhookUrl = '',
+  options?: { secretConfigured?: boolean; secretLast4?: string }
+): NotificationRouteDraft {
+  return {
+    id:
+      sequence > 0
+        ? `webhook-route-${sequence}`
+        : `webhook-route-${Math.random().toString(36).slice(2, 10)}`,
+    type: 'webhook',
+    target: webhookUrl,
+    webhookUrl,
+    secretConfigured: options?.secretConfigured,
+    secretLast4: options?.secretLast4,
   }
 }
 
@@ -178,6 +208,29 @@ export function validateAlertRuleDraft(draft: AlertRuleDraft): string | null {
         return 'Linear priority must be a whole number between 0 and 4.'
       }
     }
+  }
+
+  for (const route of draft.notificationRoutes.filter((item) => item.type === 'webhook')) {
+    const url = route.webhookUrl?.trim() ?? route.target.trim()
+    if (!url) {
+      return 'Webhook URL is required.'
+    }
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        return 'Webhook URL must use HTTP or HTTPS.'
+      }
+    } catch {
+      return `Invalid webhook URL: ${url}`
+    }
+    const secret = route.webhookSecret?.trim()
+    if (secret && secret.length < 16) {
+      return 'Webhook signing secret must be at least 16 characters when provided.'
+    }
+  }
+
+  if (draft.notificationRoutes.length > 10) {
+    return 'You can configure up to 10 notification destinations.'
   }
 
   switch (draft.type) {
@@ -267,6 +320,17 @@ export function serializeAlertRuleDraft(draft: AlertRuleDraft): AlertRuleMutatio
           ? { priority: parseWholeNumber(route.priority) ?? undefined }
           : {}),
       })),
+    ...draft.notificationRoutes
+      .filter((route) => route.type === 'webhook')
+      .map((route) => {
+        const url = route.webhookUrl?.trim() ?? route.target.trim()
+        const secret = route.webhookSecret?.trim()
+        return {
+          type: 'webhook' as const,
+          url,
+          ...(secret ? { secret } : {}),
+        }
+      }),
   ]
   const config = buildAlertRuleConfig(type, draft)
   const cooldownMinutes = parseWholeNumber(draft.cooldownMinutes) ?? 30
