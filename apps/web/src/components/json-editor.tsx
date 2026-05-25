@@ -1,12 +1,8 @@
 import { AlertCircle, CheckCircle2, WandSparkles } from 'lucide-react'
-import {
-  type KeyboardEvent as ReactKeyboardEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { json } from '@codemirror/lang-json'
+import { EditorView, keymap } from '@codemirror/view'
+import CodeMirror from '@uiw/react-codemirror'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -17,95 +13,53 @@ interface JsonEditorProps {
   minHeight?: string
 }
 
-const INDENT = '  '
-
-function getLineStart(text: string, index: number): number {
-  return text.lastIndexOf('\n', Math.max(index - 1, 0)) + 1
-}
-
-function getLineEnd(text: string, index: number): number {
-  const lineEnd = text.indexOf('\n', index)
-  return lineEnd === -1 ? text.length : lineEnd
-}
-
-function indentSelectedLines(text: string, start: number, end: number): [string, number, number] {
-  const lineStart = getLineStart(text, start)
-  const lineEnd = getLineEnd(text, end)
-  const selectedText = text.slice(lineStart, lineEnd)
-  const indented = selectedText
-    .split('\n')
-    .map((line) => `${INDENT}${line}`)
-    .join('\n')
-
-  const nextText = `${text.slice(0, lineStart)}${indented}${text.slice(lineEnd)}`
-  const affectedLines = selectedText.split('\n').length
-
-  return [nextText, start + INDENT.length, end + affectedLines * INDENT.length]
-}
-
-function outdentSelectedLines(text: string, start: number, end: number): [string, number, number] {
-  const lineStart = getLineStart(text, start)
-  const lineEnd = getLineEnd(text, end)
-  const selectedText = text.slice(lineStart, lineEnd)
-  const lines = selectedText.split('\n')
-
-  let removedBeforeSelection = 0
-  let removedWithinSelection = 0
-
-  const outdented = lines
-    .map((line, index) => {
-      if (!line.startsWith(INDENT)) {
-        return line
-      }
-
-      if (index === 0 && start > lineStart) {
-        removedBeforeSelection = Math.min(INDENT.length, start - lineStart)
-      }
-
-      removedWithinSelection += INDENT.length
-      return line.slice(INDENT.length)
-    })
-    .join('\n')
-
-  const nextText = `${text.slice(0, lineStart)}${outdented}${text.slice(lineEnd)}`
-
-  return [
-    nextText,
-    Math.max(lineStart, start - removedBeforeSelection),
-    Math.max(lineStart, end - removedWithinSelection),
-  ]
-}
-
-function insertIndentedNewline(text: string, start: number, end: number): [string, number, number] {
-  const beforeSelection = text.slice(0, start)
-  const afterSelection = text.slice(end)
-  const currentLine = beforeSelection.slice(getLineStart(text, start))
-  const currentIndent = currentLine.match(/^\s*/)?.[0] ?? ''
-  const trimmedBefore = beforeSelection.trimEnd()
-  const nextNonWhitespace = afterSelection.match(/\S/)?.[0] ?? ''
-  const shouldIncreaseIndent = /[[{]$/.test(trimmedBefore)
-  const shouldSplitClosing = /[}\]]/.test(nextNonWhitespace)
-
-  if (shouldIncreaseIndent && shouldSplitClosing) {
-    const inserted = `\n${currentIndent}${INDENT}\n${currentIndent}`
-    const caret = start + currentIndent.length + INDENT.length + 1
-    const nextText = `${beforeSelection}${inserted}${afterSelection}`
-    return [nextText, caret, caret]
-  }
-
-  const inserted = `\n${currentIndent}${shouldIncreaseIndent ? INDENT : ''}`
-  const caret = start + inserted.length
-  const nextText = `${beforeSelection}${inserted}${afterSelection}`
-  return [nextText, caret, caret]
-}
+const payloadEditorTheme = EditorView.theme(
+  {
+    '&': {
+      backgroundColor: '#0b1220',
+      fontSize: '14px',
+    },
+    '&.cm-focused': {
+      outline: 'none',
+    },
+    '.cm-scroller': {
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+      lineHeight: '1.5rem',
+    },
+    '.cm-content': {
+      caretColor: '#e2e8f0',
+      padding: '12px 0',
+    },
+    '.cm-gutters': {
+      backgroundColor: '#050b16',
+      color: '#64748b',
+      borderRight: '1px solid rgba(255, 255, 255, 0.1)',
+      paddingRight: '8px',
+    },
+    '.cm-activeLineGutter': {
+      backgroundColor: 'rgba(56, 189, 248, 0.08)',
+      color: '#94a3b8',
+    },
+    '.cm-activeLine': {
+      backgroundColor: 'rgba(56, 189, 248, 0.06)',
+    },
+    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
+      backgroundColor: 'rgba(56, 189, 248, 0.22) !important',
+    },
+    '.cm-cursor': {
+      borderLeftColor: '#e2e8f0',
+    },
+  },
+  { dark: true }
+)
 
 export function JsonEditor({ value, onChange, className, minHeight = '200px' }: JsonEditorProps) {
   const initialText = useMemo(() => JSON.stringify(value, null, 2), [value])
   const [text, setText] = useState(initialText)
   const [error, setError] = useState<string | null>(null)
-  const [scrollTop, setScrollTop] = useState(0)
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const lastCommittedTextRef = useRef(initialText)
+  const formatTextRef = useRef<() => void>(() => {})
+  const hasErrorRef = useRef(false)
 
   useEffect(() => {
     if (initialText === lastCommittedTextRef.current) {
@@ -116,8 +70,6 @@ export function JsonEditor({ value, onChange, className, minHeight = '200px' }: 
     setError(null)
     lastCommittedTextRef.current = initialText
   }, [initialText])
-
-  const lineCount = useMemo(() => Math.max(text.split('\n').length, 1), [text])
 
   const applyText = useCallback(
     (nextText: string) => {
@@ -153,49 +105,33 @@ export function JsonEditor({ value, onChange, className, minHeight = '200px' }: 
     }
   }, [onChange, text, value])
 
-  const handleChange = useCallback(
-    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-      applyText(event.target.value)
-    },
-    [applyText]
-  )
+  formatTextRef.current = formatText
+  hasErrorRef.current = error !== null
 
-  const handleKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-      const target = event.currentTarget
-      const start = target.selectionStart
-      const end = target.selectionEnd
-
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
-        event.preventDefault()
-        formatText()
-        return
-      }
-
-      if (event.key === 'Tab') {
-        event.preventDefault()
-        const [nextText, nextStart, nextEnd] = event.shiftKey
-          ? outdentSelectedLines(text, start, end)
-          : indentSelectedLines(text, start, end)
-        applyText(nextText)
-        requestAnimationFrame(() => {
-          target.selectionStart = nextStart
-          target.selectionEnd = nextEnd
-        })
-        return
-      }
-
-      if (event.key === 'Enter') {
-        event.preventDefault()
-        const [nextText, nextStart, nextEnd] = insertIndentedNewline(text, start, end)
-        applyText(nextText)
-        requestAnimationFrame(() => {
-          target.selectionStart = nextStart
-          target.selectionEnd = nextEnd
-        })
-      }
-    },
-    [applyText, formatText, text]
+  const extensions = useMemo(
+    () => [
+      json(),
+      payloadEditorTheme,
+      EditorView.lineWrapping,
+      keymap.of([
+        {
+          key: 'Mod-Shift-f',
+          preventDefault: true,
+          run: () => {
+            formatTextRef.current()
+            return true
+          },
+        },
+      ]),
+      EditorView.domEventHandlers({
+        blur: () => {
+          if (!hasErrorRef.current) {
+            formatTextRef.current()
+          }
+        },
+      }),
+    ],
+    []
   )
 
   return (
@@ -238,37 +174,24 @@ export function JsonEditor({ value, onChange, className, minHeight = '200px' }: 
           </div>
         </div>
 
-        <div className="grid grid-cols-[auto_minmax(0,1fr)]">
-          <div
-            aria-hidden="true"
-            className="border-r border-white/10 bg-[#050b16] px-3 py-3 text-right font-mono text-xs leading-6 text-slate-500"
-            style={{ transform: `translateY(-${scrollTop}px)` }}
-          >
-            {Array.from({ length: lineCount }, (_, index) => (
-              <div key={index + 1}>{index + 1}</div>
-            ))}
-          </div>
-
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onBlur={() => {
-              if (!error) {
-                formatText()
-              }
-            }}
-            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-            aria-label="Payload"
-            className={cn(
-              'w-full resize-y border-0 bg-[#0b1220] px-4 py-3 font-mono text-sm leading-6 text-slate-100 outline-none',
-              'placeholder:text-slate-500 focus:ring-0'
-            )}
-            style={{ minHeight }}
-            spellCheck={false}
-          />
-        </div>
+        <CodeMirror
+          value={text}
+          height="auto"
+          minHeight={minHeight}
+          theme="dark"
+          basicSetup={{
+            lineNumbers: true,
+            foldGutter: false,
+            highlightActiveLine: true,
+            highlightActiveLineGutter: true,
+            tabSize: 2,
+          }}
+          indentWithTab
+          extensions={extensions}
+          onChange={applyText}
+          className="[&_.cm-editor]:rounded-none [&_.cm-editor]:bg-transparent"
+          aria-label="Payload"
+        />
       </div>
 
       {error ? (
