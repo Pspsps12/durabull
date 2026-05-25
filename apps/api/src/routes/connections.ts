@@ -8,6 +8,7 @@ import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { Redis } from 'ioredis'
 import { z } from 'zod'
+import { buildIoRedisConnectionOptions } from '../lib/connection-options'
 import { resetQueueDiscoveryState } from '../lib/queue-discovery'
 import { validateRedisUrlForEnvironment } from '../lib/url-validation'
 import { requireOrganization } from '../middleware/auth'
@@ -31,6 +32,7 @@ const app = new Hono()
       isDefault: conn.isDefault,
       environment: conn.environment,
       prefix: conn.prefix,
+      allowSelfSignedCerts: conn.allowSelfSignedCerts,
     }))
 
     return c.json({ connections })
@@ -54,6 +56,7 @@ const app = new Hono()
         isDefault: conn.isDefault,
         environment: conn.environment,
         prefix: conn.prefix,
+        allowSelfSignedCerts: conn.allowSelfSignedCerts,
         createdAt: conn.createdAt.toISOString(),
         updatedAt: conn.updatedAt.toISOString(),
       },
@@ -71,6 +74,7 @@ const app = new Hono()
         environment: z.enum(['development', 'staging', 'production']).optional(),
         isDefault: z.boolean().optional(),
         prefix: connectionPrefixSchema.default('bull'),
+        allowSelfSignedCerts: z.boolean().optional(),
       })
     ),
     async (c) => {
@@ -115,6 +119,7 @@ const app = new Hono()
         environment: body.environment ?? 'development',
         isDefault: body.isDefault ?? false,
         prefix: body.prefix,
+        allowSelfSignedCerts: body.allowSelfSignedCerts ?? false,
         organizationId,
       })
 
@@ -126,6 +131,7 @@ const app = new Hono()
             isDefault: conn.isDefault,
             environment: conn.environment,
             prefix: conn.prefix,
+            allowSelfSignedCerts: conn.allowSelfSignedCerts,
           },
         },
         201
@@ -144,6 +150,7 @@ const app = new Hono()
         environment: z.enum(['development', 'staging', 'production']).optional(),
         isDefault: z.boolean().optional(),
         prefix: connectionPrefixSchema.optional(),
+        allowSelfSignedCerts: z.boolean().optional(),
       })
     ),
     async (c) => {
@@ -198,6 +205,9 @@ const app = new Hono()
       if (body.environment !== undefined) updateData.environment = body.environment
       if (body.isDefault === false) updateData.isDefault = false
       if (body.prefix !== undefined) updateData.prefix = body.prefix
+      if (body.allowSelfSignedCerts !== undefined) {
+        updateData.allowSelfSignedCerts = body.allowSelfSignedCerts
+      }
 
       const conn = await redisConnectionRepository.update(id, organizationId, updateData)
       if (!conn) {
@@ -216,6 +226,7 @@ const app = new Hono()
           isDefault: conn.isDefault,
           environment: conn.environment,
           prefix: conn.prefix,
+          allowSelfSignedCerts: conn.allowSelfSignedCerts,
         },
       })
     }
@@ -267,10 +278,11 @@ const app = new Hono()
       'json',
       z.object({
         url: z.string().min(1),
+        allowSelfSignedCerts: z.boolean().optional(),
       })
     ),
     async (c) => {
-      const { url } = c.req.valid('json')
+      const { url, allowSelfSignedCerts } = c.req.valid('json')
 
       // Validate URL to prevent SSRF attacks
       const validation = validateRedisUrlForEnvironment(url)
@@ -292,6 +304,7 @@ const app = new Hono()
           connectTimeout: 5000,
           maxRetriesPerRequest: 1,
           lazyConnect: true,
+          ...buildIoRedisConnectionOptions({ allowSelfSignedCerts }),
         })
 
         await redis.connect()

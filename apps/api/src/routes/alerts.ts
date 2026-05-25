@@ -8,6 +8,7 @@ import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { evaluateRule, type CursorState, type QueueSnapshot } from '../lib/alert-evaluator'
+import { getConnectionRedisOptions } from '../lib/connection-options'
 import { getQueue } from '../lib/redis'
 
 const alertTypeSchema = z.enum(['failure_threshold', 'failure_rate', 'queue_stalled'])
@@ -134,6 +135,7 @@ const app = new Hono()
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
     const connectionPrefix = c.get('connectionPrefix')
+    const redisOptions = getConnectionRedisOptions(c)
     const connectionName = c.get('connectionName')
     const organizationId = c.get('organizationId')
     if (!organizationId) {
@@ -157,7 +159,7 @@ const app = new Hono()
       return c.json({ error: 'No queue available to test this rule yet' }, 400)
     }
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix, redisOptions)
     const [jobCountsRaw, failedMetricsRaw, completedMetricsRaw] = await Promise.all([
       queue.getJobCounts('failed', 'waiting', 'active', 'completed'),
       queue.getMetrics('failed', 0, 60),

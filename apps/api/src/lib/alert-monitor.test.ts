@@ -66,6 +66,7 @@ function createConnection(): RedisConnection {
     environment: 'development',
     isDefault: true,
     prefix: 'bull',
+    allowSelfSignedCerts: false,
     createdAt: now,
     updatedAt: now,
   }

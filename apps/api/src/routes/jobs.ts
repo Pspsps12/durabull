@@ -2,6 +2,7 @@ import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { getQueue } from '../lib/redis'
+import { getConnectionRedisOptions } from '../lib/connection-options'
 
 // Default page size for stacktraces and logs
 const DEFAULT_PAGE_SIZE = 50
@@ -80,6 +81,7 @@ const app = new Hono()
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
     const connectionPrefix = c.get('connectionPrefix')
+    const redisOptions = getConnectionRedisOptions(c)
     const queueName = c.req.param('queueName')
     const status = c.req.query('status')
     const name = c.req.query('name')
@@ -95,7 +97,7 @@ const app = new Hono()
       Number.isInteger(cursor) && cursor !== null ? Math.max(0, cursor) : (page - 1) * pageSize
     const end = start + pageSize - 1
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix, redisOptions)
 
     if (jobId) {
       const job = await queue.getJob(jobId)
@@ -218,10 +220,11 @@ const app = new Hono()
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
     const connectionPrefix = c.get('connectionPrefix')
+    const redisOptions = getConnectionRedisOptions(c)
     const queueName = c.req.param('queueName')
     const jobId = c.req.param('jobId')
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix, redisOptions)
     const job = await queue.getJob(jobId)
 
     if (!job) {
@@ -263,6 +266,7 @@ const app = new Hono()
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
     const connectionPrefix = c.get('connectionPrefix')
+    const redisOptions = getConnectionRedisOptions(c)
     const queueName = c.req.param('queueName')
     const jobId = c.req.param('jobId')
     const pageStr = c.req.query('page')
@@ -274,7 +278,7 @@ const app = new Hono()
       MAX_PAGE_SIZE
     )
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix, redisOptions)
     const job = await queue.getJob(jobId)
 
     if (!job) {
@@ -312,6 +316,7 @@ const app = new Hono()
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
     const connectionPrefix = c.get('connectionPrefix')
+    const redisOptions = getConnectionRedisOptions(c)
     const queueName = c.req.param('queueName')
     const jobId = c.req.param('jobId')
     const pageStr = c.req.query('page')
@@ -325,7 +330,7 @@ const app = new Hono()
     const start = (page - 1) * pageSize
     const end = start + pageSize - 1
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix, redisOptions)
     // BullMQ getJobLogs accepts start and end parameters for pagination
     const logs = await queue.getJobLogs(jobId, start, end)
 
@@ -343,11 +348,12 @@ const app = new Hono()
     const connectionId = c.get('connectionId')
     const connectionUrl = c.get('connectionUrl')
     const connectionPrefix = c.get('connectionPrefix')
+    const redisOptions = getConnectionRedisOptions(c)
     const queueName = c.req.param('queueName')
     const jobId = c.req.param('jobId')
     const keepMostRecent = 0
 
-    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
+    const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix, redisOptions)
     const job = await queue.getJob(jobId)
 
     if (!job) {
@@ -417,11 +423,12 @@ const app = new Hono()
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
       const connectionPrefix = c.get('connectionPrefix')
+    const redisOptions = getConnectionRedisOptions(c)
       const queueName = c.req.param('queueName')
       const jobId = c.req.param('jobId')
       const { keepMostRecent } = c.req.valid('json')
 
-      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix, redisOptions)
       const job = await queue.getJob(jobId)
 
       if (!job) {
@@ -488,11 +495,12 @@ const app = new Hono()
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
       const connectionPrefix = c.get('connectionPrefix')
+    const redisOptions = getConnectionRedisOptions(c)
       const queueName = c.req.param('queueName')
       const jobId = c.req.param('jobId')
       const { keepMostRecent } = c.req.valid('json')
 
-      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix, redisOptions)
       const job = await queue.getJob(jobId)
 
       if (!job) {
@@ -561,10 +569,11 @@ const app = new Hono()
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
       const connectionPrefix = c.get('connectionPrefix')
+    const redisOptions = getConnectionRedisOptions(c)
       const queueName = c.req.param('queueName')
       const { jobIds, statuses } = c.req.valid('json')
 
-      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix, redisOptions)
       let success = 0
       let failed = 0
       const errors: Array<{ jobId: string; error: string }> = []
@@ -690,10 +699,11 @@ const app = new Hono()
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
       const connectionPrefix = c.get('connectionPrefix')
+    const redisOptions = getConnectionRedisOptions(c)
       const queueName = c.req.param('queueName')
       const { jobIds, removeScheduler } = c.req.valid('json')
 
-      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix, redisOptions)
       let success = 0
       let schedulersRemoved = 0
       const errors: Array<{ jobId: string; error: string }> = []
@@ -794,10 +804,11 @@ const app = new Hono()
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
       const connectionPrefix = c.get('connectionPrefix')
+    const redisOptions = getConnectionRedisOptions(c)
       const queueName = c.req.param('queueName')
       const { jobIds, jobData } = c.req.valid('json')
 
-      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix, redisOptions)
       let success = 0
       const errors: Array<{ jobId: string; error: string }> = []
 
@@ -837,10 +848,11 @@ const app = new Hono()
       const connectionId = c.get('connectionId')
       const connectionUrl = c.get('connectionUrl')
       const connectionPrefix = c.get('connectionPrefix')
+    const redisOptions = getConnectionRedisOptions(c)
       const queueName = c.req.param('queueName')
       const { name, data, delay, priority, attempts } = c.req.valid('json')
 
-      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix)
+      const queue = await getQueue(connectionId, connectionUrl, queueName, connectionPrefix, redisOptions)
       const job = await queue.add(name, data, { delay, priority, attempts })
 
       return c.json({

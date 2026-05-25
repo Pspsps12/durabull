@@ -1,5 +1,8 @@
 import { Queue } from 'bullmq'
 import { Redis } from 'ioredis'
+import { buildIoRedisConnectionOptions, type RedisConnectionOptions } from './connection-options'
+
+export type { RedisConnectionOptions } from './connection-options'
 
 export class RedisUnavailableError extends Error {
   readonly code = 'REDIS_UNAVAILABLE'
@@ -114,7 +117,12 @@ function shouldLogRedisError(connectionId: string, message: string): boolean {
   return true
 }
 
-function buildRedisClient(connectionUrl: string, cacheKey: string, label: string): Redis {
+function buildRedisClient(
+  connectionUrl: string,
+  cacheKey: string,
+  label: string,
+  options?: RedisConnectionOptions
+): Redis {
   const redis = new Redis(connectionUrl, {
     maxRetriesPerRequest: null,
     lazyConnect: true,
@@ -122,6 +130,7 @@ function buildRedisClient(connectionUrl: string, cacheKey: string, label: string
       if (attempts > REDIS_MAX_RECONNECT_ATTEMPTS) return null
       return Math.min(attempts * REDIS_RECONNECT_BASE_DELAY_MS, REDIS_RECONNECT_MAX_DELAY_MS)
     },
+    ...buildIoRedisConnectionOptions(options),
   })
 
   redis.on('error', (error) => {
@@ -154,9 +163,14 @@ function buildRedisClient(connectionUrl: string, cacheKey: string, label: string
 export async function getRedis(
   connectionId: string,
   connectionUrl: string,
-  connectionName?: string
+  connectionName?: string,
+  options?: RedisConnectionOptions
 ): Promise<Redis> {
-  const cacheKey = JSON.stringify([connectionId, connectionUrl])
+  const cacheKey = JSON.stringify([
+    connectionId,
+    connectionUrl,
+    options?.allowSelfSignedCerts ?? false,
+  ])
   const existingConnection = redisConnections.get(cacheKey)
   if (existingConnection) {
     if (existingConnection.status !== 'end') {
@@ -180,7 +194,7 @@ export async function getRedis(
   }
 
   const connectPromise = (async () => {
-    const redis = buildRedisClient(connectionUrl, cacheKey, connectionName ?? connectionId)
+    const redis = buildRedisClient(connectionUrl, cacheKey, connectionName ?? connectionId, options)
 
     try {
       await redis.connect()
@@ -215,7 +229,8 @@ export async function getRedis(
 export async function discoverQueues(
   connectionId: string,
   connectionUrl: string,
-  prefix = 'bull'
+  prefix = 'bull',
+  options?: RedisConnectionOptions
 ): Promise<Array<string>> {
   const queueNames = new Set<string>()
   let cursor = '0'
@@ -226,7 +241,8 @@ export async function discoverQueues(
       connectionUrl,
       cursor,
       DEFAULT_QUEUE_SCAN_COUNT,
-      prefix
+      prefix,
+      options
     )
     cursor = page.cursor
     for (const queueName of page.queueNames) {
@@ -247,9 +263,10 @@ export async function scanQueuesPage(
   connectionUrl: string,
   cursor = '0',
   count = DEFAULT_QUEUE_SCAN_COUNT,
-  prefix = 'bull'
+  prefix = 'bull',
+  options?: RedisConnectionOptions
 ): Promise<QueueScanPage> {
-  const redisClient = await getRedis(connectionId, connectionUrl)
+  const redisClient = await getRedis(connectionId, connectionUrl, undefined, options)
   const scanCount = Math.max(100, count)
   const escapedPrefix = prefix.replace(/[\\*?[\]]/g, '\\$&')
   const [nextCursor, keys] = await redisClient.scan(
@@ -280,9 +297,10 @@ export async function scanQueuesPage(
 export async function debugGetBullKeys(
   connectionId: string,
   connectionUrl: string,
-  prefix = 'bull'
+  prefix = 'bull',
+  options?: RedisConnectionOptions
 ): Promise<string[]> {
-  const redisClient = await getRedis(connectionId, connectionUrl)
+  const redisClient = await getRedis(connectionId, connectionUrl, undefined, options)
   const escapedPrefix = prefix.replace(/[\\*?[\]]/g, '\\$&')
   const keys: string[] = []
   let cursor = '0'
@@ -309,9 +327,16 @@ export async function getQueue(
   connectionId: string,
   connectionUrl: string,
   name: string,
-  prefix = 'bull'
+  prefix = 'bull',
+  options?: RedisConnectionOptions
 ): Promise<Queue> {
-  const cacheKey = JSON.stringify([connectionId, connectionUrl, prefix, name])
+  const cacheKey = JSON.stringify([
+    connectionId,
+    connectionUrl,
+    prefix,
+    name,
+    options?.allowSelfSignedCerts ?? false,
+  ])
 
   if (!queues.has(cacheKey)) {
     const queue = new Queue(name, {
@@ -322,6 +347,7 @@ export async function getQueue(
           if (attempts > REDIS_MAX_RECONNECT_ATTEMPTS) return null
           return Math.min(attempts * REDIS_RECONNECT_BASE_DELAY_MS, REDIS_RECONNECT_MAX_DELAY_MS)
         },
+        ...buildIoRedisConnectionOptions(options),
       },
       prefix,
     })
@@ -334,11 +360,14 @@ export async function getQueue(
       }
 
       if (isPermanentRedisConnectionError(message)) {
-        recentRedisConnectionFailures.set(JSON.stringify([connectionId, connectionUrl]), {
-          message,
-          at: Date.now(),
-          permanent: true,
-        })
+        recentRedisConnectionFailures.set(
+          JSON.stringify([connectionId, connectionUrl, options?.allowSelfSignedCerts ?? false]),
+          {
+            message,
+            at: Date.now(),
+            permanent: true,
+          }
+        )
         queue.close().catch(() => {})
         queues.delete(cacheKey)
       }

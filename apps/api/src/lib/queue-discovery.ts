@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { redisDiscoveredQueueRepository } from '@durabull/dal'
+import type { RedisConnectionOptions } from './redis'
 import { scanQueuesPage } from './redis'
 
 const DEFAULT_DISCOVERY_SCAN_COUNT = 1000
@@ -72,7 +73,8 @@ async function runQueueDiscovery(
   connectionId: string,
   connectionUrl: string,
   scanCount: number,
-  prefix = 'bull'
+  prefix = 'bull',
+  redisOptions?: RedisConnectionOptions
 ): Promise<void> {
   const runtime = discoveryStateByConnection.get(connectionId)
   if (!runtime) return
@@ -83,7 +85,14 @@ async function runQueueDiscovery(
   do {
     if (discoveryStateByConnection.get(connectionId) !== runtime) return
 
-    const page = await scanQueuesPage(connectionId, connectionUrl, cursor, scanCount, prefix)
+    const page = await scanQueuesPage(
+      connectionId,
+      connectionUrl,
+      cursor,
+      scanCount,
+      prefix,
+      redisOptions
+    )
     cursor = page.cursor
     runtime.scannedPages += 1
 
@@ -119,7 +128,11 @@ export function resetQueueDiscoveryState(connectionId: string): void {
 export async function startQueueDiscovery(
   connectionId: string,
   connectionUrl: string,
-  options?: { scanCount?: number; prefix?: string }
+  options?: {
+    scanCount?: number
+    prefix?: string
+    allowSelfSignedCerts?: boolean
+  }
 ): Promise<QueueDiscoveryStatus> {
   const existingRun = activeDiscoveryRuns.get(connectionId)
   if (existingRun) {
@@ -128,6 +141,9 @@ export async function startQueueDiscovery(
 
   const scanCount = Math.max(100, options?.scanCount ?? DEFAULT_DISCOVERY_SCAN_COUNT)
   const prefix = options?.prefix ?? 'bull'
+  const redisOptions: RedisConnectionOptions = {
+    allowSelfSignedCerts: options?.allowSelfSignedCerts ?? false,
+  }
   const runtime: QueueDiscoveryRuntime = {
     runId: randomUUID(),
     connectionId,
@@ -143,7 +159,13 @@ export async function startQueueDiscovery(
 
   discoveryStateByConnection.set(connectionId, runtime)
 
-  const runPromise = runQueueDiscovery(connectionId, connectionUrl, scanCount, prefix)
+  const runPromise = runQueueDiscovery(
+    connectionId,
+    connectionUrl,
+    scanCount,
+    prefix,
+    redisOptions
+  )
     .catch((error) => {
       if (discoveryStateByConnection.get(connectionId) === runtime) {
         runtime.lastError = error instanceof Error ? error.message : String(error)

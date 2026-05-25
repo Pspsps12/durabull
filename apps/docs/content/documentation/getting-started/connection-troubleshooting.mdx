@@ -13,6 +13,7 @@ Use this guide if you are adding a new Redis connection and the test or create f
    - **Connection Name**
    - **Connection URL**
    - **Environment**
+   - **Allow self-signed TLS certificates** (only when your provider requires it)
 4. Click **Test** to verify connectivity before saving.
 5. Click **Create Connection**.
 
@@ -21,6 +22,25 @@ Use this guide if you are adding a new Redis connection and the test or create f
 ### TLS Encryption
 
 Ensure your protocol is set to `rediss://` instead of `redis://` (note the extra `s`).
+
+### Self-Signed TLS Certificates
+
+Some managed Redis providers, including [Heroku Key-Value Store](https://devcenter.heroku.com/articles/connecting-heroku-redis), terminate TLS with self-signed certificates. Durabull validates TLS certificates by default, so these connections fail unless you opt in.
+
+When adding or editing a connection:
+
+1. Use a `rediss://` URL.
+2. Enable **Allow self-signed TLS certificates**.
+3. Re-run **Test** before saving.
+
+For env-driven connections, set:
+
+```bash
+DURABULL_REDIS_URL_MAIN=rediss://...
+DURABULL_REDIS_URL_MAIN_ALLOW_SELF_SIGNED_CERTS=true
+```
+
+Only enable this when your provider requires it. It disables certificate authority validation for that connection.
 
 ### IP Allowlisting
 

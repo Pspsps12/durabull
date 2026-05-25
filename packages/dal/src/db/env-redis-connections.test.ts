@@ -104,6 +104,21 @@ describe('env-redis-connections', () => {
     expect(connections[0]?.envName).toBe('MAIN')
   })
 
+  it('parses allow self-signed cert flags from env suffixes', () => {
+    process.env.DURABULL_REDIS_URL_MAIN = 'rediss://localhost:6379'
+    process.env.DURABULL_REDIS_URL_MAIN_ALLOW_SELF_SIGNED_CERTS = 'true'
+    process.env.DURABULL_REDIS_URL_WORKERS = 'redis://localhost:6380'
+
+    const connections = getEnvRedisConnections()
+
+    expect(connections.find((connection) => connection.envName === 'MAIN')?.allowSelfSignedCerts).toBe(
+      true
+    )
+    expect(
+      connections.find((connection) => connection.envName === 'WORKERS')?.allowSelfSignedCerts
+    ).toBe(false)
+  })
+
   it('generates deterministic IDs per organization and env name', () => {
     const first = getEnvRedisConnectionId('org-1', 'MAIN')
     const second = getEnvRedisConnectionId('org-1', 'MAIN')

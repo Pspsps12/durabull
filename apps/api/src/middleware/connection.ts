@@ -11,6 +11,7 @@ declare module 'hono' {
     connectionUrl: string
     connectionName: string
     connectionPrefix: string
+    connectionAllowSelfSignedCerts: boolean
   }
 }
 
@@ -147,6 +148,7 @@ export function createConnectionMiddleware(auth?: Auth) {
     c.set('connectionUrl', connection.url)
     c.set('connectionName', connection.name)
     c.set('connectionPrefix', connection.prefix ?? 'bull')
+    c.set('connectionAllowSelfSignedCerts', connection.allowSelfSignedCerts ?? false)
 
     await next()
   })

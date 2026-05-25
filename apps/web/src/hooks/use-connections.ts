@@ -54,6 +54,7 @@ export function useCreateConnection() {
       environment?: 'development' | 'staging' | 'production'
       isDefault?: boolean
       prefix?: string
+      allowSelfSignedCerts?: boolean
     }) => {
       const res = await api.connections.$post({
         json: data,
@@ -99,6 +100,7 @@ export function useUpdateConnection() {
         environment?: 'development' | 'staging' | 'production'
         isDefault?: boolean
         prefix?: string
+        allowSelfSignedCerts?: boolean
       }
     }) => {
       const res = await api.connections[':id'].$patch({
@@ -163,9 +165,15 @@ export function useDeleteConnection() {
 // Test connection mutation
 export function useTestConnection() {
   return useMutation({
-    mutationFn: async (url: string) => {
+    mutationFn: async ({
+      url,
+      allowSelfSignedCerts,
+    }: {
+      url: string
+      allowSelfSignedCerts?: boolean
+    }) => {
       const res = await api.connections.test.$post({
-        json: { url },
+        json: { url, allowSelfSignedCerts },
       })
       return handleRes<TestConnectionResponse>(res)
     },
