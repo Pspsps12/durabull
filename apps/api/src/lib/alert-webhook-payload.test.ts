@@ -91,4 +91,33 @@ describe('serializeAlertWebhookPayload', () => {
     const body = serializeAlertWebhookPayload(payload)
     expect(Buffer.byteLength(body, 'utf8')).toBeLessThanOrEqual(32_768)
   })
+
+  it('falls back to a minimal payload when repeated truncation is still too large', () => {
+    const payload = buildAlertWebhookPayload({
+      eventType: 'alert.test',
+      eventId: 'event_test',
+      deliveryId: 'delivery_test',
+      occurredAt: new Date('2026-05-25T12:00:00.000Z'),
+      organizationId: 'org_1',
+      organizationSlug: 'acme',
+      connection: { id: 'conn_1', name: 'Redis'.repeat(500) } as never,
+      ruleId: 'rule_1',
+      ruleName: 'Test rule'.repeat(500),
+      ruleType: 'job_failed',
+      queueName: 'jobs'.repeat(500),
+      summary: 'x'.repeat(40_000),
+      context: {
+        failedReason: 'y'.repeat(40_000),
+      },
+      firedAt: new Date('2026-05-25T12:00:00.000Z'),
+      appBaseUrl: 'https://app.durabull.io',
+    })
+
+    payload.links.dashboard = `https://app.durabull.io/${'z'.repeat(40_000)}`
+    payload.links.muteRule = `https://app.durabull.io/${'w'.repeat(40_000)}`
+
+    const body = serializeAlertWebhookPayload(payload)
+    expect(Buffer.byteLength(body, 'utf8')).toBeLessThanOrEqual(32_768)
+    expect(JSON.parse(body).alert.context).toEqual({})
+  })
 })

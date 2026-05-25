@@ -153,7 +153,53 @@ export function serializeAlertWebhookPayload(payload: AlertWebhookPayload): stri
     }
   }
 
-  return JSON.stringify(current)
+  const minimalPayload = buildMinimalWebhookPayload(current)
+  const minimalBody = JSON.stringify(minimalPayload)
+  if (Buffer.byteLength(minimalBody, 'utf8') <= WEBHOOK_MAX_BODY_BYTES) {
+    return minimalBody
+  }
+
+  throw new Error(
+    `Webhook payload exceeds ${WEBHOOK_MAX_BODY_BYTES} bytes even after truncation.`
+  )
+}
+
+function buildMinimalWebhookPayload(payload: AlertWebhookPayload): AlertWebhookPayload {
+  return {
+    schemaVersion: 1,
+    event: payload.event,
+    id: payload.id,
+    deliveryId: payload.deliveryId,
+    occurredAt: payload.occurredAt,
+    organization: {
+      id: payload.organization.id,
+      slug: payload.organization.slug,
+    },
+    connection: {
+      id: payload.connection.id,
+      name: truncateString(payload.connection.name, 200),
+    },
+    rule: {
+      id: payload.rule.id,
+      name: truncateString(payload.rule.name, 200),
+      type: payload.rule.type,
+    },
+    queue: {
+      name: truncateString(payload.queue.name, 200),
+    },
+    alert: {
+      status: 'firing',
+      summary: truncateString(payload.alert.summary, 200),
+      context: {},
+      firedAt: payload.alert.firedAt,
+      dedupeKey: payload.alert.dedupeKey,
+    },
+    links: {
+      dashboard: truncateString(payload.links.dashboard, 500),
+      job: payload.links.job ? truncateString(payload.links.job, 500) : null,
+      muteRule: truncateString(payload.links.muteRule, 500),
+    },
+  }
 }
 
 function getJobIdFromContext(context: Record<string, unknown> | null | undefined): string | null {

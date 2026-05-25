@@ -8,15 +8,30 @@ const BLOCKED_HOSTNAMES = new Set([
   'metadata.google.internal',
 ])
 
+export interface ResolvedWebhookEndpoint {
+  hostname: string
+  port: number
+  protocol: 'http:' | 'https:'
+  path: string
+  pinnedAddress: string
+}
+
 function isPrivateIpv4(octets: number[]): boolean {
-  const [a, b] = octets
+  const [a, b, c] = octets
+  if (a === 0) return true
   if (a === 10) return true
   if (a === 127) return true
-  if (a === 0) return true
+  if (a === 100 && b >= 64 && b <= 127) return true // CGNAT
   if (a === 169 && b === 254) return true
   if (a === 172 && b >= 16 && b <= 31) return true
   if (a === 192 && b === 168) return true
-  if (a === 100 && b >= 64 && b <= 127) return true // CGNAT
+  if (a === 192 && b === 0) return true // 192.0.0.0/24
+  if (a === 192 && b === 0 && c === 2) return true // TEST-NET-1
+  if (a === 192 && b === 88 && c === 99) return true
+  if (a === 198 && (b === 18 || b === 19)) return true // benchmarking
+  if (a === 198 && b === 51 && c === 100) return true // TEST-NET-2
+  if (a === 203 && b === 0 && c === 113) return true // TEST-NET-3
+  if (a >= 224) return true // multicast + reserved
   return false
 }
 
@@ -49,6 +64,33 @@ function isHttpAllowed(): boolean {
   return env.DURABULL_WEBHOOK_ALLOW_HTTP === true || env.NODE_ENV === 'development'
 }
 
+function assertAllowedProtocol(parsed: URL): void {
+  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && isHttpAllowed())) {
+    throw new WebhookUrlError('Webhook URL must use HTTPS.')
+  }
+}
+
+function assertAllowedHostname(hostname: string): void {
+  const normalized = hostname.toLowerCase()
+  if (BLOCKED_HOSTNAMES.has(normalized) || normalized.endsWith('.localhost')) {
+    throw new WebhookUrlError('Webhook URL hostname is not allowed.')
+  }
+}
+
+function assertAllowedAddresses(addresses: string[]): string {
+  if (addresses.length === 0) {
+    throw new WebhookUrlError('Webhook URL hostname could not be resolved.')
+  }
+
+  for (const address of addresses) {
+    if (isPrivateIpAddress(address)) {
+      throw new WebhookUrlError('Webhook URL must not target private or local IP addresses.')
+    }
+  }
+
+  return addresses[0]!
+}
+
 export function normalizeWebhookUrl(rawUrl: string): string {
   const parsed = new URL(rawUrl)
   parsed.hash = ''
@@ -61,33 +103,43 @@ export function getWebhookDeliveryTarget(rawUrl: string): string {
   return `${parsed.origin}${parsed.pathname}${parsed.search}`
 }
 
-export async function assertAllowedWebhookUrl(rawUrl: string): Promise<void> {
+export async function resolveAllowedWebhookEndpoint(rawUrl: string): Promise<ResolvedWebhookEndpoint> {
   let parsed: URL
   try {
-    parsed = new URL(rawUrl)
+    parsed = new URL(normalizeWebhookUrl(rawUrl))
   } catch {
     throw new WebhookUrlError('Webhook URL must be a valid URL.')
   }
 
-  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && isHttpAllowed())) {
-    throw new WebhookUrlError('Webhook URL must use HTTPS.')
-  }
+  assertAllowedProtocol(parsed)
 
   if (parsed.username || parsed.password) {
     throw new WebhookUrlError('Webhook URL must not include credentials.')
   }
 
   const hostname = parsed.hostname.toLowerCase()
-  if (BLOCKED_HOSTNAMES.has(hostname) || hostname.endsWith('.localhost')) {
-    throw new WebhookUrlError('Webhook URL hostname is not allowed.')
-  }
+  assertAllowedHostname(hostname)
+
+  const port =
+    parsed.port !== ''
+      ? Number(parsed.port)
+      : parsed.protocol === 'https:'
+        ? 443
+        : 80
+  const path = `${parsed.pathname}${parsed.search}`
 
   const directIpVersion = isIP(hostname)
   if (directIpVersion !== 0) {
     if (isPrivateIpAddress(hostname)) {
       throw new WebhookUrlError('Webhook URL must not target private or local IP addresses.')
     }
-    return
+    return {
+      hostname,
+      port,
+      protocol: parsed.protocol as 'http:' | 'https:',
+      path,
+      pinnedAddress: hostname,
+    }
   }
 
   let addresses: string[]
@@ -98,15 +150,19 @@ export async function assertAllowedWebhookUrl(rawUrl: string): Promise<void> {
     throw new WebhookUrlError('Webhook URL hostname could not be resolved.')
   }
 
-  if (addresses.length === 0) {
-    throw new WebhookUrlError('Webhook URL hostname could not be resolved.')
-  }
+  const pinnedAddress = assertAllowedAddresses(addresses)
 
-  for (const address of addresses) {
-    if (isPrivateIpAddress(address)) {
-      throw new WebhookUrlError('Webhook URL must not target private or local IP addresses.')
-    }
+  return {
+    hostname,
+    port,
+    protocol: parsed.protocol as 'http:' | 'https:',
+    path,
+    pinnedAddress,
   }
+}
+
+export async function assertAllowedWebhookUrl(rawUrl: string): Promise<void> {
+  await resolveAllowedWebhookEndpoint(rawUrl)
 }
 
 export class WebhookUrlError extends Error {

@@ -1,7 +1,10 @@
 import { createHmac } from 'node:crypto'
+import type { IncomingMessage } from 'node:http'
+import http from 'node:http'
+import https from 'node:https'
 import {
-  assertAllowedWebhookUrl,
-  normalizeWebhookUrl,
+  resolveAllowedWebhookEndpoint,
+  type ResolvedWebhookEndpoint,
   WebhookUrlError,
 } from './alert-webhook-url'
 
@@ -83,8 +86,9 @@ export function classifyWebhookHttpStatus(status: number): { retryable: boolean;
 export async function deliverWebhook(request: WebhookDeliveryRequest): Promise<WebhookDeliveryResult> {
   const startedAt = Date.now()
 
+  let endpoint: ResolvedWebhookEndpoint
   try {
-    await assertAllowedWebhookUrl(request.url)
+    endpoint = await resolveAllowedWebhookEndpoint(request.url)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return {
@@ -96,7 +100,6 @@ export async function deliverWebhook(request: WebhookDeliveryRequest): Promise<W
     }
   }
 
-  const normalizedUrl = normalizeWebhookUrl(request.url)
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'User-Agent': 'Durabull-Alerts/1.0',
@@ -110,26 +113,17 @@ export async function deliverWebhook(request: WebhookDeliveryRequest): Promise<W
     headers['X-Durabull-Timestamp'] = signed.timestamp
   }
 
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS)
-
   try {
-    const response = await fetch(normalizedUrl, {
-      method: 'POST',
-      headers,
-      body: request.body,
-      redirect: 'manual',
-      signal: controller.signal,
+    const { statusCode, responseBodySnippet } = await postPinnedWebhook(endpoint, headers, request.body, {
+      timeoutMs: WEBHOOK_TIMEOUT_MS,
     })
-
     const durationMs = Date.now() - startedAt
-    const responseBodySnippet = await readResponseSnippet(response)
-    const classification = classifyWebhookHttpStatus(response.status)
+    const classification = classifyWebhookHttpStatus(statusCode)
 
-    if (response.status >= 200 && response.status < 300) {
+    if (statusCode >= 200 && statusCode < 300) {
       return {
         success: true,
-        httpStatus: response.status,
+        httpStatus: statusCode,
         durationMs,
         retryable: false,
         responseBodySnippet,
@@ -138,7 +132,7 @@ export async function deliverWebhook(request: WebhookDeliveryRequest): Promise<W
 
     return {
       success: false,
-      httpStatus: response.status,
+      httpStatus: statusCode,
       durationMs,
       error: classification.message,
       retryable: classification.retryable,
@@ -163,8 +157,6 @@ export async function deliverWebhook(request: WebhookDeliveryRequest): Promise<W
       error: error instanceof Error ? error.message : String(error),
       retryable: true,
     }
-  } finally {
-    clearTimeout(timeout)
   }
 }
 
@@ -187,14 +179,87 @@ export async function deliverWebhookOrThrow(
   })
 }
 
-async function readResponseSnippet(response: Response): Promise<string | undefined> {
-  try {
-    const text = await response.text()
-    if (!text) return undefined
-    return text.slice(0, 500)
-  } catch {
-    return undefined
-  }
+function postPinnedWebhook(
+  endpoint: ResolvedWebhookEndpoint,
+  headers: Record<string, string>,
+  body: string,
+  options: { timeoutMs: number }
+): Promise<{ statusCode: number; responseBodySnippet?: string }> {
+  return new Promise((resolve, reject) => {
+    const isHttps = endpoint.protocol === 'https:'
+    const client = isHttps ? https : http
+    const bodyBytes = Buffer.byteLength(body, 'utf8')
+
+    const req = client.request(
+      {
+        host: endpoint.pinnedAddress,
+        port: endpoint.port,
+        path: endpoint.path,
+        method: 'POST',
+        headers: {
+          ...headers,
+          Host: endpoint.hostname,
+          'Content-Length': bodyBytes,
+        },
+        servername: isHttps ? endpoint.hostname : undefined,
+        rejectUnauthorized: isHttps,
+      },
+      (response) => {
+        void readBoundedResponseSnippet(response, 500)
+          .then((responseBodySnippet) => {
+            resolve({
+              statusCode: response.statusCode ?? 0,
+              responseBodySnippet,
+            })
+          })
+          .catch(reject)
+      }
+    )
+
+    const timeoutError = Object.assign(
+      new Error(`Webhook request timed out after ${options.timeoutMs}ms.`),
+      { name: 'AbortError' }
+    )
+    const timer = setTimeout(() => {
+      req.destroy(timeoutError)
+    }, options.timeoutMs)
+
+    req.on('error', (error) => {
+      clearTimeout(timer)
+      reject(error)
+    })
+    req.on('close', () => clearTimeout(timer))
+
+    req.write(body)
+    req.end()
+  })
+}
+
+async function readBoundedResponseSnippet(
+  response: IncomingMessage,
+  maxChars: number
+): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const decoder = new TextDecoder()
+    let out = ''
+    let settled = false
+
+    const finish = () => {
+      if (settled) return
+      settled = true
+      response.resume()
+      response.destroy()
+      resolve(out ? out.slice(0, maxChars) : undefined)
+    }
+
+    response.on('data', (chunk: Buffer) => {
+      if (settled) return
+      out += decoder.decode(chunk, { stream: true })
+      if (out.length >= maxChars) finish()
+    })
+    response.on('end', finish)
+    response.on('error', finish)
+  })
 }
 
 export { WebhookUrlError }

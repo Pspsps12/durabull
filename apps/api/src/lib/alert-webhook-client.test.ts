@@ -37,6 +37,15 @@ describe('assertAllowedWebhookUrl', () => {
     await expect(assertAllowedWebhookUrl('https://10.0.0.1/hook')).rejects.toThrow(
       'private or local IP'
     )
+    await expect(assertAllowedWebhookUrl('https://198.18.0.1/hook')).rejects.toThrow(
+      'private or local IP'
+    )
+    await expect(assertAllowedWebhookUrl('https://240.0.0.1/hook')).rejects.toThrow(
+      'private or local IP'
+    )
+    await expect(assertAllowedWebhookUrl('https://192.0.0.1/hook')).rejects.toThrow(
+      'private or local IP'
+    )
   })
 
   it('accepts public hostnames', async () => {
