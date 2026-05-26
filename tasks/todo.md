@@ -141,3 +141,10 @@
 - Added deep frontend alerting coverage: rule-form validation/serialization helpers, alert query/mutation hooks, queue multi-select interactions, alert events table rendering, builder-page flows, workspace rule/history actions, and `alerts/new` / `alerts/$ruleId` route orchestration.
 - Verified with `apps/api` full `bun test`, `bun run typecheck`, and `bun run lint`, plus `apps/web` full `bun run test:unit`, `bun run typecheck`, and `bun run lint`.
 - `apps/web` lint still reports the same pre-existing unrelated warning in `apps/web/src/routes/$orgSlug.c.$connectionId.queues.$queueName.tsx`.
+
+## Current Task
+
+- [ ] Execute the MCP delivery via the sequential PR stack in `tasks/mcp-pr-execution-playbook.md`.
+- [ ] Use `tasks/mcp-implementation-master-plan.md` as the technical source of truth for implementation details.
+- [ ] Ensure each PR links to a Linear issue and includes complete verification evidence before merge.
+- [ ] Keep the running history ledger in `tasks/mcp-pr-execution-playbook.md` updated as each agent completes handoff.
