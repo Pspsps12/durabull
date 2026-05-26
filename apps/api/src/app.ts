@@ -11,12 +11,14 @@ import { secureHeaders } from 'hono/secure-headers'
 import { getAuth } from './lib/auth'
 import { isAuthlessMode } from './lib/authless'
 import { getAppVersionPayload } from './lib/build-info'
+import { mountMcpIngress } from './mcp/mount'
 import { RedisUnavailableError } from './lib/redis'
 import { createSessionMiddleware } from './middleware/auth'
 import { createConnectionMiddleware } from './middleware/connection'
 import {
   apiRateLimiter,
   authRateLimiter,
+  mcpRateLimiter,
   telemetryCollectRateLimiter,
 } from './middleware/rate-limit'
 import alertsRoutes from './routes/alerts'
@@ -410,6 +412,11 @@ export async function createApiApp(options: CreateApiAppOptions = {}) {
 
   // Mount API under /api prefix
   app.route('/api', api)
+
+  // MCP Streamable HTTP ingress (before SPA/static fallbacks in index.ts)
+  app.use('/mcp', mcpRateLimiter)
+  app.use('/mcp/*', mcpRateLimiter)
+  app.route('/mcp', mountMcpIngress())
 
   // PostHog reverse proxy to bypass ad blockers
   // See: https://posthog.com/docs/advanced/proxy

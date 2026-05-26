@@ -27,7 +27,7 @@ Example cloud URL: `https://app.durabull.io/mcp`
 
 ### What this means for implementers
 
-- **Do:** implement MCP as a **logical module** under the API app (`apps/api/src/mcp/`).
+- **Do:** implement MCP as a **logical module** under the API app (`apps/api/src/mcp/` ingress) with protocol logic in `packages/mcp`.
 - **Do:** mount `/mcp` inside `createApiApp()` **before** SPA/static fallbacks (same precedence pattern as `/ingest/*`).
 - **Do:** keep domain/job logic out of MCP route handlers; use shared services/DTOs (see §2.2).
 - **Do not:** create or maintain a separate deployable `apps/mcp` process for phase 1.
@@ -200,7 +200,7 @@ flowchart LR
 ### 3.1 Runtime placement (phase 1)
 
 - **Deployable:** existing `apps/api` process (also serves web static/SPA in production).
-- **MCP module path:** `apps/api/src/mcp/` (transport wiring, tool registry, MCP middleware).
+- **MCP module path:** `packages/mcp` (transport, tools, auth/policy in later PRs) with thin mount at `apps/api/src/mcp/`.
 - **Ingress mount:** `createApiApp()` in `apps/api/src/app.ts` at `/mcp`.
 - **Shared packages:** domain/auth primitives in `packages/*` (and optional `packages/mcp-domain` later), not duplicated in a second app.
 

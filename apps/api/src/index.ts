@@ -133,6 +133,7 @@ console.log(`
 🚀 Durabull API Server
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📡 API:    http://localhost:${port}/api
+🔌 MCP:    http://localhost:${port}/mcp
 🏥 Health: http://localhost:${port}/api/health
 ${dbBanner}
 ${authBanner}

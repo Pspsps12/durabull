@@ -665,10 +665,50 @@ Finalize production quality and confirm spec/safety compliance.
 
 ---
 
+### PR Record: PR-02
+
+- PR ID: `PR-02`
+- Branch: `main` (local implementation)
+- Linear issue: `NO-LINEAR (temporary)`
+- PR URL:
+- Status: `in progress`
+- Agent owner: `cursor`
+- Start date: `2026-05-26`
+- Merge date:
+
+#### Scope Completed
+
+- [x] `@durabull/mcp` package with transport, host validation, server bootstrap, and `ping` smoke tool.
+- [x] Thin ingress at `apps/api/src/mcp/mount.ts` mounted in `createApiApp()` at `/mcp`.
+- [x] Streamable HTTP on `/mcp` (`GET` + `POST` + `DELETE` via `@hono/mcp`).
+- [x] Host header validation including `APP_BASE_URL` host.
+- [x] Integration tests via `createApiApp()` (initialize, tools/list, tools/call ping).
+- [x] No standalone `apps/mcp` deployable or second public MCP port.
+
+#### Verification Evidence
+
+- [x] Commands run:
+  - [x] `bun run --filter @durabull/mcp test`
+  - [x] `bun run --filter @durabull/api test src/mcp/mount.test.ts`
+  - [x] `bun run --filter @durabull/mcp typecheck`
+  - [x] `bun run --filter @durabull/mcp lint`
+- [x] Tests added:
+  - [x] `packages/mcp/src/config/allowed-hosts.test.ts`
+  - [x] `packages/mcp/src/routes.test.ts`
+  - [x] `apps/api/src/mcp/mount.test.ts`
+
+#### Handoff To Next PR
+
+- Next PR: `PR-03`
+- Known risks: MCP transport is currently unauthenticated (auth deferred to PR-03).
+- Notes for next agent: add OAuth discovery + bearer validation on `/mcp`; canonical resource URI `${APP_BASE_URL}/mcp`.
+
+---
+
 ## Live PR Tracker
 
-- [ ] PR-01 Security architecture baseline (in progress on `feat/no-linear-mcp-pr01-security-baseline`)
-- [ ] PR-02 API `/mcp` ingress + transport (not standalone `apps/mcp`)
+- [x] PR-01 Security architecture baseline (in progress on `feat/no-linear-mcp-pr01-security-baseline`)
+- [x] PR-02 API `/mcp` ingress + transport (`@durabull/mcp` package + thin API mount)
 - [ ] PR-03 OAuth discovery + token validation
 - [ ] PR-04 Principals + policy engine
 - [ ] PR-05 Read-only diagnostic tools
