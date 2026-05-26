@@ -243,3 +243,30 @@ export const connectionTestRateLimiter = rateLimiter({
   limit: 10, // 10 connection tests per minute
   keyPrefix: 'rl:conn-test',
 })
+
+/**
+ * Rate limiter for MCP Streamable HTTP ingress at /mcp.
+ */
+export const mcpRateLimiter = rateLimiter({
+  windowMs: 60 * 1000,
+  limit: 120,
+  keyPrefix: 'rl:mcp',
+  // Do not trust client-controlled x-forwarded-for for MCP throttling.
+  keyGenerator: (c) => {
+    const cfIp = c.req.header('cf-connecting-ip')
+    if (cfIp) return cfIp
+    const realIp = c.req.header('x-real-ip')
+    if (realIp) return realIp
+    return 'mcp-anonymous'
+  },
+  onRateLimit: (c) =>
+    c.json(
+      {
+        error: 'Too Many Requests',
+        code: 'RATE_LIMITED',
+        message: 'MCP rate limit exceeded. Please slow down.',
+        retryAfter: 60,
+      },
+      429
+    ),
+})
