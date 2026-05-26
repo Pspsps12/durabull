@@ -145,5 +145,6 @@
 ## Current Task
 
 - [ ] Execute the MCP delivery via the sequential PR stack in `tasks/mcp-pr-execution-playbook.md`.
+- [ ] Use `tasks/mcp-implementation-master-plan.md` as the technical source of truth for implementation details.
 - [ ] Ensure each PR links to a Linear issue and includes complete verification evidence before merge.
 - [ ] Keep the running history ledger in `tasks/mcp-pr-execution-playbook.md` updated as each agent completes handoff.

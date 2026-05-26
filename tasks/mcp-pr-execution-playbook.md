@@ -11,6 +11,17 @@ Ship a production-safe, hosted MCP server for Durabull that supports read-only d
 
 This playbook is designed for **sequential agent execution** with clear handoffs and a running history.
 
+## Required Companion Document
+
+Before executing any PR in this stack, agents must read:
+
+- `tasks/mcp-implementation-master-plan.md`
+
+Usage split:
+
+- `tasks/mcp-implementation-master-plan.md` = technical implementation details ("how")
+- `tasks/mcp-pr-execution-playbook.md` = sequencing, ownership, validation history ("when/who")
+
 ## Non-Negotiable Constraints
 
 - Do not skip PR order.
