@@ -39,10 +39,11 @@ export function createMcpRoutes(options: CreateMcpRoutesOptions): Hono {
         'Content-Type',
         'Authorization',
         'Accept',
-        'Mcp-Session-Id',
+        'mcp-session-id',
         'Mcp-Protocol-Version',
         'Last-Event-ID',
       ],
+      exposeHeaders: ['mcp-session-id'],
     })
   )
 

@@ -251,6 +251,14 @@ export const mcpRateLimiter = rateLimiter({
   windowMs: 60 * 1000,
   limit: 120,
   keyPrefix: 'rl:mcp',
+  // Do not trust client-controlled x-forwarded-for for MCP throttling.
+  keyGenerator: (c) => {
+    const cfIp = c.req.header('cf-connecting-ip')
+    if (cfIp) return cfIp
+    const realIp = c.req.header('x-real-ip')
+    if (realIp) return realIp
+    return 'mcp-anonymous'
+  },
   onRateLimit: (c) =>
     c.json(
       {

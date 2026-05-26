@@ -21,16 +21,22 @@ export function mcpHeaders(host = 'localhost:3000', sessionId?: string): Record<
 }
 
 export function parseSseJson(body: string): unknown {
-  const dataLines = body
+  const trimmed = body.trim()
+  if (!trimmed) {
+    throw new SyntaxError('Empty MCP response body')
+  }
+
+  const lastEvent = trimmed.split('\n\n').at(-1) ?? trimmed
+  const dataLines = lastEvent
     .split('\n')
     .filter((line) => line.startsWith('data: '))
     .map((line) => line.slice('data: '.length))
 
   if (dataLines.length === 0) {
-    return JSON.parse(body)
+    return JSON.parse(trimmed)
   }
 
-  return JSON.parse(dataLines.at(-1) ?? dataLines[0] ?? '{}')
+  return JSON.parse(dataLines.join('\n'))
 }
 
 export async function readMcpJsonResponse(response: Response): Promise<unknown> {

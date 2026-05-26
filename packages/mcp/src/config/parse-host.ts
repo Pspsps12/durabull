@@ -1,3 +1,9 @@
+function isValidPort(port: string): boolean {
+  if (!/^\d{1,5}$/.test(port)) return false
+  const value = Number(port)
+  return value >= 1 && value <= 65535
+}
+
 export interface ParsedHostHeader {
   /** Lowercase hostname or bracketed IPv6 (e.g. `[::1]`). */
   hostname: string
@@ -31,7 +37,7 @@ export function parseHostHeader(hostHeader: string): ParsedHostHeader | null {
     if (!after.startsWith(':')) return null
 
     const port = after.slice(1)
-    if (!/^\d{1,5}$/.test(port)) return null
+    if (!isValidPort(port)) return null
 
     return { hostname, port, host: `${hostname}:${port}` }
   }
@@ -44,7 +50,7 @@ export function parseHostHeader(hostHeader: string): ParsedHostHeader | null {
   }
 
   const [hostname, port] = trimmed.split(':')
-  if (!hostname || !port || !/^\d{1,5}$/.test(port)) return null
+  if (!hostname || !port || !isValidPort(port)) return null
 
   return { hostname, port, host: `${hostname}:${port}` }
 }

@@ -23,4 +23,10 @@ describe('parseHostHeader', () => {
       host: '[::1]:3000',
     })
   })
+
+  it('rejects out-of-range ports', () => {
+    expect(parseHostHeader('localhost:0')).toBeNull()
+    expect(parseHostHeader('localhost:70000')).toBeNull()
+    expect(parseHostHeader('[::1]:0')).toBeNull()
+  })
 })

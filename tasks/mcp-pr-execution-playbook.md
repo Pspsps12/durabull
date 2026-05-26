@@ -668,10 +668,10 @@ Finalize production quality and confirm spec/safety compliance.
 ### PR Record: PR-02
 
 - PR ID: `PR-02`
-- Branch: `main` (local implementation)
+- Branch: `cursor/mcp-pr02-api-ingress`
 - Linear issue: `NO-LINEAR (temporary)`
-- PR URL:
-- Status: `in progress`
+- PR URL: https://github.com/durabullhq/durabull/pull/88
+- Status: `in review`
 - Agent owner: `cursor`
 - Start date: `2026-05-26`
 - Merge date:
@@ -707,7 +707,7 @@ Finalize production quality and confirm spec/safety compliance.
 
 ## Live PR Tracker
 
-- [x] PR-01 Security architecture baseline (in progress on `feat/no-linear-mcp-pr01-security-baseline`)
+- [ ] PR-01 Security architecture baseline (in progress on `feat/no-linear-mcp-pr01-security-baseline`)
 - [x] PR-02 API `/mcp` ingress + transport (`@durabull/mcp` package + thin API mount)
 - [ ] PR-03 OAuth discovery + token validation
 - [ ] PR-04 Principals + policy engine

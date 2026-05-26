@@ -19,7 +19,7 @@ Durabull ships MCP on the **same origin and same deployable** as the main API + 
 | Path | Purpose | Handler |
 | --- | --- | --- |
 | `/api/*` | REST/RPC API | `apps/api` Hono routes |
-| `/mcp` | MCP Streamable HTTP transport | `apps/api/src/mcp/*` mounted in `createApiApp()` |
+| `/mcp` | MCP Streamable HTTP transport | `packages/mcp` mounted via thin `apps/api/src/mcp/` ingress in `createApiApp()` |
 | `/ingest/*` | PostHog reverse proxy | `apps/api` (existing) |
 | `/`, `/assets/*` | Web SPA/static | `apps/api/src/index.ts` static serving |
 
@@ -213,7 +213,7 @@ flowchart LR
 
 ### 3.3 Module boundary rules (still required)
 
-- MCP transport/auth/policy code lives in `apps/api/src/mcp/*` (or extracted packages), not scattered across unrelated routes.
+- MCP transport/auth/policy code lives in `packages/mcp/*`; `apps/api/src/mcp/` is a thin ingress mount only (PR-03+ auth wiring at API boundary).
 - MCP tools call shared domain services; they do not import Hono `Context` into domain layers.
 - API REST routes and MCP tools must share tenancy checks and redaction utilities.
 
@@ -639,7 +639,7 @@ Do not mark phase complete until:
 
 Some branches may contain an experimental standalone `apps/mcp` package. Before continuing PR-03+:
 
-1. Move transport/tool code into `apps/api/src/mcp/`.
+1. Move transport/tool code into `packages/mcp/` (keep `apps/api/src/mcp/` as thin mount only).
 2. Mount `/mcp` in `createApiApp()`.
 3. Port tests to `apps/api` (request `/mcp` on `createApiApp()`).
 4. Remove standalone `apps/mcp` entrypoint and dual-process Docker runner.

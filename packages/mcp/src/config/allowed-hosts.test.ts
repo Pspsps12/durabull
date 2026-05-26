@@ -25,6 +25,14 @@ describe('allowed hosts', () => {
     expect(isAllowedHost('evil.example.com', hosts)).toBe(false)
   })
 
+  it('adds default-port host variants for https and http base URLs', () => {
+    const httpsHosts = getProductionAllowedHosts('https://app.durabull.io')
+    expect(httpsHosts.has('app.durabull.io:443')).toBe(true)
+
+    const httpHosts = getProductionAllowedHosts('http://app.durabull.io')
+    expect(httpHosts.has('app.durabull.io:80')).toBe(true)
+  })
+
   it('production allowlist omits dev hosts and requires exact host match', () => {
     const hosts = getProductionAllowedHosts('https://app.durabull.io')
 
@@ -33,7 +41,7 @@ describe('allowed hosts', () => {
       true
     )
     expect(isAllowedHost('app.durabull.io:443', hosts, { allowHostnameWithoutPort: false })).toBe(
-      false
+      true
     )
   })
 

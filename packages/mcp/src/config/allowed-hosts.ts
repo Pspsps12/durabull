@@ -27,7 +27,10 @@ function addHostFromUrl(hosts: Set<string>, rawUrl: string): void {
       hosts.add(parsed.host.toLowerCase())
     }
     if (!parsed.port && parsed.hostname) {
-      hosts.add(parsed.hostname.toLowerCase())
+      const hostname = parsed.hostname.toLowerCase()
+      hosts.add(hostname)
+      if (parsed.protocol === 'https:') hosts.add(`${hostname}:443`)
+      if (parsed.protocol === 'http:') hosts.add(`${hostname}:80`)
     }
   } catch {
     // Caller should pass a valid app base URL.
