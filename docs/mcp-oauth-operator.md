@@ -2,6 +2,8 @@
 
 Durabull hosts MCP on the same origin as the web app and API. Remote MCP clients must authenticate with OAuth 2.1 bearer tokens scoped for MCP.
 
+Durabull uses the [Better Auth MCP plugin](https://better-auth.com/docs/plugins/mcp) for OAuth provider behavior, token validation (`getMcpSession` / `withMcpAuth`), and protected-resource metadata. Durabull adds phase-1 scope enforcement (`mcp:discover`, etc.) on top of Better Auth's session handling.
+
 ## Canonical resource URI
 
 Use this value for RFC 8707 resource indicators and audience checks:
@@ -14,11 +16,15 @@ Example (production): `https://app.durabull.io/mcp`
 
 Do not add a trailing slash unless your OAuth client library requires it consistently everywhere.
 
-## Discovery endpoints (app origin)
+## Discovery endpoints
+
+Better Auth serves OAuth metadata under `/api/auth/.well-known/*`. Durabull also exposes app-origin fallbacks for MCP clients that ignore `WWW-Authenticate` (per Better Auth docs):
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /.well-known/oauth-protected-resource` | Protected Resource Metadata (RFC 9728) |
+| `GET /.well-known/oauth-protected-resource` | PRM fallback (wraps `oAuthProtectedResourceMetadata`) |
+| `GET /.well-known/oauth-authorization-server` | AS metadata fallback (wraps `oAuthDiscoveryMetadata`) |
+| `GET /api/auth/.well-known/oauth-protected-resource` | PRM (Better Auth primary) |
 | `GET /api/auth/.well-known/oauth-authorization-server` | Authorization Server Metadata (RFC 8414) |
 
 Protected resource metadata advertises:

@@ -1,3 +1,10 @@
+/**
+ * Generic bearer middleware for `@durabull/mcp` package tests and non–Better Auth hosts.
+ * Production Durabull API ingress uses Better Auth `getMcpSession` / `withMcpAuth` instead
+ * (`apps/api/src/mcp/auth/mcp-session-middleware.ts`).
+ *
+ * @see https://better-auth.com/docs/plugins/mcp
+ */
 import { createMiddleware } from 'hono/factory'
 
 import { buildWwwAuthenticateChallenge, mcpAuthResponseHeaders } from './www-authenticate'

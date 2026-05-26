@@ -25,7 +25,8 @@ const originalAuthless = mutableEnv.DURABULL_AUTHLESS
 const originalPgliteDir = process.env.DURABULL_PGLITE_DIR
 
 const authlessAuthorization = `Bearer ${AUTHLESS_MCP_BEARER_TOKEN}`
-const resourceMetadataUrl = 'http://localhost:3000/.well-known/oauth-protected-resource'
+const resourceMetadataUrl =
+  'http://localhost:3000/api/auth/.well-known/oauth-protected-resource'
 
 let tempPgliteDir = ''
 let app: Hono
