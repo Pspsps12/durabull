@@ -75,6 +75,169 @@ Each PR must deliver a usable, testable increment:
 
 ---
 
+## Zero-Ambiguity PR Templates (Copy/Paste)
+
+Use these templates exactly. Replace placeholders only.
+
+### Global Naming Convention
+
+- Branch format: `feat/<linear-id>-mcp-pr0x-<short-scope>`
+- PR title format: `<linear-id>: MCP PR-0X <short scope>`
+
+If a Linear issue is temporarily unavailable, use:
+
+- branch: `feat/no-linear-mcp-pr0x-<short-scope>`
+- title: `NO-LINEAR: MCP PR-0X <short scope>`
+
+### Required PR Body Template (All PRs)
+
+```md
+## Objective
+<copy objective from active PR section>
+
+## Scope (In)
+- [ ] <deliverable 1>
+- [ ] <deliverable 2>
+- [ ] <deliverable 3>
+
+## Scope (Out)
+- [ ] <explicitly deferred item 1>
+- [ ] <explicitly deferred item 2>
+
+## Implementation Notes
+- <key design choices and touched files>
+
+## Safety
+- [ ] No destructive MCP tools introduced
+- [ ] Org + connection boundary checks verified for touched paths
+- [ ] Negative auth/authz tests added and passing
+- [ ] Redaction/sensitive-output behavior preserved or improved
+
+## Validation
+- [ ] `bun run lint --filter <pkg-or-app>`
+- [ ] `bun run typecheck --filter <pkg-or-app>`
+- [ ] `<targeted tests command>`
+- [ ] `<integration/security test command>`
+
+## Evidence
+- <paste key command outputs, test names, or screenshots/links>
+
+## Handoff
+- Next PR: `PR-0X`
+- Known risks:
+- Follow-ups intentionally deferred:
+```
+
+### PR-01 Template
+
+- Branch: `feat/<linear-id>-mcp-pr01-security-baseline`
+- Title: `<linear-id>: MCP PR-01 security architecture baseline`
+- Must include:
+  - [ ] ADR link path in PR body
+  - [ ] Threat model section
+  - [ ] Scope taxonomy table
+  - [ ] Explicit statement: phase 1 is read-only only
+- Acceptance statement to include verbatim:
+  - `This PR defines security and scope contracts only; no MCP runtime behavior is introduced.`
+
+### PR-02 Template
+
+- Branch: `feat/<linear-id>-mcp-pr02-service-scaffold`
+- Title: `<linear-id>: MCP PR-02 service scaffold and transport`
+- Must include:
+  - [ ] `apps/mcp` file tree summary
+  - [ ] transport wiring explanation (`GET`/`POST`)
+  - [ ] host-header validation proof
+  - [ ] smoke tool call evidence (`ping`)
+- Acceptance statement to include verbatim:
+  - `This PR establishes MCP runtime scaffolding only and does not expose production domain tools.`
+
+### PR-03 Template
+
+- Branch: `feat/<linear-id>-mcp-pr03-oauth-discovery-token-validation`
+- Title: `<linear-id>: MCP PR-03 OAuth discovery and token validation`
+- Must include:
+  - [ ] PRM endpoint proof
+  - [ ] `WWW-Authenticate` challenge example
+  - [ ] audience/resource validation proof
+  - [ ] 401 vs 403 behavior evidence
+- Acceptance statement to include verbatim:
+  - `This PR enforces per-request bearer validation and OAuth discovery semantics for MCP transport.`
+
+### PR-04 Template
+
+- Branch: `feat/<linear-id>-mcp-pr04-principals-policy-engine`
+- Title: `<linear-id>: MCP PR-04 principals and policy engine`
+- Must include:
+  - [ ] delegated principal flow evidence
+  - [ ] service account flow evidence
+  - [ ] schema migration references
+  - [ ] policy decision log example
+- Acceptance statement to include verbatim:
+  - `This PR centralizes tool-level authorization decisions for delegated and machine principals.`
+
+### PR-05 Template
+
+- Branch: `feat/<linear-id>-mcp-pr05-readonly-tool-catalog`
+- Title: `<linear-id>: MCP PR-05 read-only diagnostic tools`
+- Must include:
+  - [ ] list of tools implemented in this PR
+  - [ ] per-tool schema references
+  - [ ] pagination boundary tests
+  - [ ] explain-job-failure deterministic behavior evidence
+- Acceptance statement to include verbatim:
+  - `This PR delivers read-only customer-facing MCP diagnostic value with bounded inputs/outputs.`
+
+### PR-06 Template
+
+- Branch: `feat/<linear-id>-mcp-pr06-safety-hardening`
+- Title: `<linear-id>: MCP PR-06 safety hardening and auditability`
+- Must include:
+  - [ ] redaction strategy + tests
+  - [ ] rate-limit policy + tests
+  - [ ] audit event schema/example
+  - [ ] anomaly signal metrics list
+- Acceptance statement to include verbatim:
+  - `This PR hardens MCP read operations against leakage and abuse while preserving diagnostic utility.`
+
+### PR-07 Template
+
+- Branch: `feat/<linear-id>-mcp-pr07-cloud-selfhost-ops`
+- Title: `<linear-id>: MCP PR-07 deployment and operations`
+- Must include:
+  - [ ] cloud deploy evidence
+  - [ ] self-host smoke evidence
+  - [ ] env contract docs
+  - [ ] operator runbook links
+- Acceptance statement to include verbatim:
+  - `This PR makes the MCP service deployable and operable in cloud-hosted and self-hosted environments.`
+
+### PR-08 Template
+
+- Branch: `feat/<linear-id>-mcp-pr08-ga-readiness`
+- Title: `<linear-id>: MCP PR-08 GA readiness and security closure`
+- Must include:
+  - [ ] spec compliance checklist completion
+  - [ ] security review closure evidence
+  - [ ] staged E2E delegated + service account flows
+  - [ ] rollback checklist
+- Acceptance statement to include verbatim:
+  - `This PR closes GA readiness with verified compliance, security closure, and operational rollback readiness.`
+
+### Merge Gate Checklist (Required in Every PR Body)
+
+```md
+## Merge Gate
+- [ ] Objective achieved
+- [ ] Exit criteria from playbook met
+- [ ] Global agent checklist complete
+- [ ] Ledger updated in `tasks/mcp-pr-execution-playbook.md`
+- [ ] No unresolved critical/high security findings
+- [ ] Reviewer signoff captured
+```
+
+---
+
 ## PR-01: Security Architecture Baseline
 
 ### Objective
