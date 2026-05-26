@@ -13,6 +13,7 @@ import {
 } from '@durabull/mcp/testing'
 import { env } from '@durabull/env'
 import { createApiApp } from '../app'
+import { AUTHLESS_MCP_BEARER_TOKEN } from './auth/verify-access-token'
 
 const mutableEnv = env as {
   APP_BASE_URL?: string
@@ -22,6 +23,9 @@ const mutableEnv = env as {
 const originalAppBaseUrl = mutableEnv.APP_BASE_URL
 const originalAuthless = mutableEnv.DURABULL_AUTHLESS
 const originalPgliteDir = process.env.DURABULL_PGLITE_DIR
+
+const authlessAuthorization = `Bearer ${AUTHLESS_MCP_BEARER_TOKEN}`
+const resourceMetadataUrl = 'http://localhost:3000/.well-known/oauth-protected-resource'
 
 let tempPgliteDir = ''
 let app: Hono
@@ -54,7 +58,47 @@ describe('api MCP ingress', () => {
   })
 
   const postMcp = (body: Parameters<typeof postMcpJson>[2], options?: Parameters<typeof postMcpJson>[3]) =>
-    postMcpJson((path, init) => app.request(path, init), '/mcp', body, options)
+    postMcpJson((path, init) => Promise.resolve(app.request(path, init)), '/mcp', body, {
+      authorization: authlessAuthorization,
+      ...options,
+    })
+
+  it('returns 401 with WWW-Authenticate when bearer token is missing', async () => {
+    const response = await postMcp(
+      {
+        jsonrpc: MCP_JSON_RPC_VERSION,
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          capabilities: {},
+          clientInfo: { name: 'test', version: '1.0.0' },
+        },
+      },
+      { authorization: undefined }
+    )
+
+    expect(response.status).toBe(401)
+    expect(response.headers.get('WWW-Authenticate')).toContain(resourceMetadataUrl)
+  })
+
+  it('returns 401 for invalid bearer tokens', async () => {
+    const response = await postMcp(
+      {
+        jsonrpc: MCP_JSON_RPC_VERSION,
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          capabilities: {},
+          clientInfo: { name: 'test', version: '1.0.0' },
+        },
+      },
+      { authorization: 'Bearer not-a-real-token' }
+    )
+
+    expect(response.status).toBe(401)
+  })
 
   it('rejects /mcp requests with invalid Host header', async () => {
     const response = await postMcp(
@@ -72,6 +116,18 @@ describe('api MCP ingress', () => {
     )
 
     expect(response.status).toBe(403)
+  })
+
+  it('exposes protected resource metadata on app origin', async () => {
+    const response = await app.request('/.well-known/oauth-protected-resource')
+
+    expect(response.status).toBe(200)
+    const metadata = (await response.json()) as {
+      resource?: string
+      authorization_servers?: string[]
+    }
+    expect(metadata.resource).toBe('http://localhost:3000/mcp')
+    expect(metadata.authorization_servers).toContain('http://localhost:3000/api/auth')
   })
 
   it('supports initialize, tools/list, and ping on one app instance', async () => {
@@ -137,9 +193,12 @@ describe('api MCP ingress', () => {
   it('does not treat GET /mcp as SPA static fallback when web build is absent', async () => {
     const response = await app.request('/mcp', {
       method: 'GET',
-      headers: mcpHeaders(),
+      headers: {
+        ...mcpHeaders('localhost:3000', undefined, authlessAuthorization),
+      },
     })
 
     expect(response.headers.get('content-type')).not.toContain('text/html')
+    expect(response.status).toBe(400)
   })
 })

@@ -1,8 +1,21 @@
-import { authSchema, eq, getDb, organizationSchema, user } from '@durabull/dal'
+import {
+  authSchema,
+  eq,
+  getDb,
+  oauthAccessToken,
+  oauthApplication,
+  oauthConsent,
+  organizationSchema,
+  user,
+} from '@durabull/dal'
 import { env } from '@durabull/env'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { organization } from 'better-auth/plugins'
+import { mcp, organization } from 'better-auth/plugins'
+import {
+  getCanonicalMcpResourceUri,
+  MCP_PHASE1_SCOPES,
+} from '@durabull/mcp/auth'
 
 const isProduction = env.NODE_ENV === 'production'
 
@@ -129,6 +142,9 @@ export async function createAuth(options?: CreateAuthOptions) {
         organization: organizationSchema.organization,
         member: organizationSchema.member,
         invitation: organizationSchema.invitation,
+        oauthApplication,
+        oauthAccessToken,
+        oauthConsent,
       },
     }),
     logger: customLogger,
@@ -188,6 +204,23 @@ export async function createAuth(options?: CreateAuthOptions) {
         ...(options?.sendInvitationEmail && {
           sendInvitationEmail: options.sendInvitationEmail,
         }),
+      }),
+      mcp({
+        loginPage: '/login',
+        resource: getCanonicalMcpResourceUri(options?.baseURL ?? env.APP_BASE_URL),
+        oidcConfig: {
+          loginPage: '/login',
+          scopes: [...MCP_PHASE1_SCOPES],
+          metadata: {
+            scopes_supported: [
+              'openid',
+              'profile',
+              'email',
+              'offline_access',
+              ...MCP_PHASE1_SCOPES,
+            ],
+          },
+        },
       }),
     ],
   })

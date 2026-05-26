@@ -173,6 +173,7 @@
       "dependencies": {
         "@durabull/dal": "workspace:*",
         "@durabull/env": "workspace:*",
+        "@durabull/mcp": "workspace:*",
         "better-auth": "^1.4.9",
       },
       "devDependencies": {

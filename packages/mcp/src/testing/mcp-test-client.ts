@@ -6,7 +6,11 @@ import {
 
 export { MCP_ACCEPT_HEADER, MCP_CONTENT_TYPE, MCP_JSON_RPC_VERSION }
 
-export function mcpHeaders(host = 'localhost:3000', sessionId?: string): Record<string, string> {
+export function mcpHeaders(
+  host = 'localhost:3000',
+  sessionId?: string,
+  authorization?: string
+): Record<string, string> {
   const headers: Record<string, string> = {
     host,
     accept: MCP_ACCEPT_HEADER,
@@ -15,6 +19,10 @@ export function mcpHeaders(host = 'localhost:3000', sessionId?: string): Record<
 
   if (sessionId) {
     headers['mcp-session-id'] = sessionId
+  }
+
+  if (authorization) {
+    headers.authorization = authorization
   }
 
   return headers
@@ -54,11 +62,11 @@ export async function postMcpJson(
   request: (path: string, init?: RequestInit) => Promise<Response>,
   path: string,
   body: JsonRpcRequest | Record<string, unknown>,
-  options: { host?: string; sessionId?: string } = {}
+  options: { host?: string; sessionId?: string; authorization?: string } = {}
 ): Promise<Response> {
   return request(path, {
     method: 'POST',
-    headers: mcpHeaders(options.host, options.sessionId),
+    headers: mcpHeaders(options.host, options.sessionId, options.authorization),
     body: JSON.stringify(body),
   })
 }

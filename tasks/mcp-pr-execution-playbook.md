@@ -671,10 +671,10 @@ Finalize production quality and confirm spec/safety compliance.
 - Branch: `cursor/mcp-pr02-api-ingress`
 - Linear issue: `NO-LINEAR (temporary)`
 - PR URL: https://github.com/durabullhq/durabull/pull/88
-- Status: `in review`
+- Status: `merged`
 - Agent owner: `cursor`
 - Start date: `2026-05-26`
-- Merge date:
+- Merge date: `2026-05-26`
 
 #### Scope Completed
 
@@ -705,11 +705,54 @@ Finalize production quality and confirm spec/safety compliance.
 
 ---
 
+### PR Record: PR-03
+
+- PR ID: `PR-03`
+- Branch: `cursor/mcp-pr03-oauth-discovery-token-validation`
+- Linear issue: `NO-LINEAR (temporary)`
+- PR URL:
+- Status: `in review`
+- Agent owner: `cursor`
+- Start date: `2026-05-26`
+- Merge date:
+
+#### Scope Completed
+
+- [x] Protected Resource Metadata at `GET /.well-known/oauth-protected-resource` on app origin.
+- [x] `WWW-Authenticate` challenges on unauthenticated `/mcp` requests (`resource_metadata` URL).
+- [x] Bearer required on all `/mcp` methods via `createMcpBearerAuthMiddleware`.
+- [x] Canonical resource URI `${APP_BASE_URL}/mcp` in PRM and validation helpers.
+- [x] `401` / `403` semantics (invalid token vs insufficient scope).
+- [x] Better Auth `mcp` plugin + `oauth_*` DAL tables/migration.
+- [x] Session registry: new sessions only on `initialize`; cap at 256 sessions.
+- [x] Operator doc `docs/mcp-oauth-operator.md`.
+
+#### Verification Evidence
+
+- [x] Commands run:
+  - [x] `bun run --filter @durabull/mcp test` (26 pass)
+  - [x] `bun run --filter @durabull/api test src/mcp/` (6 pass)
+  - [x] `bun run --filter @durabull/mcp typecheck`
+  - [x] `bun run --filter @durabull/auth typecheck`
+- [x] Tests added:
+  - [x] `packages/mcp/src/auth/validate-token.test.ts`
+  - [x] `packages/mcp/src/auth/bearer-middleware.test.ts`
+  - [x] Updated `packages/mcp/src/routes.test.ts` (401, session guard)
+  - [x] Updated `apps/api/src/mcp/mount.test.ts` (401, PRM, ping flow with bearer)
+
+#### Handoff To Next PR
+
+- Next PR: `PR-04`
+- Known risks: RFC 8707 `resource` binding on opaque tokens is not persisted at issuance yet (`resource` column ready; wire in token handler when enabling full OAuth client flows).
+- Notes for next agent: add principal resolver + policy engine; enforce org/connection boundaries on tool calls.
+
+---
+
 ## Live PR Tracker
 
 - [ ] PR-01 Security architecture baseline (in progress on `feat/no-linear-mcp-pr01-security-baseline`)
 - [x] PR-02 API `/mcp` ingress + transport (`@durabull/mcp` package + thin API mount)
-- [ ] PR-03 OAuth discovery + token validation
+- [x] PR-03 OAuth discovery + token validation
 - [ ] PR-04 Principals + policy engine
 - [ ] PR-05 Read-only diagnostic tools
 - [ ] PR-06 Safety hardening

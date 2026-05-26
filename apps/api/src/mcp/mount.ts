@@ -2,14 +2,16 @@ import { createMcpRoutes, getDefaultAllowedHosts, getProductionAllowedHosts } fr
 import { env } from '@durabull/env'
 
 import { APP_VERSION } from '../lib/build-info'
+import { createMcpAuthMiddleware } from './auth/create-mcp-auth-middleware'
 
 /**
  * Thin API ingress: mounts MCP Streamable HTTP transport at `/mcp`.
  * All MCP protocol, transport, and tool logic lives in `@durabull/mcp`.
  */
-export function mountMcpIngress() {
+export async function mountMcpIngress() {
   const appBaseUrl = env.APP_BASE_URL ?? 'http://localhost:5173'
   const isProduction = env.NODE_ENV === 'production'
+  const authMiddleware = await createMcpAuthMiddleware(appBaseUrl)
 
   return createMcpRoutes({
     version: APP_VERSION,
@@ -18,5 +20,6 @@ export function mountMcpIngress() {
       : getDefaultAllowedHosts({ appBaseUrl, includeDevHosts: true }),
     corsOrigins: [appBaseUrl],
     allowHostnameWithoutPort: !isProduction,
+    middleware: [authMiddleware],
   })
 }
