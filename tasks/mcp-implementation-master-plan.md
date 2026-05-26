@@ -9,6 +9,83 @@ Use `tasks/mcp-pr-execution-playbook.md` for sequencing and handoff execution.
 
 ---
 
+## Agent Startup Checklist (Mandatory)
+
+Every incoming agent must complete this before writing code.
+
+### A) Context Sync
+
+- [ ] Read this entire file: `tasks/mcp-implementation-master-plan.md`.
+- [ ] Read execution sequencing file: `tasks/mcp-pr-execution-playbook.md`.
+- [ ] Open the active PR record in the playbook ledger and confirm current PR target.
+- [ ] Confirm branch is the intended PR branch and based on latest `main`.
+- [ ] Confirm whether a Linear issue is linked for the active PR.
+
+### B) Scope Lock
+
+- [ ] Copy the active PR section's objective and exit criteria into working notes.
+- [ ] List exactly which checklist items are in-scope for this PR.
+- [ ] List explicitly out-of-scope items and defer them.
+- [ ] Confirm no phase-2 write/destructive MCP tools are being introduced.
+
+### C) Security Lock
+
+- [ ] Verify auth assumptions (Better Auth base + OAuth scoped bearer for MCP).
+- [ ] Verify tenant boundary requirements (org + connection checks on every op).
+- [ ] Verify least-privilege scope requirements for each touched tool/path.
+- [ ] Identify and include at least one negative auth/authz test for the PR.
+
+### D) Validation Lock
+
+- [ ] Define required test commands before coding.
+- [ ] Define specific evidence to attach in PR description.
+- [ ] Define rollback or mitigation for the changed area.
+
+---
+
+## First 10 Steps (Deterministic Startup Runbook)
+
+1. Identify active PR ID from `tasks/mcp-pr-execution-playbook.md`.
+2. Copy PR objective + deliverables + tests into scratch notes.
+3. Run `git status --short --branch` and verify correct branch/upstream.
+4. Diff against `main` to understand current stack context.
+5. Read all files listed under the active PR's File Targets.
+6. Trace touched codepaths for auth, org scope, connection scope, and redaction.
+7. Write a mini test matrix (happy path + denial path + boundary path).
+8. Implement smallest vertical slice that satisfies one deliverable completely.
+9. Run tests/lint/typecheck for touched packages and capture outputs.
+10. Update playbook ledger entry with what changed + evidence + handoff notes.
+
+If any step cannot be completed, mark PR status as `blocked` in the ledger and document why.
+
+---
+
+## Anti-Drift Protocol
+
+Use this protocol to prevent agents from diverging from intended scope.
+
+### Drift Triggers
+
+Treat these as drift and stop to re-scope:
+
+- touching files outside active PR scope without justification
+- introducing write/destructive capability in phase 1
+- adding new scopes not defined in this plan without design update
+- skipping negative auth/authz tests
+- changing architecture boundaries ad hoc (route-coupled MCP logic)
+
+### Drift Response
+
+When drift is detected:
+
+1. Stop coding.
+2. Record drift in playbook ledger under current PR.
+3. Re-map work to active PR checklist items.
+4. Move true overflow work to next PR's handoff notes.
+5. Resume only after scope is back inside PR boundaries.
+
+---
+
 ## 1) Product Scope and Guardrails
 
 ### 1.1 Phase 1 Product Surface

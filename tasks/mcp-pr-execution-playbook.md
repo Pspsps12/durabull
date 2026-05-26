@@ -45,6 +45,7 @@ Each PR must deliver a usable, testable increment:
 
 ## Global Agent Checklist (Run on Every PR)
 
+- [ ] Agent startup checklist completed from `tasks/mcp-implementation-master-plan.md`.
 - [ ] Branch is created from latest primary branch (`main`).
 - [ ] PR references a Linear issue ID in branch name, PR title, or description.
 - [ ] Scope is limited to this PR's checklist only.
