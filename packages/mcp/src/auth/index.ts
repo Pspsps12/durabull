@@ -19,5 +19,6 @@ export {
   tokenHasScopes,
 } from './scopes'
 export type { McpAccessTokenClaims, McpTokenValidationResult } from './types'
+export { isMcpAccessTokenExpired, toAccessTokenExpiry } from './session'
 export { extractBearerToken, validateMcpAccessTokenClaims } from './validate-token'
 export { buildWwwAuthenticateChallenge, mcpAuthResponseHeaders } from './www-authenticate'

@@ -1,6 +1,7 @@
 import type { Auth } from '@durabull/auth'
 import {
   extractBearerToken,
+  isMcpAccessTokenExpired,
   MCP_TRANSPORT_REQUIRED_SCOPES,
   missingScopes,
   parseScopeString,
@@ -14,6 +15,28 @@ import { isAuthlessMode } from '../../lib/authless'
 import { AUTHLESS_MCP_BEARER_TOKEN, getMcpAuthConfig } from './verify-access-token'
 
 export type McpSession = NonNullable<Awaited<ReturnType<Auth['api']['getMcpSession']>>>
+
+function buildInvalidTokenResponse(resourceMetadataUrl: string): Response {
+  const wwwAuthenticateValue = `Bearer error="invalid_token", error_description="The access token is invalid or expired", resource_metadata="${resourceMetadataUrl}"`
+
+  return Response.json(
+    {
+      jsonrpc: '2.0',
+      error: {
+        code: -32_000,
+        message: 'Unauthorized: Authentication required',
+      },
+      id: null,
+    },
+    {
+      status: 401,
+      headers: {
+        'WWW-Authenticate': wwwAuthenticateValue,
+        'Access-Control-Expose-Headers': 'WWW-Authenticate',
+      },
+    }
+  )
+}
 
 function buildInsufficientScopeResponse(
   resourceMetadataUrl: string,
@@ -102,6 +125,10 @@ export async function createMcpSessionMiddleware(appBaseUrl: string) {
 
     if (!session) {
       return withMcpAuth(auth, async () => new Response(null, { status: 204 }))(c.req.raw)
+    }
+
+    if (isMcpAccessTokenExpired(session.accessTokenExpiresAt)) {
+      return buildInvalidTokenResponse(resourceMetadataUrl)
     }
 
     const grantedScopes = parseScopeString(session.scopes)

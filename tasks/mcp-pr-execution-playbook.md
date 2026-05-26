@@ -720,7 +720,8 @@ Finalize production quality and confirm spec/safety compliance.
 
 - [x] Protected Resource Metadata at `GET /.well-known/oauth-protected-resource` on app origin.
 - [x] `WWW-Authenticate` challenges on unauthenticated `/mcp` requests (`resource_metadata` URL).
-- [x] Bearer required on all `/mcp` methods via `createMcpBearerAuthMiddleware`.
+- [x] Bearer required on all `/mcp` methods via Better Auth `getMcpSession` + Durabull scope middleware.
+- [x] Expired access tokens rejected with `401` (`isMcpAccessTokenExpired` after `getMcpSession`).
 - [x] Canonical resource URI `${APP_BASE_URL}/mcp` in PRM and validation helpers.
 - [x] `401` / `403` semantics (invalid token vs insufficient scope).
 - [x] Better Auth `mcp` plugin + `oauth_*` DAL tables/migration.
@@ -730,15 +731,18 @@ Finalize production quality and confirm spec/safety compliance.
 #### Verification Evidence
 
 - [x] Commands run:
-  - [x] `bun run --filter @durabull/mcp test` (26 pass)
-  - [x] `bun run --filter @durabull/api test src/mcp/` (6 pass)
+  - [x] `bun run --filter @durabull/mcp test` (30 pass)
+  - [x] `bun run --filter @durabull/api test src/mcp/` (7 pass)
   - [x] `bun run --filter @durabull/mcp typecheck`
   - [x] `bun run --filter @durabull/auth typecheck`
+  - [x] Live e2e: `cd tooling/scripts && APP_BASE_URL=http://localhost:3001 bun run mcp:e2e` (10/10 Better Auth, 9/9 authless)
 - [x] Tests added:
   - [x] `packages/mcp/src/auth/validate-token.test.ts`
   - [x] `packages/mcp/src/auth/bearer-middleware.test.ts`
+  - [x] `packages/mcp/src/auth/session.test.ts`
   - [x] Updated `packages/mcp/src/routes.test.ts` (401, session guard)
-  - [x] Updated `apps/api/src/mcp/mount.test.ts` (401, PRM, ping flow with bearer)
+  - [x] Updated `apps/api/src/mcp/mount.test.ts` (401, PRM, ping flow, expired OAuth token)
+  - [x] `tooling/scripts/mcp-e2e-smoke.ts` (repeatable live smoke)
 
 #### Handoff To Next PR
 

@@ -16,6 +16,8 @@ Example (production): `https://app.durabull.io/mcp`
 
 Do not add a trailing slash unless your OAuth client library requires it consistently everywhere.
 
+`APP_BASE_URL` must be the **public origin clients use to reach `/mcp`** (same host/port as the API in production). If the API listens on port `3001` locally, set `APP_BASE_URL=http://localhost:3001`, not the Vite dev server port.
+
 ## Discovery endpoints
 
 Better Auth serves OAuth metadata under `/api/auth/.well-known/*`. Durabull also exposes app-origin fallbacks for MCP clients that ignore `WWW-Authenticate` (per Better Auth docs):
@@ -30,8 +32,8 @@ Better Auth serves OAuth metadata under `/api/auth/.well-known/*`. Durabull also
 Protected resource metadata advertises:
 
 - `resource`: `{APP_BASE_URL}/mcp`
-- `authorization_servers`: `{APP_ORIGIN}/api/auth`
-- `scopes_supported`: phase-1 MCP read scopes (`mcp:discover`, `mcp:jobs:read`, …)
+- `authorization_servers`: app origin (e.g. `https://app.durabull.io`); use `authorization_endpoint` from AS metadata (`/api/auth/mcp/authorize`) for the OAuth server base path
+- `scopes_supported`: phase-1 MCP read scopes (`mcp:discover`, `mcp:jobs:read`, …) — prefer PRM over AS metadata for MCP scope discovery
 
 ## Client configuration checklist
 
