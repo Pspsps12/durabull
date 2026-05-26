@@ -6,6 +6,44 @@ Define **how** to implement Durabull's hosted MCP server end-to-end, with concre
 
 This document is the technical source of truth for implementation details.  
 Use `tasks/mcp-pr-execution-playbook.md` for sequencing and handoff execution.
+Security architecture baseline and threat model are anchored in `docs/adr/0001-mcp-security-architecture.md`.
+
+---
+
+## Hosting and deployment model (authoritative)
+
+Durabull ships MCP on the **same origin and same deployable** as the main API + web app (single Render web service, single Docker entrypoint, one exposed port).
+
+### Public URL map (production example)
+
+| Path | Purpose | Handler |
+| --- | --- | --- |
+| `/api/*` | REST/RPC API | `apps/api` Hono routes |
+| `/mcp` | MCP Streamable HTTP transport | `apps/api/src/mcp/*` mounted in `createApiApp()` |
+| `/ingest/*` | PostHog reverse proxy | `apps/api` (existing) |
+| `/`, `/assets/*` | Web SPA/static | `apps/api/src/index.ts` static serving |
+
+Example cloud URL: `https://app.durabull.io/mcp`
+
+### What this means for implementers
+
+- **Do:** implement MCP as a **logical module** under the API app (`apps/api/src/mcp/`).
+- **Do:** mount `/mcp` inside `createApiApp()` **before** SPA/static fallbacks (same precedence pattern as `/ingest/*`).
+- **Do:** keep domain/job logic out of MCP route handlers; use shared services/DTOs (see §2.2).
+- **Do not:** create or maintain a separate deployable `apps/mcp` process for phase 1.
+- **Do not:** expose a second public port (for example `:3020`) for MCP in cloud/self-host images.
+- **Do not:** add dual-process container runners solely for MCP unless explicitly re-approved in an ADR amendment.
+
+### Canonical MCP resource URI (OAuth, PR-03+)
+
+Derive from deployment config:
+
+- `canonicalMcpResourceUri = ${APP_BASE_URL}/mcp` (no trailing slash unless spec requires)
+- Audience/resource validation must match this URI in cloud (`https://app.durabull.io/mcp`).
+
+### ADR alignment note
+
+`docs/adr/0001-mcp-security-architecture.md` decision #1 originally referenced a dedicated `apps/mcp` deployable. **Phase 1 supersedes deployable placement only:** MCP remains a distinct **security/module boundary**, but ingress is the API app. Update the ADR in the same PR that lands API-mounted MCP if the ADR text still says separate service.
 
 ---
 
@@ -72,7 +110,8 @@ Treat these as drift and stop to re-scope:
 - introducing write/destructive capability in phase 1
 - adding new scopes not defined in this plan without design update
 - skipping negative auth/authz tests
-- changing architecture boundaries ad hoc (route-coupled MCP logic)
+- putting domain/BullMQ logic directly inside MCP Hono handlers instead of shared services (route-coupled MCP logic)
+- introducing a standalone `apps/mcp` deployable, second public MCP port, or dual-process Docker entrypoint for phase 1
 
 ### Drift Response
 
@@ -145,7 +184,9 @@ Target interfaces:
 
 ```mermaid
 flowchart LR
-  mcpClient[McpClient] --> mcpHttp[StreamableHttpTransport]
+  mcpClient[McpClient] --> apiIngress[ApiApp_same_origin]
+  apiIngress --> mcpRoute["/mcp ingress"]
+  mcpRoute --> mcpHttp[StreamableHttpTransport]
   mcpHttp --> authLayer[AuthnAndTokenValidation]
   authLayer --> principalResolver[PrincipalResolver]
   principalResolver --> policyEngine[PolicyEngine]
@@ -156,17 +197,25 @@ flowchart LR
   policyEngine --> auditTrail[AuditTrail]
 ```
 
-### 3.1 Service Placement
+### 3.1 Runtime placement (phase 1)
 
-- New deployable service: `apps/mcp`
-- Independent process + scaling profile
-- Shared packages for domain and auth primitives
+- **Deployable:** existing `apps/api` process (also serves web static/SPA in production).
+- **MCP module path:** `apps/api/src/mcp/` (transport wiring, tool registry, MCP middleware).
+- **Ingress mount:** `createApiApp()` in `apps/api/src/app.ts` at `/mcp`.
+- **Shared packages:** domain/auth primitives in `packages/*` (and optional `packages/mcp-domain` later), not duplicated in a second app.
 
-### 3.2 Why Separate Service
+### 3.2 Why API ingress (not a separate `apps/mcp` app)
 
-- Isolates protocol/security concerns from public API routing
-- Enables dedicated rate limits and auth behavior
-- Supports cloud/self-host rollout independently
+- Cloud (Render) and self-host Docker use **one web service / one port** today.
+- Same-origin MCP (`/mcp`) simplifies OAuth resource URI, operator docs, and TLS/ingress.
+- Matches existing pattern for non-API routes on the API app (`/ingest/*` proxy).
+- Independent MCP scaling remains a **future option** behind a gateway; do not build it in phase 1.
+
+### 3.3 Module boundary rules (still required)
+
+- MCP transport/auth/policy code lives in `apps/api/src/mcp/*` (or extracted packages), not scattered across unrelated routes.
+- MCP tools call shared domain services; they do not import Hono `Context` into domain layers.
+- API REST routes and MCP tools must share tenancy checks and redaction utilities.
 
 ---
 
@@ -180,8 +229,8 @@ flowchart LR
 
 ### 4.2 Required HTTP Security Behavior
 
-- Host header validation enabled
-- Strict CORS allowlist (no wildcard with credentials)
+- Host header validation enabled on `/mcp` (allow `localhost` dev hosts + hostname derived from `APP_BASE_URL`)
+- Strict CORS allowlist on `/mcp` (no wildcard with credentials when credentials are used)
 - Request size limits
 - Timeouts and cancellation propagation
 
@@ -231,7 +280,7 @@ Layer OAuth 2.1 token-based auth for MCP remote transport.
 
 - signature/issuer valid
 - token not expired/revoked
-- audience/resource matches MCP server canonical URI
+- audience/resource matches MCP server canonical URI (`${APP_BASE_URL}/mcp`)
 - required scope present
 - principal and org active
 
@@ -510,22 +559,29 @@ Audit event on every tool call:
 
 ## 11) Cloud and Self-Hosted Deployment
 
-## 11.1 Cloud Hosted
+## 11.1 Cloud Hosted (Render and similar)
 
-- dedicated MCP service deployment
-- managed secrets
-- HTTPS ingress
-- autoscaling + shared rate-limit backend
+- **Single web service** for API + web + MCP (existing Durabull deployable).
+- Public MCP endpoint: `{APP_BASE_URL}/mcp` (for example `https://app.durabull.io/mcp`).
+- No separate Render service or second public port for MCP in phase 1.
+- Managed secrets and HTTPS at platform ingress (same as API).
+- MCP-specific rate limits and auth middleware apply on `/mcp` routes only.
+- Autoscaling targets the unified service; use shared rate-limit backend when multi-replica.
 
 ### 11.2 Self-Hosted
 
-- enable MCP service via env flags
-- default read-only mode on
-- explicit operator opt-in for future write scopes
-- hardening guidance:
-  - TLS
-  - private network placement
+- Same single-container / single-process model as cloud (API entrypoint only).
+- MCP available at `{APP_BASE_URL}/mcp` on the published app port (default `3000`).
+- Do not publish a separate `MCP_PORT` in compose unless running a deprecated experimental layout.
+- Feature flags:
+  - enable/disable MCP surface via env (for example `DURABULL_MCP_ENABLED`, define in PR-07)
+  - default read-only mode on
+  - explicit operator opt-in for future write scopes
+- Hardening guidance:
+  - TLS at reverse proxy
+  - private network placement for Redis/Postgres
   - secret rotation cadence
+  - Host header allowlist must include operator `APP_BASE_URL` hostnames
 
 ---
 
@@ -540,10 +596,11 @@ Audit event on every tool call:
 
 ### 12.2 Integration Tests
 
-- MCP transport lifecycle
-- OAuth discovery and challenge flow
+- MCP transport lifecycle via `createApiApp()` at `/mcp` (same port as API)
+- OAuth discovery and challenge flow on app origin
 - authorized read tool calls
 - forbidden cross-org calls
+- SPA/static fallback does not intercept `/mcp`
 
 ### 12.3 Security Tests
 
@@ -570,13 +627,23 @@ Do not mark phase complete until:
 
 ## 13) Implementation Order (Technical Dependency Graph)
 
-1. establish `apps/mcp` runtime and MCP transport
-2. implement auth discovery and token validation middleware
+1. establish MCP module + `/mcp` transport ingress on `apps/api` (ping smoke tool)
+2. implement auth discovery and token validation middleware on `/mcp` (+ PRM at well-known paths)
 3. add principal resolver + policy engine
-4. extract/shared domain service adapters
+4. extract/shared domain service adapters (API + MCP consumers)
 5. ship read tools incrementally
 6. add redaction + rate limiting + audit
-7. deployment + runbooks + final compliance verification
+7. deployment + runbooks + final compliance verification (single-service docs; remove any `apps/mcp` / dual-process leftovers)
+
+### 13.1 If legacy `apps/mcp` scaffold exists
+
+Some branches may contain an experimental standalone `apps/mcp` package. Before continuing PR-03+:
+
+1. Move transport/tool code into `apps/api/src/mcp/`.
+2. Mount `/mcp` in `createApiApp()`.
+3. Port tests to `apps/api` (request `/mcp` on `createApiApp()`).
+4. Remove standalone `apps/mcp` entrypoint and dual-process Docker runner.
+5. Amend ADR deployable wording if still stale.
 
 ---
 
@@ -597,5 +664,5 @@ Do not mark phase complete until:
 - [ ] org and connection boundary checks enforced
 - [ ] tool outputs sanitized/redacted
 - [ ] audit logging operational
-- [ ] cloud and self-host docs complete
+- [ ] cloud and self-host docs complete (unified deployment; `{APP_BASE_URL}/mcp`)
 - [ ] sequential PR playbook updated with actual PR links/status

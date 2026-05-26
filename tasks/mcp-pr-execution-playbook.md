@@ -30,12 +30,35 @@ Usage split:
 - No write/destructive MCP tools in this stack (read-only GA target).
 - Each PR must link to a Linear issue before merge.
 
+## Hosting model (authoritative — read before PR-02)
+
+MCP is **not** a separate deployable in phase 1. It runs on the **same origin and same process** as the main Durabull API + web app.
+
+| Path | Handler |
+| --- | --- |
+| `/api/*` | API routes (`apps/api`) |
+| `/mcp` | MCP Streamable HTTP (`apps/api/src/mcp/*` mounted in `createApiApp()`) |
+| `/ingest/*` | PostHog proxy (existing) |
+| `/`, `/assets/*` | Web SPA/static (`apps/api/src/index.ts`) |
+
+Cloud example: `https://app.durabull.io/mcp` on the same Render web service as `https://app.durabull.io/api/*`.
+
+**Agent rules:**
+
+- Implement MCP under `apps/api/src/mcp/`, not as a standalone `apps/mcp` server.
+- Mount `/mcp` in `apps/api/src/app.ts` before SPA/static fallbacks.
+- Do not add a second public port (`3020`) or dual-process Docker entrypoints for MCP.
+- OAuth canonical resource URI (PR-03+): `${APP_BASE_URL}/mcp`.
+- Domain logic stays in shared services; MCP handlers are thin ingress only.
+
+If a branch still has experimental `apps/mcp` or `tooling/docker/run-services.ts`, PR-02 must migrate/remove that layout as part of API ingress work (see master plan §13.1).
+
 ## Skateboard Approach (Incremental Product Slices)
 
 Each PR must deliver a usable, testable increment:
 
 1. Security model + contracts are explicit.
-2. MCP service runs and is callable.
+2. MCP transport is mounted at `/mcp` on the API app and is callable on the same origin.
 3. Auth discovery and token validation work end-to-end.
 4. Policy/scopes enforce least privilege.
 5. Read-only tools deliver customer value.
@@ -65,7 +88,7 @@ Each PR must deliver a usable, testable increment:
 ## PR Stack Overview
 
 - PR-01: Security architecture + ADR + threat model + scope taxonomy
-- PR-02: `apps/mcp` scaffold + MCP transport wiring + conformance harness
+- PR-02: API-mounted MCP module (`/mcp`) + transport wiring + conformance harness
 - PR-03: OAuth discovery (PRM/WWW-Authenticate) + MCP token validation middleware
 - PR-04: Principal model (delegated users + service accounts) + policy engine
 - PR-05: Read-only tool set for jobs/failures/logs/diagnostics
@@ -142,23 +165,26 @@ If a Linear issue is temporarily unavailable, use:
 
 ### PR-02 Template
 
-- Branch: `feat/<linear-id>-mcp-pr02-service-scaffold`
-- Title: `<linear-id>: MCP PR-02 service scaffold and transport`
+- Branch: `feat/<linear-id>-mcp-pr02-api-mcp-ingress`
+- Title: `<linear-id>: MCP PR-02 API /mcp ingress and transport`
 - Must include:
-  - [ ] `apps/mcp` file tree summary
-  - [ ] transport wiring explanation (`GET`/`POST`)
-  - [ ] host-header validation proof
-  - [ ] smoke tool call evidence (`ping`)
+  - [ ] `apps/api/src/mcp/` module summary (not standalone `apps/mcp`)
+  - [ ] mount point in `createApiApp()` at `/mcp` (before SPA fallback)
+  - [ ] transport wiring explanation (`GET`/`POST`/`DELETE` on `/mcp`)
+  - [ ] host-header validation proof (includes `APP_BASE_URL` host in cloud)
+  - [ ] smoke tool call evidence (`ping`) against same port as API (for example `:3000/mcp`)
+  - [ ] confirmation no second public MCP port in Docker/compose
 - Acceptance statement to include verbatim:
-  - `This PR establishes MCP runtime scaffolding only and does not expose production domain tools.`
+  - `This PR establishes MCP transport at /mcp on the API app only and does not expose production domain tools.`
 
 ### PR-03 Template
 
 - Branch: `feat/<linear-id>-mcp-pr03-oauth-discovery-token-validation`
 - Title: `<linear-id>: MCP PR-03 OAuth discovery and token validation`
 - Must include:
-  - [ ] PRM endpoint proof
-  - [ ] `WWW-Authenticate` challenge example
+  - [ ] PRM endpoint proof (well-known paths on same origin as API)
+  - [ ] canonical resource URI proof: `${APP_BASE_URL}/mcp`
+  - [ ] `WWW-Authenticate` challenge example on `/mcp`
   - [ ] audience/resource validation proof
   - [ ] 401 vs 403 behavior evidence
 - Acceptance statement to include verbatim:
@@ -205,12 +231,13 @@ If a Linear issue is temporarily unavailable, use:
 - Branch: `feat/<linear-id>-mcp-pr07-cloud-selfhost-ops`
 - Title: `<linear-id>: MCP PR-07 deployment and operations`
 - Must include:
-  - [ ] cloud deploy evidence
-  - [ ] self-host smoke evidence
-  - [ ] env contract docs
+  - [ ] cloud deploy evidence (single Render web service; `/mcp` on app domain)
+  - [ ] self-host smoke evidence (`/api/health` and `/mcp` on same port)
+  - [ ] env contract docs (`APP_BASE_URL`, optional `DURABULL_MCP_ENABLED`, no `MCP_PORT` publish)
   - [ ] operator runbook links
+  - [ ] explicit note: no separate MCP container/service in phase 1
 - Acceptance statement to include verbatim:
-  - `This PR makes the MCP service deployable and operable in cloud-hosted and self-hosted environments.`
+  - `This PR documents and verifies MCP on the unified API deployment at /mcp for cloud and self-hosted environments.`
 
 ### PR-08 Template
 
@@ -269,43 +296,59 @@ Lock design and safety contracts before code transport/auth implementation start
 
 ---
 
-## PR-02: MCP Service Scaffold + Transport
+## PR-02: API-Mounted MCP Ingress + Transport
 
 ### Objective
 
-Create a dedicated `apps/mcp` service that runs MCP Streamable HTTP transport with basic lifecycle, no privileged tools yet.
+Mount MCP Streamable HTTP transport at `/mcp` on the existing `apps/api` Hono app (same deployment/port as API + web), with basic lifecycle and no privileged domain tools yet.
 
 ### Deliverables
 
-- [ ] New `apps/mcp` package scaffold.
-- [ ] MCP server bootstrap with server metadata and versioning.
-- [ ] Streamable HTTP endpoints (`GET` + `POST`) wired.
-- [ ] Host header validation and safe defaults.
-- [ ] Health/readiness endpoints for orchestration.
+- [ ] MCP module under `apps/api/src/mcp/` (server bootstrap, transport, route wiring).
+- [ ] `/mcp` mounted in `createApiApp()` with correct middleware ordering (before SPA/static `*` fallbacks).
+- [ ] Streamable HTTP on `/mcp` (`GET` + `POST` + `DELETE` per SDK).
+- [ ] Host header validation including production host from `APP_BASE_URL`.
+- [ ] MCP SDK dependencies on `@durabull/api` (not a separate MCP app package).
 - [ ] Minimal smoke tool (non-domain `ping`) for transport validation.
+- [ ] Remove or migrate any experimental standalone `apps/mcp` + dual-process Docker runner from the branch.
 
 ### File Targets
 
-- [ ] `apps/mcp/src/index.ts`
-- [ ] `apps/mcp/src/server.ts`
-- [ ] `apps/mcp/package.json`
-- [ ] workspace/turbo wiring as needed
+- [ ] `apps/api/src/mcp/server.ts` (McpServer + tool registration)
+- [ ] `apps/api/src/mcp/routes.ts` or `apps/api/src/mcp/mount.ts` (transport + middleware)
+- [ ] `apps/api/src/app.ts` (mount `/mcp`)
+- [ ] `apps/api/package.json` (MCP SDK deps)
+- [ ] `apps/api/src/mcp/*.test.ts` or `apps/api/src/app.mcp.test.ts`
+- [ ] `tooling/docker/Dockerfile` (single API entrypoint; no MCP second port)
+- [ ] `docs/adr/0001-mcp-security-architecture.md` (amend deployable wording if still saying `apps/mcp`)
+
+### Out of scope (explicit)
+
+- [ ] Standalone `apps/mcp` deployable package
+- [ ] Separate public port `3020` in compose/production
+- [ ] `tooling/docker/run-services.ts` dual-process supervisor
+- [ ] Production diagnostic tools (PR-05)
 
 ### Tests
 
-- [ ] Transport integration test (`initialize`, `tools/list`, `tools/call` ping).
-- [ ] Session mode behavior test (stateful vs stateless decision).
-- [ ] Invalid host header rejection test.
+- [ ] API integration test via `createApiApp()`:
+  - [ ] `POST /mcp` `initialize` succeeds with required MCP headers
+  - [ ] `tools/list` includes `ping`
+  - [ ] `tools/call` ping returns `pong`
+- [ ] Invalid host header on `/mcp` returns 403
+- [ ] Optional: stateful session header behavior test (`MCP_STATEFUL_SESSIONS` or equivalent)
+- [ ] Regression: `/mcp` is not captured by SPA static fallback (`GET /mcp` not `index.html`)
 
 ### Verification Commands
 
-- [ ] Service starts locally.
-- [ ] MCP smoke test script succeeds.
-- [ ] Touched package lint/typecheck/tests pass.
+- [ ] `bun run --filter @durabull/api test` (MCP tests)
+- [ ] `bun run --filter @durabull/api typecheck`
+- [ ] `bun run --filter @durabull/api lint`
+- [ ] Local manual smoke: API port `POST http://localhost:3000/mcp` (initialize + ping)
 
 ### Exit Criteria
 
-- [ ] Remote client can connect and call `ping` successfully.
+- [ ] Remote/local client can call `ping` at `{baseUrl}/mcp` on the **same port** as the API (for example `http://localhost:3000/mcp`).
 
 ---
 
@@ -313,16 +356,22 @@ Create a dedicated `apps/mcp` service that runs MCP Streamable HTTP transport wi
 
 ### Objective
 
-Implement spec-aligned auth discovery and request authentication for remote MCP.
+Implement spec-aligned auth discovery and request authentication for remote MCP on `/mcp` (same origin as API).
 
 ### Deliverables
 
-- [ ] Protected Resource Metadata endpoint (`.well-known/oauth-protected-resource` pathing).
-- [ ] `WWW-Authenticate` challenge responses with metadata URL.
-- [ ] Bearer token requirement on **every** MCP request (`GET` and `POST`).
-- [ ] Audience/resource binding validation.
+- [ ] Protected Resource Metadata endpoint (`.well-known/oauth-protected-resource` pathing on app origin).
+- [ ] `WWW-Authenticate` challenge responses with metadata URL on unauthenticated `/mcp` requests.
+- [ ] Bearer token requirement on **every** MCP request to `/mcp` (`GET`, `POST`, `DELETE`).
+- [ ] Audience/resource binding validation against `${APP_BASE_URL}/mcp`.
 - [ ] 401/403 semantics aligned to spec.
-- [ ] Canonical resource URI handling.
+- [ ] Canonical resource URI handling documented for operators and client config.
+
+### File Targets
+
+- [ ] `apps/api/src/mcp/auth/*` (or equivalent)
+- [ ] `apps/api/src/app.ts` (well-known routes if mounted at app root)
+- [ ] tests under `apps/api/src/mcp/` or `apps/api/src/routes/`
 
 ### Tests
 
@@ -375,6 +424,12 @@ Add principal resolution and authorization policy enforcement for both identity 
 
 - [ ] Every tool call passes through a centralized policy decision point.
 
+### File Targets
+
+- [ ] `apps/api/src/mcp/policy/*` (or `apps/api/src/mcp/*`)
+- [ ] `packages/dal/*` migrations/repositories for service accounts
+- [ ] tests in `apps/api` and `packages/dal`
+
 ---
 
 ## PR-05: Read-Only Diagnostic Tool Surface (Customer Value Slice)
@@ -403,6 +458,13 @@ Ship useful read-only tools using existing Durabull domain logic.
 - [ ] Pagination and upper bounds on list/log/stacktrace endpoints.
 - [ ] Stable error taxonomy (`validation_error`, `forbidden`, `not_found`, etc.).
 - [ ] Annotate read-only hints in tool metadata.
+- [ ] Register tools in `apps/api/src/mcp/server.ts` (or sibling module); call shared domain services only.
+
+### File Targets
+
+- [ ] `apps/api/src/mcp/tools/*`
+- [ ] shared domain adapters (`apps/api/src/lib/domain/*` or `packages/mcp-domain`)
+- [ ] existing API route modules reused via adapters (not duplicated Hono handler logic)
 
 ### Tests
 
@@ -448,26 +510,33 @@ Prevent data leaks and abuse while preserving diagnostic utility.
 
 ### Objective
 
-Make the MCP service deployable and operable in both hosted modes.
+Document and verify MCP on the **unified** Durabull deployment (API + web + `/mcp` on one service/port) for cloud and self-host.
 
 ### Deliverables
 
-- [ ] Cloud deployment manifest/config updates.
-- [ ] Self-host deployment path (docker/env/docs) for MCP service.
-- [ ] Environment variable contract documentation.
-- [ ] TLS and ingress guidance for remote MCP.
-- [ ] Operator runbook for key rotation and incident response.
-- [ ] Dashboards/metrics definitions for service health and auth failures.
+- [ ] Cloud deployment docs updated (Render single web service; `https://app.durabull.io/mcp`).
+- [ ] Self-host Docker/compose docs: one port, `/mcp` path (remove `MCP_PORT` / `:3020` publish if present).
+- [ ] Environment variable contract (`APP_BASE_URL`, optional MCP enable flag, host allowlist notes).
+- [ ] TLS and ingress guidance: path-based `/mcp` on app domain (no second hostname required).
+- [ ] Operator runbook for key rotation, auth failures, and MCP client URL configuration.
+- [ ] Dashboards/metrics definitions for `/mcp` auth failures and tool error rates on unified service.
+
+### File Targets
+
+- [ ] `apps/docs/content/documentation/deployment/*`
+- [ ] `apps/docs/content/documentation/getting-started/environment-variables.mdx`
+- [ ] `tooling/docker/Dockerfile` and `tooling/docker/docker-compose.self-hosted.yaml`
+- [ ] `render.yaml` or cloud blueprint references (if present in repo)
 
 ### Tests/Validation
 
-- [ ] Staging deploy succeeds.
-- [ ] Self-host local smoke test succeeds.
+- [ ] Staging deploy succeeds with `/mcp` reachable on app domain.
+- [ ] Self-host smoke: `GET /api/health` and MCP `initialize` on same host/port.
 - [ ] Runbook dry-run performed and documented.
 
 ### Exit Criteria
 
-- [ ] Operators can deploy and maintain MCP in both hosting modes.
+- [ ] Operators can deploy and maintain MCP at `{APP_BASE_URL}/mcp` without a separate MCP service.
 
 ---
 
@@ -545,10 +614,61 @@ Finalize production quality and confirm spec/safety compliance.
 
 ---
 
+### PR Record: PR-01
+
+- PR ID: `PR-01`
+- Branch: `feat/no-linear-mcp-pr01-security-baseline`
+- Linear issue: `NO-LINEAR (temporary; to be backfilled before merge if required)`
+- PR URL:
+- Status: `in progress`
+- Agent owner: `codex`
+- Start date: `2026-05-26`
+- Merge date:
+
+#### Scope Completed
+
+- [x] ADR for MCP architecture boundaries, threat model, and scope taxonomy.
+- [x] Decision record for phase-1 read-only GA and write-tool deferral.
+- [x] Operations security docs updated with MCP baseline guidance.
+- [ ] Permission matrix review signoff in PR thread.
+- [ ] Security design walkthrough evidence captured in PR description.
+
+#### Verification Evidence
+
+- [x] Commands run:
+  - [x] `bun run lint --filter @durabull/docs`
+  - [x] `bun run typecheck --filter @durabull/docs`
+  - [x] `git status --short --branch && git diff --name-only` (docs/tasks/adr scoped diff only)
+- [x] Tests added:
+  - [x] Documentation-only PR; no runtime tests introduced in PR-01.
+- [x] Security checks:
+  - [x] Explicitly confirmed no destructive MCP capability introduced.
+  - [x] Scope taxonomy and principal boundaries documented.
+
+#### Safety Signoff
+
+- [x] No destructive capability introduced.
+- [x] Authz boundaries verified.
+- [ ] Sensitive output redaction verified.
+
+#### Handoff To Next PR
+
+- Next PR: `PR-02`
+- Known risks: runtime enforcement is not in this PR and must be implemented in PR-02/03/04.
+- Follow-up tasks:
+  - backfill Linear issue link if merge policy requires it.
+  - amend ADR-0001 deployable wording (dedicated `apps/mcp` → API `/mcp` ingress) when landing PR-02.
+- Notes for next agent:
+  - treat ADR-0001 as source of truth for phase-1 **security** boundaries.
+  - **do not** build standalone `apps/mcp`; mount MCP on `apps/api` at `/mcp` (see Hosting model section above).
+- PR-01 acceptance statement for PR body: `This PR defines security and scope contracts only; no MCP runtime behavior is introduced.`
+
+---
+
 ## Live PR Tracker
 
-- [ ] PR-01 Security architecture baseline
-- [ ] PR-02 MCP service scaffold + transport
+- [ ] PR-01 Security architecture baseline (in progress on `feat/no-linear-mcp-pr01-security-baseline`)
+- [ ] PR-02 API `/mcp` ingress + transport (not standalone `apps/mcp`)
 - [ ] PR-03 OAuth discovery + token validation
 - [ ] PR-04 Principals + policy engine
 - [ ] PR-05 Read-only diagnostic tools
@@ -560,7 +680,7 @@ Finalize production quality and confirm spec/safety compliance.
 
 ## Definition Of Done (Program-Level)
 
-- [ ] Hosted MCP server available (cloud + self-host).
+- [ ] Hosted MCP available at `{APP_BASE_URL}/mcp` on unified deployment (cloud + self-host).
 - [ ] Read-only jobs/failures/logs/diagnostics tools fully functional.
 - [ ] Delegated users and service accounts both supported.
 - [ ] OAuth/tokening and least-privilege permissions enforced.
