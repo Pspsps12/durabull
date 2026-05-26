@@ -4,6 +4,8 @@ import type { McpAccessTokenClaims, McpTokenValidationResult } from './types'
 export interface ValidateMcpAccessTokenOptions {
   canonicalResourceUri: string
   requiredScopes: readonly string[]
+  /** When true, tokens must include a resource indicator matching the canonical URI. */
+  requireResourceIndicator?: boolean
 }
 
 function normalizeResourceUri(uri: string): string {
@@ -30,7 +32,8 @@ export function validateMcpAccessTokenClaims(
   options: ValidateMcpAccessTokenOptions
 ): McpTokenValidationResult {
   const now = Date.now()
-  if (claims.accessTokenExpiresAt.getTime() <= now) {
+  const expiry = claims.accessTokenExpiresAt
+  if (!expiry || Number.isNaN(expiry.getTime()) || expiry.getTime() <= now) {
     return {
       ok: false,
       status: 401,
@@ -39,6 +42,16 @@ export function validateMcpAccessTokenClaims(
   }
 
   const canonical = normalizeResourceUri(options.canonicalResourceUri)
+  const requireResource = options.requireResourceIndicator ?? false
+
+  if (requireResource && !claims.resource) {
+    return {
+      ok: false,
+      status: 401,
+      error: 'invalid_token',
+    }
+  }
+
   if (claims.resource) {
     const tokenResource = normalizeResourceUri(claims.resource)
     if (tokenResource !== canonical) {

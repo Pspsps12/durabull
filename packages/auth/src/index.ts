@@ -197,6 +197,27 @@ export async function createAuth(options?: CreateAuthOptions) {
           },
         },
       },
+      oauthAccessToken: {
+        create: {
+          after: async (token: { id: string; resource: string | null }) => {
+            const canonicalResource = getCanonicalMcpResourceUri(
+              options?.baseURL ?? env.APP_BASE_URL
+            )
+            if (token.resource === canonicalResource) {
+              return
+            }
+
+            try {
+              await db
+                .update(oauthAccessToken)
+                .set({ resource: canonicalResource, updatedAt: new Date() })
+                .where(eq(oauthAccessToken.id, token.id))
+            } catch (error) {
+              console.error('[Better Auth] Failed to set MCP resource on access token:', error)
+            }
+          },
+        },
+      },
     },
     plugins: [
       organization({

@@ -23,28 +23,41 @@ export function createMcpSessionRegistry(options: McpSessionRegistryOptions) {
   const sessions = new Map<string, McpSessionEntry>()
   const allowedHostList = [...options.allowedHosts]
 
+  async function teardownSession(sessionId: string): Promise<void> {
+    const session = sessions.get(sessionId)
+    if (!session) return
+
+    sessions.delete(sessionId)
+    try {
+      await session.server.close()
+    } catch {
+      // Session already torn down.
+    }
+  }
+
   function createSessionEntry(): McpSessionEntry {
     const server = createMcpServer({ version: options.version })
+    let entry: McpSessionEntry
+
     const transport = new StreamableHTTPTransport({
-      sessionIdGenerator: () => crypto.randomUUID(),
+      sessionIdGenerator: () => {
+        const sessionId = crypto.randomUUID()
+        sessions.set(sessionId, entry)
+        return sessionId
+      },
       enableDnsRebindingProtection: true,
       allowedHosts: allowedHostList,
-      // Origin checks are handled by Hono CORS middleware (non-browser MCP clients omit Origin).
-      onsessioninitialized: async (sessionId) => {
-        sessions.set(sessionId, { transport, server, connected: connectPromise })
+      onsessioninitialized: async () => {
+        // Session registered synchronously in sessionIdGenerator.
       },
       onsessionclosed: async (sessionId) => {
-        sessions.delete(sessionId)
-        try {
-          await server.close()
-        } catch {
-          // Session already torn down.
-        }
+        await teardownSession(sessionId)
       },
     })
 
-    const connectPromise = server.connect(transport)
-    return { transport, server, connected: connectPromise }
+    const connected = server.connect(transport)
+    entry = { transport, server, connected }
+    return entry
   }
 
   async function requestIsInitialize(c: Context): Promise<boolean> {
@@ -60,14 +73,14 @@ export function createMcpSessionRegistry(options: McpSessionRegistryOptions) {
     }
   }
 
-  function evictOldestSessionIfNeeded(): void {
+  async function evictOldestSessionIfNeeded(): Promise<void> {
     if (sessions.size < MAX_ACTIVE_SESSIONS) {
       return
     }
 
     const oldestSessionId = sessions.keys().next().value
     if (oldestSessionId) {
-      sessions.delete(oldestSessionId)
+      await teardownSession(oldestSessionId)
     }
   }
 
@@ -94,7 +107,7 @@ export function createMcpSessionRegistry(options: McpSessionRegistryOptions) {
         )
       }
 
-      evictOldestSessionIfNeeded()
+      await evictOldestSessionIfNeeded()
       const session = createSessionEntry()
       await session.connected
       return session.transport.handleRequest(c)

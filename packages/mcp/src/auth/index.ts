@@ -21,4 +21,10 @@ export {
 export type { McpAccessTokenClaims, McpTokenValidationResult } from './types'
 export { isMcpAccessTokenExpired, toAccessTokenExpiry } from './session'
 export { extractBearerToken, validateMcpAccessTokenClaims } from './validate-token'
+export {
+  buildMcpInsufficientScopeResponse,
+  buildMcpMissingBearerResponse,
+  buildMcpUnauthorizedResponse,
+} from './json-rpc-auth-response'
+export { createMcpTokenValidationCache } from './token-cache'
 export { buildWwwAuthenticateChallenge, mcpAuthResponseHeaders } from './www-authenticate'

@@ -19,6 +19,7 @@ import { createConnectionMiddleware } from './middleware/connection'
 import {
   apiRateLimiter,
   authRateLimiter,
+  mcpOAuthRegisterRateLimiter,
   mcpRateLimiter,
   telemetryCollectRateLimiter,
 } from './middleware/rate-limit'
@@ -321,6 +322,9 @@ export async function createApiApp(options: CreateApiAppOptions = {}) {
     // Don't rate limit session checks - they're read-only
     if (path.includes('/get-session') || path.includes('/session')) {
       return next()
+    }
+    if (path.includes('/mcp/register')) {
+      return mcpOAuthRegisterRateLimiter(c, next)
     }
     return authRateLimiter(c, next)
   })

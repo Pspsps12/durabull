@@ -16,8 +16,8 @@ describe('isMcpAccessTokenExpired', () => {
     expect(isMcpAccessTokenExpired(past)).toBe(true)
   })
 
-  it('treats missing expiry as not expired', () => {
-    expect(isMcpAccessTokenExpired(null)).toBe(false)
+  it('treats missing expiry as expired (fail closed)', () => {
+    expect(isMcpAccessTokenExpired(null)).toBe(true)
     expect(toAccessTokenExpiry(undefined)).toBeNull()
   })
 })

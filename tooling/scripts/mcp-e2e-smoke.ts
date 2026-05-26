@@ -51,6 +51,8 @@ async function seedOAuthTokens(clientId: string) {
   const userId = firstUser?.id ?? null
   const exp = new Date(Date.now() + 3600_000)
 
+  const resource = `${new URL(baseUrl).origin}/mcp`
+
   async function insert(label: string, scopes: string, expiresAt: Date) {
     const accessToken = `e2e-${label}-${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`
     await db.insert(oauthAccessToken).values({
@@ -62,6 +64,7 @@ async function seedOAuthTokens(clientId: string) {
       clientId,
       userId,
       scopes,
+      resource,
       createdAt: new Date(),
       updatedAt: new Date(),
     })

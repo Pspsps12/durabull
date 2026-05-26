@@ -16,7 +16,7 @@ export function isMcpAccessTokenExpired(
 ): boolean {
   const expiry = toAccessTokenExpiry(expiresAt)
   if (!expiry) {
-    return false
+    return true
   }
 
   return expiry.getTime() <= now.getTime()

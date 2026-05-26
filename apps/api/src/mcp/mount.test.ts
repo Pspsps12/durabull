@@ -13,7 +13,7 @@ import {
 } from '@durabull/mcp/testing'
 import { env } from '@durabull/env'
 import { createApiApp } from '../app'
-import { AUTHLESS_MCP_BEARER_TOKEN } from './auth/verify-access-token'
+import { DEFAULT_AUTHLESS_MCP_BEARER_TOKEN } from './auth/mcp-auth-config'
 
 const mutableEnv = env as {
   APP_BASE_URL?: string
@@ -24,7 +24,8 @@ const originalAppBaseUrl = mutableEnv.APP_BASE_URL
 const originalAuthless = mutableEnv.DURABULL_AUTHLESS
 const originalPgliteDir = process.env.DURABULL_PGLITE_DIR
 
-const authlessAuthorization = `Bearer ${AUTHLESS_MCP_BEARER_TOKEN}`
+const authlessAuthorization = `Bearer ${DEFAULT_AUTHLESS_MCP_BEARER_TOKEN}`
+const mcpResource = 'http://localhost:3000/mcp'
 const resourceMetadataUrl =
   'http://localhost:3000/api/auth/.well-known/oauth-protected-resource'
 
@@ -220,6 +221,7 @@ describe('api MCP ingress', () => {
       clientId,
       userId: null,
       scopes: 'mcp:discover openid',
+      resource: mcpResource,
       createdAt: new Date(),
       updatedAt: new Date(),
     })
@@ -240,6 +242,57 @@ describe('api MCP ingress', () => {
 
     expect(response.status).toBe(401)
     expect(response.headers.get('WWW-Authenticate')).toContain('invalid_token')
+  })
+
+  it('returns 403 for OAuth tokens without mcp:discover', async () => {
+    mutableEnv.DURABULL_AUTHLESS = false
+    await closeDb()
+    ;({ app } = await createApiApp({ enableLogging: false }))
+
+    const db = await getDb()
+    const clientId = `test-client-${crypto.randomUUID().slice(0, 8)}`
+    await db.insert(oauthApplication).values({
+      id: crypto.randomUUID(),
+      name: 'mount-test',
+      clientId,
+      redirectUrls: 'http://127.0.0.1/callback',
+      type: 'public',
+      disabled: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+
+    const scopedToken = `scoped-${crypto.randomUUID().slice(0, 8)}`
+    const future = new Date(Date.now() + 3600_000)
+    await db.insert(oauthAccessToken).values({
+      id: crypto.randomUUID(),
+      accessToken: scopedToken,
+      refreshToken: `refresh-${scopedToken}`,
+      accessTokenExpiresAt: future,
+      refreshTokenExpiresAt: future,
+      clientId,
+      userId: null,
+      scopes: 'openid',
+      resource: mcpResource,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+
+    const response = await postMcp(
+      {
+        jsonrpc: MCP_JSON_RPC_VERSION,
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          capabilities: {},
+          clientInfo: { name: 'test', version: '1.0.0' },
+        },
+      },
+      { authorization: `Bearer ${scopedToken}` }
+    )
+
+    expect(response.status).toBe(403)
   })
 
   it('does not treat GET /mcp as SPA static fallback when web build is absent', async () => {

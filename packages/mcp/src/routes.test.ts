@@ -26,7 +26,7 @@ function createTestAuthMiddleware() {
           userId: 'user',
           scopes: [MCP_SCOPE_DISCOVER],
           accessTokenExpiresAt: new Date(Date.now() + 60_000),
-          resource: null,
+          resource: canonicalResourceUri,
         }
       }
       return null

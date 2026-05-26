@@ -32,12 +32,29 @@ describe('extractBearerToken', () => {
 
 describe('validateMcpAccessTokenClaims', () => {
   it('accepts valid scoped tokens for the canonical resource', () => {
-    const result = validateMcpAccessTokenClaims(baseClaims(), {
-      canonicalResourceUri,
-      requiredScopes: [MCP_SCOPE_DISCOVER],
-    })
+    const result = validateMcpAccessTokenClaims(
+      baseClaims({ resource: canonicalResourceUri }),
+      {
+        canonicalResourceUri,
+        requiredScopes: [MCP_SCOPE_DISCOVER],
+        requireResourceIndicator: true,
+      }
+    )
 
     expect(result.ok).toBe(true)
+  })
+
+  it('returns 401 when resource indicator is required but missing', () => {
+    const result = validateMcpAccessTokenClaims(baseClaims({ resource: null }), {
+      canonicalResourceUri,
+      requiredScopes: [MCP_SCOPE_DISCOVER],
+      requireResourceIndicator: true,
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.status).toBe(401)
+    }
   })
 
   it('returns 401 for expired tokens', () => {
