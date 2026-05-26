@@ -710,7 +710,7 @@ Finalize production quality and confirm spec/safety compliance.
 - PR ID: `PR-03`
 - Branch: `cursor/mcp-pr03-oauth-discovery-token-validation`
 - Linear issue: `NO-LINEAR (temporary)`
-- PR URL:
+- PR URL: https://github.com/durabullhq/durabull/pull/89
 - Status: `in review`
 - Agent owner: `cursor`
 - Start date: `2026-05-26`
