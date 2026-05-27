@@ -55,6 +55,10 @@ const appBaseUrlSchema = z.preprocess(
   emptyToUndefined,
   z.string().default('http://localhost:5173')
 )
+const emailFromSchema = z.preprocess(
+  emptyToUndefined,
+  z.string().default('Durabull <no-reply@durabull.io>')
+)
 const linearOauthActorSchema = z.preprocess(
   emptyToUndefined,
   z.enum(['user', 'app']).default('user')
@@ -68,6 +72,7 @@ const envSchema = z.object({
   DATABASE_URL: optionalString,
   REDIS_URL: optionalString,
   RESEND_API_KEY: optionalString,
+  EMAIL_FROM: emailFromSchema,
   GOOGLE_OAUTH_CLIENT_ID: optionalString,
   GOOGLE_OAUTH_CLIENT_SECRET: optionalString,
   GITHUB_OAUTH_CLIENT_ID: optionalString,
