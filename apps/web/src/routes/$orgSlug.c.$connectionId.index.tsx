@@ -18,7 +18,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
-  type ListQueuesResponse,
   useDiscoverQueues,
   useQueueDiscoveryStatus,
   useQueues,
@@ -162,24 +161,7 @@ function Dashboard() {
   }
 
   const queues = data?.queues ?? []
-  type Queue = ListQueuesResponse['queues'][number]
-  type Totals = {
-    waiting: number
-    active: number
-    failed: number
-    delayed: number
-    completed: number
-  }
-  const totals = queues.reduce<Totals>(
-    (acc: Totals, q: Queue) => ({
-      waiting: acc.waiting + q.jobCounts.waiting,
-      active: acc.active + q.jobCounts.active,
-      failed: acc.failed + q.jobCounts.failed,
-      delayed: acc.delayed + q.jobCounts.delayed,
-      completed: acc.completed + q.jobCounts.completed,
-    }),
-    { waiting: 0, active: 0, failed: 0, delayed: 0, completed: 0 }
-  )
+  const totals = data?.totalJobCounts ?? { waiting: 0, active: 0, failed: 0, delayed: 0, completed: 0 }
 
   return (
     <TooltipProvider>
@@ -253,14 +235,13 @@ function Dashboard() {
                 </span>
               )}
             </div>
-            {queues.some((q) => q.jobCounts.active > 0) && (
+            {totals.active > 0 && (
               <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
                 </span>
-                {queues.reduce((acc: number, q: Queue) => acc + q.jobCounts.active, 0)} jobs
-                processing
+                {formatNumber(totals.active)} jobs processing
               </div>
             )}
           </div>
