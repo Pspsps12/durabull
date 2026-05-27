@@ -11,7 +11,7 @@ export const metadata: Metadata = createMetadata(
   {
     title: 'Durabull - BullMQ Admin Dashboard',
     description:
-      'The modern BullMQ dashboard for browser, Apple Silicon macOS, Windows, and self-hosted teams. Monitor jobs, debug failures, and scale your background processing with confidence.',
+      'The modern BullMQ dashboard for browser, macOS, Windows, and self-hosted teams. Monitor jobs, debug failures, and scale queues with confidence.',
     keywords: [
       'BullMQ',
       'Redis',
