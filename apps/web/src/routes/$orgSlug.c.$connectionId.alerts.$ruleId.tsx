@@ -19,7 +19,7 @@ export function EditAlertRuleRoute() {
   const navigate = useNavigate()
   const { currentConnection } = useConnection()
   const rulesQuery = useConnectionAlertRules(connectionId)
-  const queuesQuery = useQueues()
+  const queuesQuery = useQueues({ pageSize: 100 })
   const updateRuleMutation = useUpdateAlertRule(connectionId)
   const testRuleMutation = useTestAlertRule(connectionId)
   const linearIntegrationQuery = useLinearIntegration()

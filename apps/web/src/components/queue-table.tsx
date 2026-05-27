@@ -12,7 +12,7 @@ import {
   Pause,
   Play,
 } from 'lucide-react'
-import { type KeyboardEvent, memo, type MouseEvent, useCallback, useMemo, useState } from 'react'
+import { type KeyboardEvent, memo, type MouseEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useConnection } from '@/components/connection-provider'
 import { QueueNameTag } from '@/components/queue-name-tag'
 import { StatusIndicator } from '@/components/status-badge'
@@ -90,6 +90,10 @@ export function QueueTable({
   const [hideEmpty, setHideEmpty] = useState(false)
   const hasPagination = totalPages > 1
 
+  useEffect(() => {
+    setHideEmpty(false)
+  }, [page])
+
   // Memoize filtered queues to avoid recalculating on unrelated re-renders
   const { filteredQueues, emptyCount } = useMemo(() => {
     const empty = queues.filter((q) => getTotalJobs(q) === 0).length
@@ -110,7 +114,7 @@ export function QueueTable({
   return (
     <TooltipProvider delayDuration={200}>
       <div className={cn('rounded-lg border bg-card overflow-hidden flex flex-col h-[calc(100vh-18rem)]', className)}>
-        <div className="flex-1 overflow-y-auto min-h-0 [&>div]:overflow-x-visible">
+        <div className="flex-1 overflow-auto min-h-0 [&>div]:overflow-visible">
         <Table>
           <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow className="hover:bg-transparent">
