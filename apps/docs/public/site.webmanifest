@@ -1,7 +1,7 @@
 {
   "name": "Durabull - BullMQ Admin Dashboard",
   "short_name": "Durabull",
-  "description": "The modern, powerful dashboard for BullMQ. Monitor jobs, debug failures, and scale your background processing with confidence.",
+  "description": "The modern BullMQ dashboard for browser, macOS, Windows, and self-hosted teams. Monitor jobs, debug failures, and scale queues with confidence.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",

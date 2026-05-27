@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     template: '%s | Durabull',
   },
   description:
-    'The modern, powerful dashboard for BullMQ. Monitor jobs, debug failures, and scale your background processing with confidence.',
+    'The modern BullMQ dashboard for browser, macOS, Windows, and self-hosted teams. Monitor jobs, debug failures, and scale queues with confidence.',
   metadataBase: new URL('https://durabull.io'),
   keywords: [
     'BullMQ',
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     url: 'https://durabull.io',
     title: 'Durabull - BullMQ Admin Dashboard',
     description:
-      'The modern, powerful dashboard for BullMQ. Monitor jobs, debug failures, and scale your background processing with confidence.',
+      'The modern BullMQ dashboard for browser, macOS, Windows, and self-hosted teams. Monitor jobs, debug failures, and scale queues with confidence.',
     siteName: 'Durabull',
     images: [
       {
@@ -49,7 +49,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Durabull - BullMQ Admin Dashboard',
     description:
-      'The modern, powerful dashboard for BullMQ. Monitor jobs, debug failures, and scale your background processing with confidence.',
+      'The modern BullMQ dashboard for browser, macOS, Windows, and self-hosted teams. Monitor jobs, debug failures, and scale queues with confidence.',
     images: ['/og-image.png'],
     creator: '@durabullhq',
   },

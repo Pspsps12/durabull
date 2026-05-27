@@ -29,5 +29,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Generated search index
+# Generated search index and LLM context files
 public/search-index.json
+public/llms.txt
+public/llms-full.txt
