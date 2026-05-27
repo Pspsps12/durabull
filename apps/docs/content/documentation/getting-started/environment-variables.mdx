@@ -48,7 +48,8 @@ description: Complete runtime environment variable reference for local and produ
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `RESEND_API_KEY` | Optional | Invitation email delivery |
+| `RESEND_API_KEY` | Optional | Email delivery via Resend (invitations and alerts) |
+| `EMAIL_FROM` | No | Sender address for Resend emails (default: `Durabull <no-reply@durabull.io>`) |
 | `LINEAR_OAUTH_CLIENT_ID` | Required for Linear alert integrations | Linear OAuth application client ID |
 | `LINEAR_OAUTH_CLIENT_SECRET` | Required for Linear alert integrations | Linear OAuth application client secret |
 | `LINEAR_OAUTH_REDIRECT_URI` | Optional | Explicit Linear OAuth callback URL; defaults to `${APP_BASE_URL}/api/alerts/integrations/linear/callback` |
