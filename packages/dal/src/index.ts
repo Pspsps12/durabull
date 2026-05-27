@@ -86,6 +86,24 @@ export type {
 export { linearOauthState } from './db/schemas/linear-oauth-state/schema'
 export type { LinearOauthState, NewLinearOauthState } from './db/schemas/linear-oauth-state/types'
 export {
+  type McpPrincipalType,
+  mcpAuditEvent,
+  mcpPolicyBinding,
+  mcpPrincipalTypes,
+  mcpServiceAccount,
+  mcpServiceAccountSecret,
+} from './db/schemas/mcp-policy/schema'
+export type {
+  McpAuditEvent,
+  McpPolicyBinding,
+  McpServiceAccount,
+  McpServiceAccountSecret,
+  NewMcpAuditEvent,
+  NewMcpPolicyBinding,
+  NewMcpServiceAccount,
+  NewMcpServiceAccountSecret,
+} from './db/schemas/mcp-policy/types'
+export {
   oauthAccessToken,
   oauthApplication,
   oauthConsent,
@@ -144,6 +162,7 @@ export { alertRuleRepository } from './repositories/alert-rule'
 export { linearIntegrationRepository } from './repositories/linear-integration'
 export { linearJobIssueRepository } from './repositories/linear-job-issue'
 export { linearOauthStateRepository } from './repositories/linear-oauth-state'
+export { mcpPolicyRepository } from './repositories/mcp-policy'
 // Repositories
 export { redisConnectionRepository } from './repositories/redis-connection'
 export { redisDiscoveredQueueRepository } from './repositories/redis-discovered-queue'

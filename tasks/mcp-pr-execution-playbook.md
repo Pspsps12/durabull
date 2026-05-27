@@ -620,18 +620,15 @@ Finalize production quality and confirm spec/safety compliance.
 - Branch: `feat/no-linear-mcp-pr01-security-baseline`
 - Linear issue: `NO-LINEAR (temporary; to be backfilled before merge if required)`
 - PR URL:
-- Status: `in progress`
+- Status: `folded into PR-04 (docs + runtime enforcement landed in later slices)`
 - Agent owner: `codex`
 - Start date: `2026-05-26`
 - Merge date:
 
 #### Scope Completed
 
-- [x] ADR for MCP architecture boundaries, threat model, and scope taxonomy.
-- [x] Decision record for phase-1 read-only GA and write-tool deferral.
-- [x] Operations security docs updated with MCP baseline guidance.
-- [ ] Permission matrix review signoff in PR thread.
-- [ ] Security design walkthrough evidence captured in PR description.
+- [ ] Standalone PR was not merged; baseline security decisions were carried forward into PR-02/03.
+- [ ] ADR + operations-doc finalization is intentionally folded into PR-04 before security closure.
 
 #### Verification Evidence
 
@@ -653,13 +650,14 @@ Finalize production quality and confirm spec/safety compliance.
 
 #### Handoff To Next PR
 
-- Next PR: `PR-02`
+- Next PR: `PR-04` (fold-in completion)
 - Known risks: runtime enforcement is not in this PR and must be implemented in PR-02/03/04.
 - Follow-up tasks:
   - backfill Linear issue link if merge policy requires it.
   - amend ADR-0001 deployable wording (dedicated `apps/mcp` → API `/mcp` ingress) when landing PR-02.
 - Notes for next agent:
   - treat ADR-0001 as source of truth for phase-1 **security** boundaries.
+  - complete remaining PR-01 docs guarantees while landing PR-04 principal/policy enforcement.
   - **do not** build standalone `apps/mcp`; mount MCP on `apps/api` at `/mcp` (see Hosting model section above).
 - PR-01 acceptance statement for PR body: `This PR defines security and scope contracts only; no MCP runtime behavior is introduced.`
 
@@ -711,10 +709,10 @@ Finalize production quality and confirm spec/safety compliance.
 - Branch: `cursor/mcp-pr03-oauth-discovery-token-validation`
 - Linear issue: `NO-LINEAR (temporary)`
 - PR URL: https://github.com/durabullhq/durabull/pull/89
-- Status: `in review`
+- Status: `merged`
 - Agent owner: `cursor`
 - Start date: `2026-05-26`
-- Merge date:
+- Merge date: `2026-05-27`
 
 #### Scope Completed
 
@@ -752,13 +750,124 @@ Finalize production quality and confirm spec/safety compliance.
 
 ---
 
+### PR Record: PR-04
+
+- PR ID: `PR-04`
+- Branch: `feat/no-linear-mcp-pr04-principals-policy-engine`
+- Linear issue: `NO-LINEAR (temporary)`
+- PR URL:
+- Status: `in progress`
+- Agent owner: `codex`
+- Start date: `2026-05-26`
+- Merge date:
+
+#### Scope Completed
+
+- [x] Principal resolver implemented for delegated users and OAuth-linked service accounts.
+- [x] Central policy decision point added in MCP ingress middleware for every `tools/call`.
+- [x] Org + connection boundary checks enforced in policy evaluation.
+- [x] Service account + policy + audit DAL schema/migration added (`mcp_service_account*`, `mcp_policy_binding`, `mcp_audit_event`).
+- [x] Repository support added for service-account lookup, policy bindings, and audit writes.
+- [x] Service-account credential hashing + rotation path added (`mcpPolicyRepository.issueServiceAccountSecret/rotateServiceAccountSecret`).
+- [x] Integration tests added for delegated and service-account policy enforcement through `/mcp`.
+- [x] Request-scoped principal context plumbed into MCP tool execution path.
+
+#### Verification Evidence
+
+- [x] Commands run:
+  - [x] `bun test packages/dal/src/repositories/mcp-policy.test.ts`
+  - [x] `bun run --filter @durabull/api test src/mcp/mount.test.ts`
+  - [x] `bun run --filter @durabull/dal typecheck`
+  - [x] `bun run --filter @durabull/dal lint`
+  - [ ] `bun run --filter @durabull/api typecheck` (blocked by pre-existing `alerts-global.test.ts` unknown-body typing errors)
+- [x] Tests added:
+  - [x] `packages/dal/src/repositories/mcp-policy.test.ts`
+  - [x] Expanded `apps/api/src/mcp/mount.test.ts` with service-account allow/deny and delegated cross-org boundary cases.
+- [x] Security checks:
+  - [x] No destructive MCP tools introduced.
+  - [x] Service-account policy bindings required for tool execution.
+  - [x] Policy audit records persisted for allow + deny decisions.
+
+#### Handoff To Next PR
+
+- Next PR: `PR-05`
+- Known risks:
+  - `PR-04` still runs with only `ping`; domain read tools + fine-grained scope mapping start in PR-05.
+  - RFC 8707 issuance binding follow-up from PR-03 still open.
+- Follow-up tasks:
+  - finalize PR-01 documentation fold-in artifacts before/with PR-04 PR description.
+  - attach Linear issue IDs retroactively if required by merge policy.
+- Notes for next agent:
+  - keep policy as the single authorization gate for MCP tool calls.
+  - register PR-05 read-only tools with explicit scope requirements and connection-bound checks.
+
+---
+
+### PR Record: PR-05
+
+- PR ID: `PR-05`
+- Branch: `feat/no-linear-mcp-pr04-principals-policy-engine` (temporary while PR-04 is unmerged)
+- Linear issue: `NO-LINEAR (temporary)`
+- PR URL:
+- Status: `in progress (scaffold + first tool)`
+- Agent owner: `codex`
+- Start date: `2026-05-26`
+- Merge date:
+
+#### Scope Completed
+
+- [x] Read-tool registration plumbing added to `@durabull/mcp` (`readTools` option in server/routes/registry).
+- [x] Async request-context bridge added so tool handlers can read resolved principal/correlation metadata.
+- [x] `list_connections` MCP tool implemented with pagination (`cursor`, `pageSize`) and structured output.
+- [x] `list_queues` MCP tool implemented (`connectionId`, cursor/pageSize) with queue status + counts.
+- [x] `get_queue` MCP tool implemented (`connectionId`, `queueName`) with workers/schedulers/counts snapshot.
+- [x] `list_jobs` MCP tool implemented (`connectionId`, `queueName`, filters, cursor/pageSize).
+- [x] `get_job` MCP tool implemented (`connectionId`, `queueName`, `jobId`) with safe job detail fields.
+- [x] `get_job_logs` MCP tool implemented (`connectionId`, `queueName`, `jobId`, cursor/pageSize).
+- [x] `get_job_stacktraces` MCP tool implemented (`connectionId`, `queueName`, `jobId`, cursor/pageSize).
+- [x] API-backed tool handler added (`apps/api/src/mcp/tools/list-connections-handler.ts`).
+- [x] API-backed queue/job handlers added (`list-queues-handler.ts`, `get-queue-handler.ts`, `list-jobs-handler.ts`).
+- [x] Job/queue scope gates mapped:
+  - [x] `list_connections`, `list_queues`, `get_queue`, `list_jobs`, `get_job` -> `mcp:jobs:read`
+  - [x] `get_job_logs`, `get_job_stacktraces` -> `mcp:logs:read`
+- [x] Integration tests for delegated pagination + service-account scoped access.
+
+#### Verification Evidence
+
+- [x] Commands run:
+  - [x] `bun run --filter @durabull/mcp typecheck`
+  - [x] `bun run --filter @durabull/mcp test`
+  - [x] `bun run --filter @durabull/mcp lint`
+  - [x] `bun run --filter @durabull/api test src/mcp/mount.test.ts`
+  - [x] `bun test packages/dal/src/repositories/mcp-policy.test.ts`
+  - [x] `bun run --filter @durabull/dal typecheck`
+  - [x] `bun run --filter @durabull/dal lint`
+  - [x] `bun run --filter @durabull/api test src/mcp/mount.test.ts` (updated: 14 pass)
+- [x] Tests added:
+  - [x] expanded `apps/api/src/mcp/mount.test.ts` with `list_connections` delegated + service-account scenarios.
+  - [x] expanded `apps/api/src/mcp/mount.test.ts` with `mcp:jobs:read` denial path and tool list assertions for new tools.
+
+#### Handoff To Next PR
+
+- Next PR: `PR-05` continuation (remaining tool catalog)
+- Known risks:
+  - partial read catalog shipped; remaining diagnostic endpoints still pending (`get_failure_events`, `get_queue_metrics`, `get_workers`, `explain_job_failure`).
+- Follow-up tasks:
+  - add per-tool schemas/contract tests for remaining read tools.
+  - validate pagination/limits on log and stacktrace-heavy tools.
+- Notes for next agent:
+  - keep all MCP tools read-only and route through existing policy middleware.
+  - preserve request-context bridge; do not bypass principal/policy/audit path when adding tools.
+
+---
+
 ## Live PR Tracker
 
-- [ ] PR-01 Security architecture baseline (in progress on `feat/no-linear-mcp-pr01-security-baseline`)
+- [ ] PR-01 Security architecture baseline (folded into PR-04 completion work)
 - [x] PR-02 API `/mcp` ingress + transport (`@durabull/mcp` package + thin API mount)
-- [ ] PR-03 OAuth discovery + token validation (in review — PR #89)
-- [ ] PR-04 Principals + policy engine
-- [ ] PR-05 Read-only diagnostic tools
+- [x] PR-03 OAuth discovery + token validation (merged — PR #89)
+- [ ] PR-04 Principals + policy engine (in progress on `feat/no-linear-mcp-pr04-principals-policy-engine`)
+- [ ] PR-05 Read-only diagnostic tools (in progress: first 7 tools + remaining catalog)
 - [ ] PR-06 Safety hardening
 - [ ] PR-07 Deployment + operations
 - [ ] PR-08 GA readiness + security closure

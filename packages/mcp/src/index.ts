@@ -12,8 +12,26 @@ export {
   MCP_SERVER_NAME,
 } from './constants'
 export { createMcpRoutes, type CreateMcpRoutesOptions } from './routes'
+export type { McpRequestContext, McpRequestPrincipal } from './request-context'
 export {
   getCanonicalMcpResourceUri,
   getMcpProtectedResourceMetadataUrl,
   MCP_TRANSPORT_REQUIRED_SCOPES,
 } from './auth'
+export type {
+  GetJobHandlerInput,
+  GetJobHandlerOutput,
+  GetJobLogsHandlerInput,
+  GetJobLogsHandlerOutput,
+  GetJobStacktracesHandlerInput,
+  GetJobStacktracesHandlerOutput,
+  GetQueueHandlerInput,
+  GetQueueHandlerOutput,
+  ListConnectionsHandlerInput,
+  ListConnectionsHandlerOutput,
+  ListJobsHandlerInput,
+  ListJobsHandlerOutput,
+  ListQueuesHandlerInput,
+  ListQueuesHandlerOutput,
+  RegisterReadToolsOptions,
+} from './tools/register-read-tools'

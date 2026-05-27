@@ -28,7 +28,8 @@
   "dependencies": {
     "@hono/mcp": "^0.3.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "hono": "^4.6.14"
+    "hono": "^4.6.14",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/bun": "latest",

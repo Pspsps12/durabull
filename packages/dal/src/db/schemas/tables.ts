@@ -14,6 +14,12 @@ export { linearIntegration } from './linear-integration/schema'
 export { linearJobIssue } from './linear-job-issue/schema'
 export { linearJobIssueEvent } from './linear-job-issue-event/schema'
 export { linearOauthState } from './linear-oauth-state/schema'
+export {
+  mcpAuditEvent,
+  mcpPolicyBinding,
+  mcpServiceAccount,
+  mcpServiceAccountSecret,
+} from './mcp-policy/schema'
 export { oauthAccessToken, oauthApplication, oauthConsent } from './oauth-mcp/schema'
 // Organization schema tables
 export { invitation, member, organization } from './organization/schema'
