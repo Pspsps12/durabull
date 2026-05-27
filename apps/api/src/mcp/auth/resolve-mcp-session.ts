@@ -25,8 +25,6 @@ export async function resolveMcpSessionFromAccessToken(
       userId: oauthAccessToken.userId,
       scopes: oauthAccessToken.scopes,
       resource: oauthAccessToken.resource,
-      createdAt: oauthAccessToken.createdAt,
-      updatedAt: oauthAccessToken.updatedAt,
       clientDisabled: oauthApplication.disabled,
     })
     .from(oauthAccessToken)
@@ -47,8 +45,6 @@ export async function resolveMcpSessionFromAccessToken(
     clientId: row.clientId,
     userId: row.userId,
     scopes: row.scopes,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
     resource: row.resource,
   }
 }

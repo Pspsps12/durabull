@@ -1,4 +1,3 @@
-import type { Auth } from '@durabull/auth'
 import {
   createMcpTokenValidationCache,
   extractBearerToken,
@@ -21,7 +20,16 @@ import {
 } from './mcp-auth-config'
 import { resolveMcpSessionFromAccessToken } from './resolve-mcp-session'
 
-export type McpSession = NonNullable<Awaited<ReturnType<Auth['api']['getMcpSession']>>>
+/** OAuth access token session resolved for MCP ingress (Better Auth `oauth_access_token` shape). */
+export interface McpSession {
+  accessToken: string
+  refreshToken: string
+  accessTokenExpiresAt: Date
+  refreshTokenExpiresAt: Date
+  clientId: string
+  userId: string | null
+  scopes: string
+}
 
 const tokenCache = createMcpTokenValidationCache()
 
@@ -35,8 +43,6 @@ function buildAuthlessMcpSession(accessToken: string): McpSession {
     clientId: 'authless-mcp-client',
     userId: 'authless-user',
     scopes: MCP_TRANSPORT_REQUIRED_SCOPES.join(' '),
-    createdAt: new Date(),
-    updatedAt: new Date(),
   }
 }
 
@@ -131,8 +137,6 @@ function sessionFromClaims(claims: {
     clientId: claims.clientId,
     userId: claims.userId,
     scopes: claims.scopes.join(' '),
-    createdAt: new Date(),
-    updatedAt: new Date(),
   }
 }
 

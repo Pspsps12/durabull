@@ -54,6 +54,6 @@ Protected resource metadata advertises:
 
 ## Authless development
 
-When `DURABULL_AUTHLESS=true`, use bearer token from `MCP_AUTHLESS_BEARER_TOKEN` (or the dev default `durabull-authless-mcp` when unset in non-production). Never enable authless mode in production deployments (`NODE_ENV=production` refuses startup with authless enabled).
+When `DURABULL_AUTHLESS=true`, use bearer token from `MCP_AUTHLESS_BEARER_TOKEN` (or the dev default `durabull-authless-mcp` when unset in non-production). Never enable authless mode on Durabull Cloud (`DURABULL_CLOUD=true` refuses startup with authless enabled). Self-hosted production images may use authless only on private networks with a custom `MCP_AUTHLESS_BEARER_TOKEN`.
 
 Access tokens must include the RFC 8707 `resource` indicator matching `{APP_BASE_URL}/mcp` (Better Auth sets this on issuance; Durabull rejects tokens without it).

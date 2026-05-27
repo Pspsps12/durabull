@@ -10,9 +10,9 @@ export function getAuthlessMcpBearerToken(): string {
     return configured
   }
 
-  if (env.NODE_ENV === 'production') {
+  if (env.DURABULL_CLOUD === true) {
     throw new Error(
-      'MCP_AUTHLESS_BEARER_TOKEN must be set when DURABULL_AUTHLESS=true in production'
+      'MCP_AUTHLESS_BEARER_TOKEN must be set when DURABULL_AUTHLESS=true on Durabull Cloud'
     )
   }
 
@@ -36,11 +36,15 @@ export function getMcpAuthConfig(appBaseUrl: string) {
 }
 
 export function assertMcpAuthConfiguration(): void {
-  if (env.NODE_ENV === 'production' && env.DURABULL_AUTHLESS === true) {
-    throw new Error('DURABULL_AUTHLESS cannot be enabled when NODE_ENV=production')
+  if (env.DURABULL_AUTHLESS === true && env.DURABULL_CLOUD === true) {
+    throw new Error('DURABULL_AUTHLESS cannot be enabled for Durabull Cloud deployments')
   }
 
-  if (env.DURABULL_AUTHLESS === true && !env.MCP_AUTHLESS_BEARER_TOKEN?.trim()) {
+  if (
+    env.DURABULL_AUTHLESS === true &&
+    !env.MCP_AUTHLESS_BEARER_TOKEN?.trim() &&
+    env.DURABULL_CLOUD !== true
+  ) {
     console.warn(
       '[mcp] DURABULL_AUTHLESS is enabled without MCP_AUTHLESS_BEARER_TOKEN; using default dev bearer'
     )
