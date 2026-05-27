@@ -851,7 +851,7 @@ Finalize production quality and confirm spec/safety compliance.
 
 - Next PR: `PR-05` continuation (remaining tool catalog)
 - Known risks:
-  - only partial read catalog shipped; remaining diagnostic endpoints still pending (`get_job`, logs, stacktraces, failure events, metrics, workers, explain_job_failure).
+  - partial read catalog shipped; remaining diagnostic endpoints still pending (`get_failure_events`, `get_queue_metrics`, `get_workers`, `explain_job_failure`).
 - Follow-up tasks:
   - add per-tool schemas/contract tests for remaining read tools.
   - validate pagination/limits on log and stacktrace-heavy tools.
@@ -867,7 +867,7 @@ Finalize production quality and confirm spec/safety compliance.
 - [x] PR-02 API `/mcp` ingress + transport (`@durabull/mcp` package + thin API mount)
 - [x] PR-03 OAuth discovery + token validation (merged — PR #89)
 - [ ] PR-04 Principals + policy engine (in progress on `feat/no-linear-mcp-pr04-principals-policy-engine`)
-- [ ] PR-05 Read-only diagnostic tools (in progress: scaffold + `list_connections`)
+- [ ] PR-05 Read-only diagnostic tools (in progress: first 7 tools + remaining catalog)
 - [ ] PR-06 Safety hardening
 - [ ] PR-07 Deployment + operations
 - [ ] PR-08 GA readiness + security closure

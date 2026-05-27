@@ -42,7 +42,9 @@ CREATE TABLE "mcp_policy_binding" (
   "id" uuid PRIMARY KEY NOT NULL,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-  "principal_type" text NOT NULL,
+  "principal_type" text NOT NULL
+    CONSTRAINT "mcp_policy_binding_principal_type_check"
+    CHECK ("principal_type" IN ('delegated_user', 'service_account')),
   "principal_id" text NOT NULL,
   "organization_id" text,
   "tool_name" text,
@@ -62,7 +64,9 @@ CREATE TABLE "mcp_audit_event" (
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
   "correlation_id" text NOT NULL,
-  "principal_type" text NOT NULL,
+  "principal_type" text NOT NULL
+    CONSTRAINT "mcp_audit_event_principal_type_check"
+    CHECK ("principal_type" IN ('delegated_user', 'service_account')),
   "principal_id" text NOT NULL,
   "organization_id" text,
   "connection_id" text,

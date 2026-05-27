@@ -91,11 +91,11 @@ DURABULL_AUTHLESS=true APP_BASE_URL=http://localhost:3001 bun run mcp:e2e
 
 - Added MCP read-tool registration plumbing in `@durabull/mcp` and request-context propagation for tool handlers.
 - Added first customer-facing read tool: `list_connections` with bounded `pageSize` and cursor pagination.
-- Added next diagnostic tools: `list_queues`, `get_queue`, and `list_jobs` behind the same policy/principal context path.
+- Added next diagnostic tools: `list_queues`, `get_queue`, `list_jobs`, `get_job`, `get_job_logs`, and `get_job_stacktraces` behind the same policy/principal context path.
 - Added API handler implementation constrained by principal type:
   - delegated users: only connections in org memberships
   - service accounts: only connections in bound organization
-- Added integration coverage for delegated pagination and service-account scoped list access.
+- Added integration coverage for delegated pagination, service-account scoped list access, and `get_job*` authorization/error paths.
 
 ---
 
@@ -115,7 +115,7 @@ DURABULL_AUTHLESS=true APP_BASE_URL=http://localhost:3001 bun run mcp:e2e
 | PR | Missing capability |
 | --- | --- |
 | PR-04 | Principal model, org/connection policy on tool calls |
-| PR-05 | `mcp:jobs:read`, failures, logs, diagnostics tools |
+| PR-05 | Remaining diagnostics tools (`get_failure_events`, `get_queue_metrics`, `get_workers`, `explain_job_failure`) |
 | PR-06 | Redaction, rate limits, audit logging |
 | PR-07 | Cloud/self-host deploy, runbooks |
 | PR-08 | Security review closure, GA docs |

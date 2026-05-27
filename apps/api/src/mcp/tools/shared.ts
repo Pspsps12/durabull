@@ -1,4 +1,4 @@
-import { redisConnectionRepository } from '@durabull/dal'
+import { mcpPolicyRepository, redisConnectionRepository } from '@durabull/dal'
 import type { ListConnectionsHandlerInput } from '@durabull/mcp'
 
 export type ToolPrincipal = ListConnectionsHandlerInput['principal']
@@ -16,6 +16,14 @@ export class McpToolError extends Error {
 export async function resolveConnectionForPrincipal(principal: ToolPrincipal, connectionId: string) {
   if (principal.type === 'service_account') {
     return redisConnectionRepository.findById(connectionId, principal.organizationId)
+  }
+
+  const hasAccess = await mcpPolicyRepository.canDelegatedUserAccessConnection(
+    principal.userId,
+    connectionId
+  )
+  if (!hasAccess) {
+    return null
   }
   return redisConnectionRepository.findByIdUnsafe(connectionId)
 }

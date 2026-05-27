@@ -24,7 +24,7 @@ function parseToolCallBody(body: unknown): McpToolCallRequest | null {
   const safeArgs: Record<string, unknown> = args && typeof args === 'object' ? args : {}
   const connectionId =
     typeof safeArgs.connectionId === 'string' && safeArgs.connectionId.trim().length > 0
-      ? safeArgs.connectionId
+      ? safeArgs.connectionId.trim()
       : null
 
   return { toolName, arguments: safeArgs, connectionId }

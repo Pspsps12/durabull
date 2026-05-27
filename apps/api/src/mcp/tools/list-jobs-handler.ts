@@ -88,6 +88,8 @@ export async function listJobsHandler(input: ListJobsHandlerInput): Promise<List
 
   const states: JobState[] = input.status ? [input.status as JobState] : [...ALL_STATES]
   const hasClientFilter = Boolean(input.name || input.jobId)
+  const pageSize = Math.min(100, Math.max(1, input.pageSize))
+  const offset = decodeCursor(input.cursor)
 
   if (hasClientFilter) {
     const jobsWithState: Array<{
@@ -119,17 +121,18 @@ export async function listJobsHandler(input: ListJobsHandlerInput): Promise<List
         delay: job.delay ?? 0,
         priority: job.opts.priority ?? 0,
       }))
+
+    const page = filtered.slice(offset, offset + pageSize)
+    const nextOffset = offset + pageSize
     return {
       connectionId: connection.id,
       queueName: input.queueName,
-      jobs: filtered,
+      jobs: page,
       total: filtered.length,
-      nextCursor: null,
+      nextCursor: nextOffset < filtered.length ? encodeCursor(nextOffset) : null,
     }
   }
 
-  const pageSize = Math.min(100, Math.max(1, input.pageSize))
-  const offset = decodeCursor(input.cursor)
   const end = offset + pageSize - 1
 
   const jobs = await queue.getJobs(states, offset, end)

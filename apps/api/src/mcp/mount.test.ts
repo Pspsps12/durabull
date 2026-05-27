@@ -35,6 +35,7 @@ const mutableEnv = env as {
 const originalAppBaseUrl = mutableEnv.APP_BASE_URL
 const originalAuthless = mutableEnv.DURABULL_AUTHLESS
 const originalPgliteDir = process.env.DURABULL_PGLITE_DIR
+const originalRedisUrlEncryptionKey = process.env.DURABULL_REDIS_URL_ENCRYPTION_KEY
 
 const authlessAuthorization = `Bearer ${DEFAULT_AUTHLESS_MCP_BEARER_TOKEN}`
 const mcpResource = 'http://localhost:3000/mcp'
@@ -67,6 +68,12 @@ describe('api MCP ingress', () => {
       process.env.DURABULL_PGLITE_DIR = originalPgliteDir
     } else {
       delete process.env.DURABULL_PGLITE_DIR
+    }
+
+    if (originalRedisUrlEncryptionKey) {
+      process.env.DURABULL_REDIS_URL_ENCRYPTION_KEY = originalRedisUrlEncryptionKey
+    } else {
+      delete process.env.DURABULL_REDIS_URL_ENCRYPTION_KEY
     }
 
     if (tempPgliteDir) {
@@ -326,6 +333,17 @@ describe('api MCP ingress', () => {
 
     const db = await getDb()
     const now = new Date()
+    const userId = `scope-user-${crypto.randomUUID().slice(0, 8)}`
+    await db.insert(user).values({
+      id: userId,
+      email: `${userId}@example.com`,
+      emailVerified: true,
+      name: 'Scope Test User',
+      createdAt: now,
+      updatedAt: now,
+      image: null,
+      lastSignInAt: null,
+    })
     const clientId = `scope-client-${crypto.randomUUID().slice(0, 8)}`
     await db.insert(oauthApplication).values({
       id: crypto.randomUUID(),
@@ -347,7 +365,7 @@ describe('api MCP ingress', () => {
       accessTokenExpiresAt: future,
       refreshTokenExpiresAt: future,
       clientId,
-      userId: null,
+      userId,
       scopes: 'mcp:discover',
       resource: mcpResource,
       createdAt: now,
@@ -387,6 +405,9 @@ describe('api MCP ingress', () => {
     )
 
     expect(response.status).toBe(403)
+    const denialBody = await response.text()
+    expect(denialBody).toContain('missing_scopes')
+    expect(denialBody).toContain('mcp:jobs:read')
   })
 
   it('returns 403 for logs tools when token lacks mcp:logs:read scope', async () => {
@@ -502,6 +523,9 @@ describe('api MCP ingress', () => {
     )
 
     expect(response.status).toBe(403)
+    const denialBody = await response.text()
+    expect(denialBody).toContain('missing_scopes')
+    expect(denialBody).toContain('mcp:logs:read')
   })
 
   it('denies service-account tool calls without policy bindings', async () => {

@@ -13,6 +13,7 @@ const mutableEnv = env as {
 }
 
 const originalDatabaseUrl = mutableEnv.DATABASE_URL
+const originalProcessDatabaseUrl = process.env.DATABASE_URL
 const originalPgliteDir = process.env.DURABULL_PGLITE_DIR
 let tempPgliteDir = ''
 
@@ -28,6 +29,11 @@ describe('mcpPolicyRepository', () => {
   afterEach(async () => {
     await closeDb()
     mutableEnv.DATABASE_URL = originalDatabaseUrl
+    if (originalProcessDatabaseUrl) {
+      process.env.DATABASE_URL = originalProcessDatabaseUrl
+    } else {
+      delete process.env.DATABASE_URL
+    }
 
     if (originalPgliteDir) {
       process.env.DURABULL_PGLITE_DIR = originalPgliteDir

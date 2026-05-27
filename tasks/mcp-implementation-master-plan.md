@@ -86,7 +86,7 @@ Every incoming agent must complete this before writing code.
 - [x] Step 1 complete: MCP module + `/mcp` transport ingress on unified API app (PR-02 merged).
 - [x] Step 2 complete: OAuth discovery + token validation middleware (PR-03 merged).
 - [ ] Step 3 in progress: principal resolver + policy engine (PR-04 branch in progress).
-- [ ] Step 5 started: initial read tools (`list_connections`, `list_queues`, `get_queue`, `list_jobs`) wired with policy + principal context and pagination scaffolding.
+- [ ] Step 5 started: initial read tools (`list_connections`, `list_queues`, `get_queue`, `list_jobs`, `get_job`, `get_job_logs`, `get_job_stacktraces`) wired with policy + principal context and pagination scaffolding.
 - [ ] Steps 4, 6-7 pending (shared domain adapters expansion, hardening, deployment, GA closure).
 
 ---

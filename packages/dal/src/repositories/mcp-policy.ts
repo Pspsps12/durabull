@@ -1,4 +1,5 @@
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
+import { promisify } from 'node:util'
 import { uuidv7 } from '@durabull/utils/uuid'
 import { and, eq, gt, isNull, or } from 'drizzle-orm'
 
@@ -15,18 +16,21 @@ import { member } from '../db/schemas/organization/schema'
 import { redisConnection } from '../db/schemas/redis-connection/schema'
 
 const MCP_SECRET_PREFIX = 'dbsa'
+const scryptAsync = promisify(scrypt)
 
-function hashSecret(secret: string): string {
+async function hashSecret(secret: string): Promise<string> {
   const salt = randomBytes(16).toString('hex')
-  const digest = scryptSync(secret, salt, 64).toString('hex')
+  const digestBuffer = (await scryptAsync(secret, salt, 64)) as Buffer
+  const digest = digestBuffer.toString('hex')
   return `scrypt:${salt}:${digest}`
 }
 
-function verifySecretHash(secret: string, storedHash: string): boolean {
+async function verifySecretHash(secret: string, storedHash: string): Promise<boolean> {
   const [algo, salt, expectedDigest] = storedHash.split(':')
   if (algo !== 'scrypt' || !salt || !expectedDigest) return false
 
-  const actualDigest = scryptSync(secret, salt, 64).toString('hex')
+  const digestBuffer = (await scryptAsync(secret, salt, 64)) as Buffer
+  const actualDigest = digestBuffer.toString('hex')
   if (actualDigest.length !== expectedDigest.length) {
     return false
   }
@@ -97,7 +101,7 @@ export const mcpPolicyRepository = {
         updatedAt: now,
         serviceAccountId,
         label: opts?.label ?? 'primary',
-        secretHash: hashSecret(secret),
+        secretHash: await hashSecret(secret),
         secretLastFour: secret.slice(-4),
         createdByUserId: opts?.createdByUserId ?? null,
         expiresAt: opts?.expiresAt ?? null,
@@ -111,22 +115,37 @@ export const mcpPolicyRepository = {
   async rotateServiceAccountSecret(serviceAccountId: string, opts?: { createdByUserId?: string | null; label?: string | null; revokeActiveSecrets?: boolean }) {
     const db = await getDb()
     const now = new Date()
-
-    if (opts?.revokeActiveSecrets ?? true) {
-      await db
-        .update(mcpServiceAccountSecret)
-        .set({ revokedAt: now, updatedAt: now })
-        .where(
-          and(
-            eq(mcpServiceAccountSecret.serviceAccountId, serviceAccountId),
-            isNull(mcpServiceAccountSecret.revokedAt)
+    return db.transaction(async (tx) => {
+      if (opts?.revokeActiveSecrets ?? true) {
+        await tx
+          .update(mcpServiceAccountSecret)
+          .set({ revokedAt: now, updatedAt: now })
+          .where(
+            and(
+              eq(mcpServiceAccountSecret.serviceAccountId, serviceAccountId),
+              isNull(mcpServiceAccountSecret.revokedAt)
+            )
           )
-        )
-    }
+      }
 
-    return this.issueServiceAccountSecret(serviceAccountId, {
-      createdByUserId: opts?.createdByUserId,
-      label: opts?.label ?? 'rotated',
+      const secret = generateServiceAccountSecret()
+      const [record] = await tx
+        .insert(mcpServiceAccountSecret)
+        .values({
+          id: uuidv7(),
+          createdAt: now,
+          updatedAt: now,
+          serviceAccountId,
+          label: opts?.label ?? 'rotated',
+          secretHash: await hashSecret(secret),
+          secretLastFour: secret.slice(-4),
+          createdByUserId: opts?.createdByUserId ?? null,
+          expiresAt: null,
+          revokedAt: null,
+        })
+        .returning()
+
+      return { secret, record }
     })
   },
 
@@ -146,7 +165,12 @@ export const mcpPolicyRepository = {
         )
       )
 
-    return rows.some((row) => verifySecretHash(secret, row.secretHash))
+    for (const row of rows) {
+      if (await verifySecretHash(secret, row.secretHash)) {
+        return true
+      }
+    }
+    return false
   },
 
   async createPolicyBinding(input: CreateMcpPolicyBindingInput) {
