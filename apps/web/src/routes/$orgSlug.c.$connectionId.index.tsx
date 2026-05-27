@@ -285,7 +285,7 @@ function Dashboard() {
                 ))}
               </div>
             </div>
-          ) : queues.length === 0 ? (
+          ) : (data?.total ?? 0) === 0 ? (
             <EmptyState />
           ) : (
             <QueueTable
