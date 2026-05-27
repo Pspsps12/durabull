@@ -2,6 +2,8 @@ import { AnalyticsEvents, trackEvent } from '@durabull/analytics'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import {
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   Eye,
   EyeOff,
@@ -55,6 +57,11 @@ interface QueueSummary {
 interface QueueTableProps {
   queues: QueueSummary[]
   className?: string
+  page?: number
+  totalPages?: number
+  total?: number
+  isPlaceholderData?: boolean
+  onPageChange?: (page: number) => void
 }
 
 /**
@@ -71,8 +78,17 @@ function getTotalJobs(queue: QueueSummary): number {
   )
 }
 
-export function QueueTable({ queues, className }: QueueTableProps) {
+export function QueueTable({
+  queues,
+  className,
+  page = 1,
+  totalPages = 1,
+  total = 0,
+  isPlaceholderData,
+  onPageChange,
+}: QueueTableProps) {
   const [hideEmpty, setHideEmpty] = useState(false)
+  const hasPagination = totalPages > 1
 
   // Memoize filtered queues to avoid recalculating on unrelated re-renders
   const { filteredQueues, emptyCount } = useMemo(() => {
@@ -114,30 +130,62 @@ export function QueueTable({ queues, className }: QueueTableProps) {
           </TableBody>
         </Table>
 
-        {/* Empty queues toggle */}
-        {emptyCount > 0 && (
+        {/* Footer: empty toggle + pagination */}
+        {(emptyCount > 0 || hasPagination) && (
           <div className="border-t px-4 py-3 flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">
-              {emptyCount} empty queue{emptyCount !== 1 ? 's' : ''}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleHideEmpty}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              {hideEmpty ? (
-                <>
-                  <Eye className="mr-2 h-4 w-4" />
-                  Show empty
-                </>
-              ) : (
-                <>
-                  <EyeOff className="mr-2 h-4 w-4" />
-                  Hide empty
-                </>
+            <div>
+              {emptyCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleHideEmpty}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  {hideEmpty ? (
+                    <>
+                      <Eye className="mr-2 h-4 w-4" />
+                      Show empty
+                    </>
+                  ) : (
+                    <>
+                      <EyeOff className="mr-2 h-4 w-4" />
+                      Hide empty
+                    </>
+                  )}
+                </Button>
               )}
-            </Button>
+            </div>
+
+            {hasPagination && (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground">
+                  Page {page} of {totalPages}
+                  <span className="hidden sm:inline"> ({total} queues)</span>
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    disabled={page <= 1 || isPlaceholderData}
+                    onClick={() => onPageChange?.(page - 1)}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="sr-only">Previous page</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    disabled={page >= totalPages || isPlaceholderData}
+                    onClick={() => onPageChange?.(page + 1)}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                    <span className="sr-only">Next page</span>
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

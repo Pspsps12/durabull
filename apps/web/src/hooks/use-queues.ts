@@ -203,7 +203,10 @@ export type {
  * Includes connection ID for proper cache isolation
  */
 export const queryKeys = {
-  queues: (connectionId: string) => ['queues', connectionId] as const,
+  queues: (connectionId: string, page?: number, pageSize?: number) =>
+    page !== undefined || pageSize !== undefined
+      ? (['queues', connectionId, { page, pageSize }] as const)
+      : (['queues', connectionId] as const),
   queueDiscovery: (connectionId: string) => ['queues', connectionId, 'discovery'] as const,
   queue: (connectionId: string, name: string) => ['queue', connectionId, name] as const,
   queueMetrics: (connectionId: string, name: string, options?: QueueMetricsOptions) =>
@@ -235,21 +238,28 @@ function useConnectionIdFromContextOrRoute(): string | undefined {
 }
 
 // Queue Queries
-export function useQueues() {
+export function useQueues(options?: { page?: number; pageSize?: number }) {
   const connectionId = useConnectionIdFromContextOrRoute()
+  const page = options?.page
+  const pageSize = options?.pageSize
 
   return useQuery({
-    queryKey: queryKeys.queues(connectionId ?? ''),
+    queryKey: queryKeys.queues(connectionId ?? '', page, pageSize),
     queryFn: async () => {
-      const res = await api.c[':connectionId'].queues.$get({
-        param: { connectionId: connectionId! },
-      })
-      return handleRes<ListQueuesResponse>(res)
+      const params = new URLSearchParams()
+      if (page !== undefined) params.set('page', String(page))
+      if (pageSize !== undefined) params.set('pageSize', String(pageSize))
+      const query = params.toString()
+
+      return fetchApi<ListQueuesResponse>(
+        `/api/c/${connectionId}/queues${query ? `?${query}` : ''}`
+      )
     },
     refetchInterval: (query) => {
       const hasPendingDiscoveryRows = (query.state.data?.discovery?.indexed.pending ?? 0) > 0
       return query.state.data?.discovery?.running || hasPendingDiscoveryRows ? 2000 : 10_000
     },
+    placeholderData: (previousData) => previousData,
     enabled: !!connectionId,
   })
 }

@@ -10,7 +10,7 @@ import {
   Timer,
   Zap,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppTopBar } from '@/components/app-top-bar'
 import { QueueTable } from '@/components/queue-table'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,7 @@ import {
   useQueues,
 } from '@/hooks/use-queues'
 import { REDIS_CONNECTION_ERROR_MESSAGE } from '@/lib/api'
+import { PAGINATION } from '@/lib/constants'
 import { cn, formatNumber } from '@/lib/utils'
 
 const AUTO_DISCOVERY_MIN_INTERVAL_MS = 5 * 60 * 1000
@@ -52,7 +53,11 @@ export const Route = createFileRoute('/$orgSlug/c/$connectionId/')({
 function Dashboard() {
   const routeParams = useParams({ strict: false }) as { connectionId?: string }
   const connectionId = routeParams.connectionId ?? ''
-  const { data, isLoading, error } = useQueues()
+  const [page, setPage] = useState(1)
+  const { data, isLoading, error, isPlaceholderData } = useQueues({
+    page,
+    pageSize: PAGINATION.QUEUES_PAGE_SIZE,
+  })
   const discoveryQuery = useQueueDiscoveryStatus()
   const discoverMutation = useDiscoverQueues()
   const hasAutoTriggeredDiscovery = useRef(false)
@@ -81,6 +86,7 @@ function Dashboard() {
   useEffect(() => {
     if (!connectionId) return
     hasAutoTriggeredDiscovery.current = false
+    setPage(1)
   }, [connectionId])
 
   useEffect(() => {
@@ -282,7 +288,14 @@ function Dashboard() {
           ) : queues.length === 0 ? (
             <EmptyState />
           ) : (
-            <QueueTable queues={queues} />
+            <QueueTable
+              queues={queues}
+              page={data?.page ?? 1}
+              totalPages={data?.totalPages ?? 1}
+              total={data?.total ?? 0}
+              isPlaceholderData={isPlaceholderData}
+              onPageChange={setPage}
+            />
           )}
         </div>
       </div>
