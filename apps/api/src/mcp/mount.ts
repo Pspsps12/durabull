@@ -5,10 +5,14 @@ import { APP_VERSION } from '../lib/build-info'
 import { assertMcpAuthConfiguration } from './auth/mcp-auth-config'
 import { createMcpSessionMiddleware } from './auth/mcp-session-middleware'
 import { createMcpPolicyMiddleware } from './policy/mcp-policy-middleware'
+import { explainJobFailureHandler } from './tools/explain-job-failure-handler'
+import { getFailureEventsHandler } from './tools/get-failure-events-handler'
 import { getJobHandler } from './tools/get-job-handler'
 import { getJobLogsHandler } from './tools/get-job-logs-handler'
 import { getJobStacktracesHandler } from './tools/get-job-stacktraces-handler'
+import { getQueueMetricsHandler } from './tools/get-queue-metrics-handler'
 import { getQueueHandler } from './tools/get-queue-handler'
+import { getWorkersHandler } from './tools/get-workers-handler'
 import { listConnectionsHandler } from './tools/list-connections-handler'
 import { listJobsHandler } from './tools/list-jobs-handler'
 import { listQueuesHandler } from './tools/list-queues-handler'
@@ -40,6 +44,10 @@ export async function mountMcpIngress() {
       getJob: getJobHandler,
       getJobLogs: getJobLogsHandler,
       getJobStacktraces: getJobStacktracesHandler,
+      getFailureEvents: getFailureEventsHandler,
+      getQueueMetrics: getQueueMetricsHandler,
+      getWorkers: getWorkersHandler,
+      explainJobFailure: explainJobFailureHandler,
     },
     requestContextResolver: (c) => {
       const principal = c.get('mcpPrincipal')
@@ -61,6 +69,8 @@ export async function mountMcpIngress() {
                 organizationId: principal.organizationId,
               },
         correlationId: decision?.correlationId,
+        grantedScopes: c.get('mcpGrantedScopes'),
+        resolvedConnection: c.get('mcpResolvedConnection'),
       }
     },
     middleware: [authMiddleware, policyMiddleware],

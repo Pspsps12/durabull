@@ -9,6 +9,24 @@ function toNumber(value: number | string | bigint | null | undefined): number {
   return Number(value)
 }
 
+function buildAlertEventConnectionFilter(
+  connectionId: string,
+  organizationId: string,
+  options: {
+    status?: AlertEventStatus
+    queueName?: string
+    jobId?: string
+  }
+) {
+  return and(
+    eq(alertEvent.connectionId, connectionId),
+    eq(alertEvent.organizationId, organizationId),
+    ...(options.status ? [eq(alertEvent.status, options.status)] : []),
+    ...(options.queueName ? [eq(alertEvent.queueName, options.queueName)] : []),
+    ...(options.jobId ? [sql`${alertEvent.context}->>'jobId' = ${options.jobId}`] : [])
+  )
+}
+
 export const alertEventRepository = {
   async create(data: Omit<NewAlertEvent, 'id' | 'createdAt' | 'updatedAt'>): Promise<AlertEvent> {
     const db = await getDb()
@@ -91,6 +109,26 @@ export const alertEventRepository = {
     return rows[0] ?? null
   },
 
+  async countByConnection(
+    connectionId: string,
+    organizationId: string,
+    options: {
+      status?: AlertEventStatus
+      queueName?: string
+      jobId?: string
+    }
+  ): Promise<number> {
+    const db = await getDb()
+    const [row] = await db
+      .select({
+        total: sql<number>`count(*)`,
+      })
+      .from(alertEvent)
+      .where(buildAlertEventConnectionFilter(connectionId, organizationId, options))
+
+    return toNumber(row?.total)
+  },
+
   async findByConnection(
     connectionId: string,
     organizationId: string,
@@ -106,15 +144,7 @@ export const alertEventRepository = {
     return db
       .select()
       .from(alertEvent)
-      .where(
-        and(
-          eq(alertEvent.connectionId, connectionId),
-          eq(alertEvent.organizationId, organizationId),
-          ...(options.status ? [eq(alertEvent.status, options.status)] : []),
-          ...(options.queueName ? [eq(alertEvent.queueName, options.queueName)] : []),
-          ...(options.jobId ? [sql`${alertEvent.context}->>'jobId' = ${options.jobId}`] : [])
-        )
-      )
+      .where(buildAlertEventConnectionFilter(connectionId, organizationId, options))
       .orderBy(desc(alertEvent.firedAt))
       .offset(options.offset)
       .limit(options.limit)

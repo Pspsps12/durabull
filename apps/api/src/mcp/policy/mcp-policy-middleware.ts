@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 import { createMiddleware } from 'hono/factory'
 
 import type { McpSession } from '../auth/mcp-session-middleware'
+import { resolveConnectionForPrincipal } from '../tools/shared'
 import { evaluateMcpToolPolicy } from './policy-engine'
 import { resolveMcpPrincipal } from './principal-resolver'
 import type { McpPolicyDecision, McpToolCallRequest, McpPrincipal } from './types'
@@ -225,8 +226,37 @@ export function createMcpPolicyMiddleware() {
       )
     }
 
+    if (toolCall.connectionId) {
+      const principalForConnection =
+        principal.type === 'delegated_user'
+          ? {
+              type: 'delegated_user' as const,
+              principalId: principal.principalId,
+              userId: principal.userId,
+            }
+          : {
+              type: 'service_account' as const,
+              principalId: principal.principalId,
+              organizationId: principal.organizationId,
+            }
+      const resolvedConnection = await resolveConnectionForPrincipal(
+        principalForConnection,
+        toolCall.connectionId
+      )
+      if (resolvedConnection) {
+        c.set('mcpResolvedConnection', resolvedConnection)
+      }
+    }
+
     c.set('mcpPrincipal', principal)
     c.set('mcpPolicyDecision', decision)
+    c.set(
+      'mcpGrantedScopes',
+      session.scopes
+        .split(/\s+/)
+        .map((scope) => scope.trim())
+        .filter(Boolean)
+    )
     return next()
   })
 }
@@ -237,5 +267,7 @@ declare module 'hono' {
     mcpPrincipal: McpPrincipal
     mcpPolicyDecision: McpPolicyDecision
     mcpSession: McpSession
+    mcpResolvedConnection?: import('@durabull/mcp').McpResolvedConnection
+    mcpGrantedScopes?: string[]
   }
 }

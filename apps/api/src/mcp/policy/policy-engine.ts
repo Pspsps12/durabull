@@ -12,6 +12,15 @@ const TOOL_REQUIRED_SCOPES: Record<string, string[]> = {
   get_job: ['mcp:jobs:read'],
   get_job_logs: ['mcp:logs:read'],
   get_job_stacktraces: ['mcp:logs:read'],
+  get_failure_events: ['mcp:failures:read'],
+  get_queue_metrics: ['mcp:diagnostics:read'],
+  get_workers: ['mcp:jobs:read'],
+  explain_job_failure: [
+    'mcp:diagnostics:read',
+    'mcp:jobs:read',
+    'mcp:logs:read',
+    'mcp:failures:read',
+  ],
 }
 
 function parseScopes(scopeString: string): string[] {
@@ -90,11 +99,13 @@ export async function evaluateMcpToolPolicy(input: {
 
   if (input.principal.type === 'service_account') {
     const policyBindings = await mcpPolicyRepository.listPolicyBindings('service_account', input.principal.serviceAccountId)
-    const hasPolicyBinding = policyBindings.some(
-      (binding) =>
-        requiredScopes.includes(binding.scope) &&
-        (binding.toolName === null || binding.toolName === input.call.toolName) &&
-        (binding.organizationId === null || binding.organizationId === input.principal.organizationId)
+    const hasPolicyBinding = requiredScopes.every((scope) =>
+      policyBindings.some(
+        (binding) =>
+          binding.scope === scope &&
+          (binding.toolName === null || binding.toolName === input.call.toolName) &&
+          (binding.organizationId === null || binding.organizationId === input.principal.organizationId)
+      )
     )
 
     if (!hasPolicyBinding) {

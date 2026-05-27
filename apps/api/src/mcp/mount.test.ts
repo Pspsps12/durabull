@@ -202,6 +202,10 @@ describe('api MCP ingress', () => {
     expect(toolNames).toContain('get_job')
     expect(toolNames).toContain('get_job_logs')
     expect(toolNames).toContain('get_job_stacktraces')
+    expect(toolNames).toContain('get_failure_events')
+    expect(toolNames).toContain('get_queue_metrics')
+    expect(toolNames).toContain('get_workers')
+    expect(toolNames).toContain('explain_job_failure')
 
     const callResponse = await postMcp(
       {
@@ -528,6 +532,239 @@ describe('api MCP ingress', () => {
     expect(denialBody).toContain('mcp:logs:read')
   })
 
+  it('returns 403 for failure tools when token lacks mcp:failures:read scope', async () => {
+    mutableEnv.DURABULL_AUTHLESS = false
+    await closeDb()
+    ;({ app } = await createApiApp({ enableLogging: false }))
+
+    const db = await getDb()
+    const now = new Date()
+    const userId = `failures-user-${crypto.randomUUID().slice(0, 8)}`
+    const orgId = `failures-org-${crypto.randomUUID().slice(0, 8)}`
+
+    await db.insert(user).values({
+      id: userId,
+      email: `${userId}@example.com`,
+      emailVerified: true,
+      name: 'Failures Scope User',
+      createdAt: now,
+      updatedAt: now,
+      image: null,
+      lastSignInAt: null,
+    })
+    await db.insert(organization).values({
+      id: orgId,
+      name: 'Failures Scope Org',
+      slug: `failures-scope-org-${crypto.randomUUID().slice(0, 8)}`,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const [connection] = await db
+      .insert(redisConnection)
+      .values({
+        id: crypto.randomUUID(),
+        name: 'Failures Scope Connection',
+        url: 'redis://localhost:6379/4',
+        isDefault: true,
+        environment: 'development',
+        prefix: 'bull',
+        allowSelfSignedCerts: false,
+        organizationId: orgId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+    await db.insert(member).values({
+      id: crypto.randomUUID(),
+      organizationId: orgId,
+      userId,
+      role: 'member',
+      createdAt: now,
+      updatedAt: now,
+    })
+    const clientId = `failures-scope-client-${crypto.randomUUID().slice(0, 8)}`
+    await db.insert(oauthApplication).values({
+      id: crypto.randomUUID(),
+      name: 'failures-scope-client',
+      clientId,
+      redirectUrls: 'http://127.0.0.1/callback',
+      type: 'public',
+      disabled: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const token = `failures-scope-token-${crypto.randomUUID().slice(0, 8)}`
+    const future = new Date(Date.now() + 3600_000)
+    await db.insert(oauthAccessToken).values({
+      id: crypto.randomUUID(),
+      accessToken: token,
+      refreshToken: `refresh-${token}`,
+      accessTokenExpiresAt: future,
+      refreshTokenExpiresAt: future,
+      clientId,
+      userId,
+      scopes: 'mcp:discover mcp:jobs:read',
+      resource: mcpResource,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const initResponse = await postMcp(
+      {
+        jsonrpc: MCP_JSON_RPC_VERSION,
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          capabilities: {},
+          clientInfo: { name: 'failures-scope-test', version: '1.0.0' },
+        },
+      },
+      { authorization: `Bearer ${token}` }
+    )
+    expect(initResponse.status).toBe(200)
+    const sessionId = initResponse.headers.get('mcp-session-id')
+    expect(sessionId).toBeTruthy()
+
+    const response = await postMcp(
+      {
+        jsonrpc: MCP_JSON_RPC_VERSION,
+        id: 2,
+        method: 'tools/call',
+        params: {
+          name: 'get_failure_events',
+          arguments: {
+            connectionId: connection.id,
+            pageSize: 10,
+          },
+        },
+      },
+      { authorization: `Bearer ${token}`, sessionId: sessionId ?? undefined }
+    )
+
+    expect(response.status).toBe(403)
+    const denialBody = await response.text()
+    expect(denialBody).toContain('missing_scopes')
+    expect(denialBody).toContain('mcp:failures:read')
+  })
+
+  it('returns 403 for explain_job_failure when token lacks composite diagnostic scopes', async () => {
+    mutableEnv.DURABULL_AUTHLESS = false
+    await closeDb()
+    ;({ app } = await createApiApp({ enableLogging: false }))
+
+    const db = await getDb()
+    const now = new Date()
+    const userId = `diagnostics-user-${crypto.randomUUID().slice(0, 8)}`
+    const orgId = `diagnostics-org-${crypto.randomUUID().slice(0, 8)}`
+
+    await db.insert(user).values({
+      id: userId,
+      email: `${userId}@example.com`,
+      emailVerified: true,
+      name: 'Diagnostics Scope User',
+      createdAt: now,
+      updatedAt: now,
+      image: null,
+      lastSignInAt: null,
+    })
+    await db.insert(organization).values({
+      id: orgId,
+      name: 'Diagnostics Scope Org',
+      slug: `diagnostics-scope-org-${crypto.randomUUID().slice(0, 8)}`,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const [connection] = await db
+      .insert(redisConnection)
+      .values({
+        id: crypto.randomUUID(),
+        name: 'Diagnostics Scope Connection',
+        url: 'redis://localhost:6379/5',
+        isDefault: true,
+        environment: 'development',
+        prefix: 'bull',
+        allowSelfSignedCerts: false,
+        organizationId: orgId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+    await db.insert(member).values({
+      id: crypto.randomUUID(),
+      organizationId: orgId,
+      userId,
+      role: 'member',
+      createdAt: now,
+      updatedAt: now,
+    })
+    const clientId = `diagnostics-scope-client-${crypto.randomUUID().slice(0, 8)}`
+    await db.insert(oauthApplication).values({
+      id: crypto.randomUUID(),
+      name: 'diagnostics-scope-client',
+      clientId,
+      redirectUrls: 'http://127.0.0.1/callback',
+      type: 'public',
+      disabled: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const token = `diagnostics-scope-token-${crypto.randomUUID().slice(0, 8)}`
+    const future = new Date(Date.now() + 3600_000)
+    await db.insert(oauthAccessToken).values({
+      id: crypto.randomUUID(),
+      accessToken: token,
+      refreshToken: `refresh-${token}`,
+      accessTokenExpiresAt: future,
+      refreshTokenExpiresAt: future,
+      clientId,
+      userId,
+      scopes: 'mcp:discover mcp:jobs:read mcp:logs:read mcp:failures:read',
+      resource: mcpResource,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const initResponse = await postMcp(
+      {
+        jsonrpc: MCP_JSON_RPC_VERSION,
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          capabilities: {},
+          clientInfo: { name: 'diagnostics-scope-test', version: '1.0.0' },
+        },
+      },
+      { authorization: `Bearer ${token}` }
+    )
+    expect(initResponse.status).toBe(200)
+    const sessionId = initResponse.headers.get('mcp-session-id')
+    expect(sessionId).toBeTruthy()
+
+    const response = await postMcp(
+      {
+        jsonrpc: MCP_JSON_RPC_VERSION,
+        id: 2,
+        method: 'tools/call',
+        params: {
+          name: 'explain_job_failure',
+          arguments: {
+            connectionId: connection.id,
+            queueName: 'emails',
+            jobId: 'abc',
+          },
+        },
+      },
+      { authorization: `Bearer ${token}`, sessionId: sessionId ?? undefined }
+    )
+
+    expect(response.status).toBe(403)
+    const denialBody = await response.text()
+    expect(denialBody).toContain('missing_scopes')
+    expect(denialBody).toContain('mcp:diagnostics:read')
+  })
+
   it('denies service-account tool calls without policy bindings', async () => {
     mutableEnv.DURABULL_AUTHLESS = false
     await closeDb()
@@ -819,6 +1056,113 @@ describe('api MCP ingress', () => {
       result?: { content?: Array<{ text?: string }> }
     }
     expect(callPayload.result?.content?.[0]?.text).toBe('pong')
+  })
+
+  it('denies explain_job_failure for service accounts missing a composite scope binding', async () => {
+    mutableEnv.DURABULL_AUTHLESS = false
+    await closeDb()
+    ;({ app } = await createApiApp({ enableLogging: false }))
+
+    const db = await getDb()
+    const now = new Date()
+    const orgId = `org-${crypto.randomUUID().slice(0, 8)}`
+    await db.insert(organization).values({
+      id: orgId,
+      name: 'Composite Scope Org',
+      slug: `composite-scope-org-${crypto.randomUUID().slice(0, 8)}`,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const clientId = `svc-client-${crypto.randomUUID().slice(0, 8)}`
+    await db.insert(oauthApplication).values({
+      id: crypto.randomUUID(),
+      name: 'composite-scope-client',
+      clientId,
+      redirectUrls: 'http://127.0.0.1/callback',
+      type: 'confidential',
+      disabled: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const [serviceAccount] = await db
+      .insert(mcpServiceAccount)
+      .values({
+        id: crypto.randomUUID(),
+        organizationId: orgId,
+        name: 'composite-scope-account',
+        oauthClientId: clientId,
+        disabled: false,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+    await db.insert(mcpPolicyBinding).values({
+      id: crypto.randomUUID(),
+      principalType: 'service_account',
+      principalId: serviceAccount.id,
+      organizationId: orgId,
+      toolName: 'explain_job_failure',
+      scope: 'mcp:diagnostics:read',
+      disabled: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const token = `svc-token-${crypto.randomUUID().slice(0, 8)}`
+    const future = new Date(Date.now() + 3600_000)
+    await db.insert(oauthAccessToken).values({
+      id: crypto.randomUUID(),
+      accessToken: token,
+      refreshToken: `refresh-${token}`,
+      accessTokenExpiresAt: future,
+      refreshTokenExpiresAt: future,
+      clientId,
+      userId: null,
+      scopes:
+        'mcp:discover mcp:diagnostics:read mcp:jobs:read mcp:logs:read mcp:failures:read',
+      resource: mcpResource,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const initResponse = await postMcp(
+      {
+        jsonrpc: MCP_JSON_RPC_VERSION,
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          capabilities: {},
+          clientInfo: { name: 'composite-scope-test', version: '1.0.0' },
+        },
+      },
+      { authorization: `Bearer ${token}` }
+    )
+    expect(initResponse.status).toBe(200)
+    const sessionId = initResponse.headers.get('mcp-session-id')
+    expect(sessionId).toBeTruthy()
+
+    const callResponse = await postMcp(
+      {
+        jsonrpc: MCP_JSON_RPC_VERSION,
+        id: 2,
+        method: 'tools/call',
+        params: {
+          name: 'explain_job_failure',
+          arguments: {
+            connectionId: crypto.randomUUID(),
+            queueName: 'emails',
+            jobId: 'job-1',
+          },
+        },
+      },
+      { authorization: `Bearer ${token}`, sessionId: sessionId ?? undefined }
+    )
+
+    expect(callResponse.status).toBe(403)
+    const denialBody = await callResponse.text()
+    expect(denialBody).toContain('service_account_policy_denied')
   })
 
   it('denies delegated-user tool calls when connection is outside membership boundary', async () => {

@@ -2,6 +2,8 @@
 import '@durabull/env'
 
 import {
+  alertEventRepository,
+  alertRuleRepository,
   getDb,
   mcpPolicyBinding,
   mcpServiceAccount,
@@ -228,6 +230,28 @@ async function main() {
       createdAt: now,
       updatedAt: now,
     },
+    {
+      id: crypto.randomUUID(),
+      principalType: 'service_account',
+      principalId: serviceAccount.id,
+      organizationId: orgId,
+      toolName: null,
+      scope: 'mcp:failures:read',
+      disabled: false,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: crypto.randomUUID(),
+      principalType: 'service_account',
+      principalId: serviceAccount.id,
+      organizationId: orgId,
+      toolName: null,
+      scope: 'mcp:diagnostics:read',
+      disabled: false,
+      createdAt: now,
+      updatedAt: now,
+    },
   ])
 
   const accessExp = new Date(Date.now() + 60 * 60 * 1000)
@@ -245,7 +269,7 @@ async function main() {
       refreshTokenExpiresAt: accessExp,
       clientId: delegatedClientId,
       userId,
-      scopes: 'mcp:discover mcp:jobs:read mcp:logs:read',
+      scopes: 'mcp:discover mcp:jobs:read mcp:logs:read mcp:failures:read mcp:diagnostics:read',
       resource,
       createdAt: now,
       updatedAt: now,
@@ -271,7 +295,7 @@ async function main() {
       refreshTokenExpiresAt: accessExp,
       clientId: serviceClientId,
       userId: null,
-      scopes: 'mcp:discover mcp:jobs:read mcp:logs:read',
+      scopes: 'mcp:discover mcp:jobs:read mcp:logs:read mcp:failures:read mcp:diagnostics:read',
       resource,
       createdAt: now,
       updatedAt: now,
@@ -337,6 +361,37 @@ async function main() {
   const jobId = String(createdJob.id)
   add('Live queue/job setup', !!jobId, `connection=${connection.id}, queue=${queueName}, job=${jobId}`)
 
+  const alertRule = await alertRuleRepository.create({
+    organizationId: orgId,
+    connectionId: connection.id,
+    name: `mcp-live-rule-${suffix}`,
+    type: 'job_failed',
+    config: { notifyOnEveryFailure: true },
+    enabled: true,
+    notificationChannels: [],
+    cooldownMinutes: 30,
+    queueName,
+    queueFilterMode: null,
+    filterQueueNames: [],
+  })
+  const alertEvent = await alertEventRepository.create({
+    alertRuleId: alertRule.id,
+    organizationId: orgId,
+    connectionId: connection.id,
+    queueName,
+    type: 'job_failed',
+    status: 'firing',
+    summary: `Live MCP failure for job ${jobId}`,
+    context: { jobId, marker: `payload-${suffix}` },
+    dedupeKey: `mcp-live-dedupe-${suffix}`,
+    firedAt: now,
+  })
+  add(
+    'Alert fixture seeded',
+    alertEvent.id.length > 0,
+    `rule=${alertRule.id}, event=${alertEvent.id}`
+  )
+
   const delegatedInit = await initialize(baseUrl, delegatedFullToken)
   add(
     'Delegated initialize',
@@ -385,6 +440,10 @@ async function main() {
     'get_job',
     'get_job_logs',
     'get_job_stacktraces',
+    'get_failure_events',
+    'get_queue_metrics',
+    'get_workers',
+    'explain_job_failure',
   ]
   add(
     'tools/list exposes all MCP tools',
@@ -514,6 +573,109 @@ async function main() {
     getStacktraces.res.ok &&
       getStacktracesJson.stacktraces.some((row) => row.stacktrace.includes(`live-failure-${suffix}`)),
     `status=${getStacktraces.res.status}, traces=${getStacktracesJson.stacktraces.length}`
+  )
+
+  const getFailureEvents = await callTool(
+    baseUrl,
+    delegatedFullToken,
+    delegatedInit.sessionId,
+    'get_failure_events',
+    {
+      connectionId: connection.id,
+      queueName,
+      jobId,
+      pageSize: 10,
+    }
+  )
+  const getFailureEventsJson = JSON.parse(
+    getFailureEvents.body?.result?.content?.[0]?.text ?? '{"events":[]}'
+  ) as { events: Array<{ id: string; summary: string; context: Record<string, unknown> | null }> }
+  add(
+    'get_failure_events',
+    getFailureEvents.res.ok &&
+      getFailureEventsJson.events.some((row) => row.id === alertEvent.id) &&
+      getFailureEventsJson.events.some((row) => row.context?.jobId === jobId),
+    `status=${getFailureEvents.res.status}, events=${getFailureEventsJson.events.length}`
+  )
+
+  const getQueueMetrics = await callTool(
+    baseUrl,
+    delegatedFullToken,
+    delegatedInit.sessionId,
+    'get_queue_metrics',
+    {
+      connectionId: connection.id,
+      queueName,
+      windowMinutes: 60,
+    }
+  )
+  const getQueueMetricsJson = JSON.parse(
+    getQueueMetrics.body?.result?.content?.[0]?.text ?? '{"queueName":""}'
+  ) as {
+    queueName?: string
+    totals?: { failedInWindow?: number }
+    counts?: { failed?: number }
+    queue?: { workersCount?: number }
+  }
+  add(
+    'get_queue_metrics',
+    getQueueMetrics.res.ok &&
+      getQueueMetricsJson.queueName === queueName &&
+      typeof getQueueMetricsJson.totals?.failedInWindow === 'number' &&
+      typeof getQueueMetricsJson.counts?.failed === 'number',
+    `status=${getQueueMetrics.res.status}, failedInWindow=${getQueueMetricsJson.totals?.failedInWindow}, queueFailed=${getQueueMetricsJson.counts?.failed}`
+  )
+
+  const getWorkers = await callTool(
+    baseUrl,
+    delegatedFullToken,
+    delegatedInit.sessionId,
+    'get_workers',
+    {
+      connectionId: connection.id,
+      queueName,
+      pageSize: 10,
+    }
+  )
+  const getWorkersJson = JSON.parse(
+    getWorkers.body?.result?.content?.[0]?.text ?? '{"workers":[]}'
+  ) as { workers: Array<{ queueName: string; id: string }>; queues: Array<{ name: string }> }
+  add(
+    'get_workers',
+    getWorkers.res.ok &&
+      getWorkersJson.workers.some((row) => row.queueName === queueName) &&
+      getWorkersJson.queues.some((row) => row.name === queueName) &&
+      (getWorkersJson.totalWorkersInPage ?? getWorkersJson.totalWorkers ?? 0) > 0,
+    `status=${getWorkers.res.status}, workers=${getWorkersJson.workers.length}`
+  )
+
+  const explainJobFailure = await callTool(
+    baseUrl,
+    delegatedFullToken,
+    delegatedInit.sessionId,
+    'explain_job_failure',
+    {
+      connectionId: connection.id,
+      queueName,
+      jobId,
+    }
+  )
+  const explainJobFailureJson = JSON.parse(
+    explainJobFailure.body?.result?.content?.[0]?.text ?? '{"status":"unknown"}'
+  ) as {
+    status?: string
+    confidence?: string
+    summary?: string
+    topSignal?: { excerpt?: string }
+    relatedAlertEvents?: Array<{ id: string }>
+  }
+  add(
+    'explain_job_failure',
+    explainJobFailure.res.ok &&
+      explainJobFailureJson.status === 'failed' &&
+      (explainJobFailureJson.topSignal?.excerpt?.includes(`live-failure-${suffix}`) ?? false) &&
+      (explainJobFailureJson.relatedAlertEvents?.some((row) => row.id === alertEvent.id) ?? false),
+    `status=${explainJobFailure.res.status}, confidence=${explainJobFailureJson.confidence}, summaryLen=${explainJobFailureJson.summary?.length ?? 0}`
   )
 
   const serviceListConnections = await callTool(
