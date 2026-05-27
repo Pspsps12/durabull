@@ -1,9 +1,13 @@
 import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 import { uuidv7 } from '@durabull/utils/uuid'
-import { and, eq, gt, isNull, or } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNull, or } from 'drizzle-orm'
 
 import { getDb } from '../db/client'
+import {
+  getEnvRedisConnectionIdsForOrganization,
+  shouldUseEnvConnections,
+} from '../db/env-redis-connections'
 import {
   type McpPrincipalType,
   mcpAuditEvent,
@@ -84,6 +88,16 @@ export const mcpPolicyRepository = {
       .select()
       .from(mcpServiceAccount)
       .where(and(eq(mcpServiceAccount.oauthClientId, oauthClientId), eq(mcpServiceAccount.disabled, false)))
+      .limit(1)
+    return rows[0] ?? null
+  },
+
+  async findServiceAccountByOauthClientIdIncludingDisabled(oauthClientId: string) {
+    const db = await getDb()
+    const rows = await db
+      .select()
+      .from(mcpServiceAccount)
+      .where(eq(mcpServiceAccount.oauthClientId, oauthClientId))
       .limit(1)
     return rows[0] ?? null
   },
@@ -249,10 +263,24 @@ export const mcpPolicyRepository = {
 
   async doesConnectionBelongToOrganization(connectionId: string, organizationId: string): Promise<boolean> {
     const db = await getDb()
+    const envConnectionIds = shouldUseEnvConnections()
+      ? getEnvRedisConnectionIdsForOrganization(organizationId)
+      : null
+
+    if (envConnectionIds && !envConnectionIds.includes(connectionId)) {
+      return false
+    }
+
     const rows = await db
       .select({ id: redisConnection.id })
       .from(redisConnection)
-      .where(and(eq(redisConnection.id, connectionId), eq(redisConnection.organizationId, organizationId)))
+      .where(
+        and(
+          eq(redisConnection.id, connectionId),
+          eq(redisConnection.organizationId, organizationId),
+          ...(envConnectionIds ? [inArray(redisConnection.id, envConnectionIds)] : [])
+        )
+      )
       .limit(1)
     return rows.length > 0
   },

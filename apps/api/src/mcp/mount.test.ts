@@ -618,6 +618,105 @@ describe('api MCP ingress', () => {
     expect(callResponse.status).toBe(403)
   })
 
+  it('fails closed when a disabled service-account client presents a user token', async () => {
+    mutableEnv.DURABULL_AUTHLESS = false
+    await closeDb()
+    ;({ app } = await createApiApp({ enableLogging: false }))
+
+    const db = await getDb()
+    const now = new Date()
+    const userId = `disabled-svc-user-${crypto.randomUUID().slice(0, 8)}`
+    const orgId = `org-${crypto.randomUUID().slice(0, 8)}`
+    await db.insert(user).values({
+      id: userId,
+      email: `${userId}@example.com`,
+      emailVerified: true,
+      name: 'Disabled Service Account User',
+      createdAt: now,
+      updatedAt: now,
+      image: null,
+      lastSignInAt: null,
+    })
+    await db.insert(organization).values({
+      id: orgId,
+      name: 'Disabled Service Account Org',
+      slug: `disabled-service-account-org-${crypto.randomUUID().slice(0, 8)}`,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const clientId = `disabled-svc-client-${crypto.randomUUID().slice(0, 8)}`
+    await db.insert(oauthApplication).values({
+      id: crypto.randomUUID(),
+      name: 'disabled-service-account-client',
+      clientId,
+      redirectUrls: 'http://127.0.0.1/callback',
+      type: 'confidential',
+      disabled: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await db.insert(mcpServiceAccount).values({
+      id: crypto.randomUUID(),
+      organizationId: orgId,
+      name: 'disabled-svc-account',
+      oauthClientId: clientId,
+      disabled: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const token = `disabled-svc-token-${crypto.randomUUID().slice(0, 8)}`
+    const future = new Date(Date.now() + 3600_000)
+    await db.insert(oauthAccessToken).values({
+      id: crypto.randomUUID(),
+      accessToken: token,
+      refreshToken: `refresh-${token}`,
+      accessTokenExpiresAt: future,
+      refreshTokenExpiresAt: future,
+      clientId,
+      userId,
+      scopes: 'mcp:discover mcp:jobs:read',
+      resource: mcpResource,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const initResponse = await postMcp(
+      {
+        jsonrpc: MCP_JSON_RPC_VERSION,
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          capabilities: {},
+          clientInfo: { name: 'disabled-svc-test', version: '1.0.0' },
+        },
+      },
+      { authorization: `Bearer ${token}` }
+    )
+    expect(initResponse.status).toBe(200)
+    const sessionId = initResponse.headers.get('mcp-session-id')
+    expect(sessionId).toBeTruthy()
+
+    const callResponse = await postMcp(
+      {
+        jsonrpc: MCP_JSON_RPC_VERSION,
+        id: 2,
+        method: 'tools/call',
+        params: {
+          name: 'list_connections',
+          arguments: { pageSize: 10 },
+        },
+      },
+      { authorization: `Bearer ${token}`, sessionId: sessionId ?? undefined }
+    )
+
+    expect(callResponse.status).toBe(403)
+    const denialBody = await callResponse.text()
+    expect(denialBody).toContain('principal resolution failed')
+  })
+
   it('allows service-account ping when a matching policy binding exists', async () => {
     mutableEnv.DURABULL_AUTHLESS = false
     await closeDb()

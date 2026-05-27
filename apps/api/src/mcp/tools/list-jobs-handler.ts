@@ -1,7 +1,12 @@
 import { getQueue } from '../../lib/redis'
 import { toRedisConnectionOptions } from '../../lib/connection-options'
 import type { ListJobsHandlerInput, ListJobsHandlerOutput } from '@durabull/mcp'
-import { decodeCursor, encodeCursor, requireConnectionForPrincipal } from './shared'
+import {
+  McpToolError,
+  decodeCursor,
+  encodeCursor,
+  requireConnectionForPrincipal,
+} from './shared'
 
 type JobState =
   | 'waiting'
@@ -21,6 +26,9 @@ const ALL_STATES: JobState[] = [
   'paused',
   'prioritized',
 ]
+
+const FILTER_SCAN_BATCH_SIZE = 200
+const MAX_FILTER_SCAN_JOBS = 10_000
 
 export async function listJobsHandler(input: ListJobsHandlerInput): Promise<ListJobsHandlerOutput> {
   const connection = await requireConnectionForPrincipal(input.principal, input.connectionId)
@@ -92,14 +100,30 @@ export async function listJobsHandler(input: ListJobsHandlerInput): Promise<List
   const offset = decodeCursor(input.cursor)
 
   if (hasClientFilter) {
+    let scannedJobs = 0
     const jobsWithState: Array<{
       job: NonNullable<Awaited<ReturnType<typeof queue.getJobs>>[number]>
       state: JobState
     }> = []
     for (const state of states) {
-      const stateJobs = await queue.getJobs([state])
-      for (const job of stateJobs) {
-        if (job != null) {
+      for (let start = 0; ; start += FILTER_SCAN_BATCH_SIZE) {
+        const end = start + FILTER_SCAN_BATCH_SIZE - 1
+        const stateJobs = await queue.getJobs([state], start, end)
+        if (stateJobs.length === 0) {
+          break
+        }
+
+        for (const job of stateJobs) {
+          if (job == null) continue
+
+          scannedJobs += 1
+          if (scannedJobs > MAX_FILTER_SCAN_JOBS) {
+            throw new McpToolError(
+              'validation_error',
+              `Filtered job search exceeded ${MAX_FILTER_SCAN_JOBS} jobs. Narrow the query with status or jobId.`
+            )
+          }
+
           jobsWithState.push({ job, state })
         }
       }

@@ -1,4 +1,5 @@
 import { mcpPolicyRepository } from '@durabull/dal'
+import type { Context } from 'hono'
 import { createMiddleware } from 'hono/factory'
 
 import type { McpSession } from '../auth/mcp-session-middleware'
@@ -7,12 +8,32 @@ import { resolveMcpPrincipal } from './principal-resolver'
 import type { McpPolicyDecision, McpToolCallRequest, McpPrincipal } from './types'
 
 interface JsonRpcToolCallBody {
+  id?: string | number | null
   method?: string
   params?: {
     name?: string
     arguments?: Record<string, unknown>
   }
 }
+
+interface McpAuditEventInput {
+  correlationId: string
+  principalType: 'delegated_user' | 'service_account'
+  principalId: string
+  organizationId?: string | null
+  connectionId?: string | null
+  toolName: string
+  requiredScopes: string[]
+  granted: boolean
+  denialReason?: string | null
+}
+
+const MAX_AUDIT_IN_FLIGHT = 16
+const MAX_AUDIT_QUEUE_DEPTH = 1024
+const AUDIT_DROP_LOG_INTERVAL = 100
+let auditInFlight = 0
+let droppedAuditEvents = 0
+const pendingAuditEvents: McpAuditEventInput[] = []
 
 function parseToolCallBody(body: unknown): McpToolCallRequest | null {
   if (!body || typeof body !== 'object') return null
@@ -34,6 +55,69 @@ function buildCorrelationId(): string {
   return crypto.randomUUID()
 }
 
+function dispatchAuditEvent(input: McpAuditEventInput): void {
+  auditInFlight += 1
+  void mcpPolicyRepository
+    .createAuditEvent(input)
+    .catch((error) => {
+      console.error('[mcp-policy] failed to write audit event', error)
+    })
+    .finally(() => {
+      auditInFlight -= 1
+      flushPendingAuditEvents()
+    })
+}
+
+function flushPendingAuditEvents(): void {
+  while (auditInFlight < MAX_AUDIT_IN_FLIGHT && pendingAuditEvents.length > 0) {
+    const next = pendingAuditEvents.shift()
+    if (!next) break
+    dispatchAuditEvent(next)
+  }
+}
+
+function writeAuditEventNonBlocking(input: McpAuditEventInput): void {
+  if (auditInFlight < MAX_AUDIT_IN_FLIGHT && pendingAuditEvents.length === 0) {
+    dispatchAuditEvent(input)
+    return
+  }
+
+  if (pendingAuditEvents.length >= MAX_AUDIT_QUEUE_DEPTH) {
+    droppedAuditEvents += 1
+    if (droppedAuditEvents === 1 || droppedAuditEvents % AUDIT_DROP_LOG_INTERVAL === 0) {
+      console.warn(
+        `[mcp-policy] dropping audit events due to backpressure (dropped=${droppedAuditEvents}, inFlight=${auditInFlight}, queued=${pendingAuditEvents.length})`
+      )
+    }
+    return
+  }
+
+  pendingAuditEvents.push(input)
+  flushPendingAuditEvents()
+}
+
+function jsonRpcErrorResponse(
+  c: Context,
+  status: 400 | 403,
+  code: number,
+  message: string,
+  id: string | number | null,
+  data?: Record<string, unknown>
+) {
+  return c.json(
+    {
+      jsonrpc: '2.0',
+      error: {
+        code,
+        message,
+        ...(data ? { data } : {}),
+      },
+      id,
+    },
+    status
+  )
+}
+
 export function createMcpPolicyMiddleware() {
   return createMiddleware(async (c, next) => {
     if (c.req.method !== 'POST') {
@@ -44,16 +128,36 @@ export function createMcpPolicyMiddleware() {
       .clone()
       .json()
       .catch(() => null)
+    if (body !== null) {
+      c.set('mcpRequestJsonBody', body)
+    }
     if (Array.isArray(body)) {
-      return c.json(
-        {
-          error: 'Bad Request',
-          message: 'Batch MCP requests are not supported on this endpoint.',
-        },
-        400
+      return jsonRpcErrorResponse(
+        c,
+        400,
+        -32_600,
+        'Invalid Request: Batch MCP requests are not supported on this endpoint.',
+        null
       )
     }
+    const payloadId =
+      body && typeof body === 'object' && 'id' in body
+        ? (((body as JsonRpcToolCallBody).id as string | number | null | undefined) ?? null)
+        : null
+    const isToolsCallMethod =
+      body && typeof body === 'object' && !Array.isArray(body)
+        ? (body as JsonRpcToolCallBody).method === 'tools/call'
+        : false
     const toolCall = parseToolCallBody(body)
+    if (isToolsCallMethod && !toolCall) {
+      return jsonRpcErrorResponse(
+        c,
+        400,
+        -32_600,
+        'Invalid Request: tools/call requires a valid params.name and arguments object.',
+        payloadId
+      )
+    }
     if (!toolCall) {
       return next()
     }
@@ -63,7 +167,7 @@ export function createMcpPolicyMiddleware() {
     const correlationId = c.req.header('x-request-id') ?? buildCorrelationId()
 
     if (!principal) {
-      await mcpPolicyRepository.createAuditEvent({
+      writeAuditEventNonBlocking({
         correlationId,
         principalType: 'service_account',
         principalId: session.clientId,
@@ -75,12 +179,12 @@ export function createMcpPolicyMiddleware() {
         denialReason: 'principal_resolution_failed',
       })
 
-      return c.json(
-        {
-          error: 'Forbidden',
-          message: 'MCP principal resolution failed for this token.',
-        },
-        403
+      return jsonRpcErrorResponse(
+        c,
+        403,
+        -32_003,
+        'Forbidden: MCP principal resolution failed for this token.',
+        payloadId
       )
     }
 
@@ -91,7 +195,7 @@ export function createMcpPolicyMiddleware() {
       call: toolCall,
     })
 
-    await mcpPolicyRepository.createAuditEvent({
+    writeAuditEventNonBlocking({
       correlationId: decision.correlationId,
       principalType: decision.principalType,
       principalId: decision.principalId,
@@ -104,12 +208,12 @@ export function createMcpPolicyMiddleware() {
     })
 
     if (!decision.granted) {
-      return c.json(
-        {
-          error: 'Forbidden',
-          message: decision.denialReason ?? 'MCP policy denied this tool call.',
-        },
-        403
+      return jsonRpcErrorResponse(
+        c,
+        403,
+        -32_003,
+        decision.denialReason ?? 'Forbidden: MCP policy denied this tool call.',
+        payloadId
       )
     }
 
@@ -121,6 +225,7 @@ export function createMcpPolicyMiddleware() {
 
 declare module 'hono' {
   interface ContextVariableMap {
+    mcpRequestJsonBody: unknown
     mcpPrincipal: McpPrincipal
     mcpPolicyDecision: McpPolicyDecision
     mcpSession: McpSession

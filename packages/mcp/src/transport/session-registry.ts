@@ -21,6 +21,14 @@ export interface McpSessionRegistryOptions {
   serverOptions?: Omit<CreateMcpServerOptions, 'version'>
 }
 
+function getCachedJsonBody(c: Context): unknown {
+  try {
+    return c.get('mcpRequestJsonBody' as never)
+  } catch {
+    return undefined
+  }
+}
+
 export function createMcpSessionRegistry(options: McpSessionRegistryOptions) {
   const sessions = new Map<string, McpSessionEntry>()
   const allowedHostList = [...options.allowedHosts]
@@ -65,6 +73,11 @@ export function createMcpSessionRegistry(options: McpSessionRegistryOptions) {
   async function requestIsInitialize(c: Context): Promise<boolean> {
     if (c.req.method !== 'POST') {
       return false
+    }
+
+    const cachedBody = getCachedJsonBody(c)
+    if (cachedBody && typeof cachedBody === 'object' && !Array.isArray(cachedBody)) {
+      return (cachedBody as { method?: string }).method === 'initialize'
     }
 
     try {

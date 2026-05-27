@@ -17,7 +17,7 @@ export interface CreateMcpRoutesOptions {
   /** CORS origins for /mcp. */
   corsOrigins: string[]
   /**
-   * Middleware applied after host validation and before body limit.
+   * Middleware applied after host validation and body limit.
    * PR-03: bearer token validation goes here.
    */
   middleware?: MiddlewareHandler[]
@@ -61,10 +61,6 @@ export function createMcpRoutes(options: CreateMcpRoutesOptions): Hono {
     })
   )
 
-  for (const middleware of options.middleware ?? []) {
-    routes.use('*', middleware)
-  }
-
   routes.use(
     '*',
     bodyLimit({
@@ -73,6 +69,10 @@ export function createMcpRoutes(options: CreateMcpRoutesOptions): Hono {
         c.json({ error: 'Payload Too Large', message: 'Request body exceeds 1MB limit' }, 413),
     })
   )
+
+  for (const middleware of options.middleware ?? []) {
+    routes.use('*', middleware)
+  }
 
   // GET / POST / DELETE delegated to Streamable HTTP transport (@hono/mcp).
   routes.all('/', async (c) => registry.handleRequest(c, options.requestContextResolver?.(c)))
