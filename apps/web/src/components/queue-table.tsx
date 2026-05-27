@@ -109,9 +109,10 @@ export function QueueTable({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className={cn('rounded-lg border bg-card', className)}>
+      <div className={cn('rounded-lg border bg-card overflow-hidden flex flex-col h-[calc(100vh-18rem)]', className)}>
+        <div className="flex-1 overflow-y-auto min-h-0 [&>div]:overflow-x-visible">
         <Table>
-          <TableHeader>
+          <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow className="hover:bg-transparent">
               <TableHead>Queue</TableHead>
               <TableHead>Status</TableHead>
@@ -129,6 +130,7 @@ export function QueueTable({
             ))}
           </TableBody>
         </Table>
+        </div>
 
         {/* Footer: empty toggle + pagination */}
         {(emptyCount > 0 || hasPagination) && (
