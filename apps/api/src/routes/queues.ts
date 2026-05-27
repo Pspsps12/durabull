@@ -285,16 +285,21 @@ const app = new Hono()
       limit: pageSize,
     })
 
-    const queuesData = await Promise.all(
-      indexedQueues.map(async (indexedQueue) => {
-        const queue = await getQueue(connectionId, connectionUrl, indexedQueue.name, connectionPrefix, redisOptions)
-        const [counts, isPaused] = await Promise.all([queue.getJobCounts(), queue.isPaused()])
+    const allIndexedQueues = total > pageSize
+      ? await redisDiscoveredQueueRepository.listByConnection(connectionId, { offset: 0, limit: total })
+      : indexedQueues
 
-        const status: 'paused' | 'active' = isPaused ? 'paused' : 'active'
-        return {
-          name: indexedQueue.name,
-          status,
-          jobCounts: {
+    const pageQueueNames = new Set(indexedQueues.map((q) => q.name))
+    const totalJobCounts = { waiting: 0, active: 0, delayed: 0, completed: 0, failed: 0 }
+
+    const [queuesData] = await Promise.all([
+      Promise.all(
+        indexedQueues.map(async (indexedQueue) => {
+          const queue = await getQueue(connectionId, connectionUrl, indexedQueue.name, connectionPrefix, redisOptions)
+          const [counts, isPaused] = await Promise.all([queue.getJobCounts(), queue.isPaused()])
+
+          const status: 'paused' | 'active' = isPaused ? 'paused' : 'active'
+          const jobCounts = {
             waiting: counts.waiting ?? 0,
             active: counts.active ?? 0,
             delayed: counts.delayed ?? 0,
@@ -302,12 +307,37 @@ const app = new Hono()
             failed: counts.failed ?? 0,
             paused: counts.paused ?? 0,
             prioritized: counts.prioritized ?? 0,
-          },
-          isPaused,
-          discoveryState: indexedQueue.state,
-        }
-      })
-    )
+          }
+
+          totalJobCounts.waiting += jobCounts.waiting
+          totalJobCounts.active += jobCounts.active
+          totalJobCounts.delayed += jobCounts.delayed
+          totalJobCounts.completed += jobCounts.completed
+          totalJobCounts.failed += jobCounts.failed
+
+          return {
+            name: indexedQueue.name,
+            status,
+            jobCounts,
+            isPaused,
+            discoveryState: indexedQueue.state,
+          }
+        })
+      ),
+      Promise.all(
+        allIndexedQueues
+          .filter((iq) => !pageQueueNames.has(iq.name))
+          .map(async (iq) => {
+            const queue = await getQueue(connectionId, connectionUrl, iq.name, connectionPrefix, redisOptions)
+            const counts = await queue.getJobCounts()
+            totalJobCounts.waiting += counts.waiting ?? 0
+            totalJobCounts.active += counts.active ?? 0
+            totalJobCounts.delayed += counts.delayed ?? 0
+            totalJobCounts.completed += counts.completed ?? 0
+            totalJobCounts.failed += counts.failed ?? 0
+          })
+      ),
+    ])
 
     return c.json({
       queues: queuesData,
@@ -316,6 +346,7 @@ const app = new Hono()
       pageSize,
       totalPages: Math.ceil(total / pageSize),
       hasMore: end < total,
+      totalJobCounts,
       discovery,
     })
   })
