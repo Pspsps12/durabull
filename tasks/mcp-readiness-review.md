@@ -2,9 +2,9 @@
 
 This document summarizes readiness after addressing live-test recommendations (expired-token handling, operator docs, automated e2e smoke) and re-running full MCP e2e checks.
 
-**Branch:** `cursor/mcp-pr03-oauth-discovery-token-validation`  
-**Draft PR:** https://github.com/durabullhq/durabull/pull/89  
-**Plan position:** End of **PR-03** in the sequential MCP stack (PR-04+ not started).
+**Branch at review time:** `cursor/mcp-pr03-oauth-discovery-token-validation`  
+**PR:** https://github.com/durabullhq/durabull/pull/89 (**merged**)  
+**Plan position:** Post-merge PR-03 baseline, with PR-04 principal/policy implementation now in progress.
 
 ---
 
@@ -12,8 +12,8 @@ This document summarizes readiness after addressing live-test recommendations (e
 
 | Dimension | Verdict |
 | --- | --- |
-| **PR-03 merge readiness** | **Ready for review/merge** as the OAuth + transport-auth slice, pending Linear issue linkage and your sign-off on deferred items below. |
-| **Production / customer diagnostics** | **Not ready** — only `ping` exists; no org-scoped tools, policy engine, redaction, rate limits, or deploy runbooks (PR-04–08). |
+| **PR-03 merge readiness** | **Merged** (PR #89); transport + OAuth discovery/auth slice is landed on `main`. |
+| **Production / customer diagnostics** | **Not ready** — only `ping` exists; policy + principals are now being added in PR-04, while diagnostic tools/redaction/deploy remain PR-05–08. |
 | **Full OAuth UX (browser PKCE)** | **Not manually verified** — registration + DB-seeded tokens exercised; authorize/consent UI flow not run in this pass. |
 
 ---
@@ -79,6 +79,26 @@ DURABULL_AUTHLESS=true APP_BASE_URL=http://localhost:3001 bun run mcp:e2e
 
 ---
 
+## Current update (PR-04 in progress)
+
+- Added principal-resolution path for delegated users + OAuth-linked service accounts.
+- Added centralized policy middleware on MCP `tools/call` with audit-event writes.
+- Added org/connection boundary checks and service-account policy-binding enforcement.
+- Added DAL schema + migration for `mcp_service_account*`, `mcp_policy_binding`, and `mcp_audit_event`.
+- Added integration coverage in `apps/api/src/mcp/mount.test.ts` for service-account allow/deny and delegated cross-org denial.
+
+## Current update (PR-05 kickoff)
+
+- Added MCP read-tool registration plumbing in `@durabull/mcp` and request-context propagation for tool handlers.
+- Added first customer-facing read tool: `list_connections` with bounded `pageSize` and cursor pagination.
+- Added next diagnostic tools: `list_queues`, `get_queue`, and `list_jobs` behind the same policy/principal context path.
+- Added API handler implementation constrained by principal type:
+  - delegated users: only connections in org memberships
+  - service accounts: only connections in bound organization
+- Added integration coverage for delegated pagination and service-account scoped list access.
+
+---
+
 ## Known gaps and deferred work
 
 ### PR-03 follow-ups (non-blocking for merge if accepted)
@@ -116,15 +136,11 @@ DURABULL_AUTHLESS=true APP_BASE_URL=http://localhost:3001 bun run mcp:e2e
 
 ---
 
-## Merge recommendation
+## Post-merge recommendation
 
-**Approve PR #89** when:
-
-1. Linear issue is attached (per playbook).
-2. Reviewers accept deferred browser OAuth UX test and RFC 8707 issuance wiring.
-3. Uncommitted follow-up commits on the branch include expiry fix + e2e script (push before merge).
-
-**Do not** treat PR-03 merge as MCP GA or production customer diagnostics — that requires PR-04–08.
+- Keep PR-03 treated as transport/auth foundation only.
+- Complete PR-04 policy/principal merge next, then proceed with PR-05 read-only diagnostic tools.
+- Do not treat merged PR-03 as MCP GA or production customer diagnostics — that still requires PR-04–08.
 
 ---
 

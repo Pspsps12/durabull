@@ -47,6 +47,24 @@ export type {
 } from './linear-job-issue-event/types'
 export { linearOauthState } from './linear-oauth-state/schema'
 export type { LinearOauthState, NewLinearOauthState } from './linear-oauth-state/types'
+export {
+  type McpPrincipalType,
+  mcpAuditEvent,
+  mcpPolicyBinding,
+  mcpPrincipalTypes,
+  mcpServiceAccount,
+  mcpServiceAccountSecret,
+} from './mcp-policy/schema'
+export type {
+  McpAuditEvent,
+  McpPolicyBinding,
+  McpServiceAccount,
+  McpServiceAccountSecret,
+  NewMcpAuditEvent,
+  NewMcpPolicyBinding,
+  NewMcpServiceAccount,
+  NewMcpServiceAccountSecret,
+} from './mcp-policy/types'
 export { oauthAccessToken, oauthApplication, oauthConsent } from './oauth-mcp/schema'
 export type {
   NewOauthAccessToken,
