@@ -26,8 +26,8 @@ function missingScopes(grantedScopes: string[], requiredScopes: string[]): strin
   return requiredScopes.filter((scope) => !grantedSet.has(scope))
 }
 
-function getRequiredScopes(toolName: string): string[] {
-  return TOOL_REQUIRED_SCOPES[toolName] ?? []
+function getRequiredScopes(toolName: string): string[] | null {
+  return TOOL_REQUIRED_SCOPES[toolName] ?? null
 }
 
 export async function evaluateMcpToolPolicy(input: {
@@ -37,6 +37,20 @@ export async function evaluateMcpToolPolicy(input: {
   call: McpToolCallRequest
 }): Promise<McpPolicyDecision> {
   const requiredScopes = getRequiredScopes(input.call.toolName)
+  if (!requiredScopes) {
+    return {
+      correlationId: input.correlationId,
+      principalType: input.principal.type,
+      principalId: input.principal.principalId,
+      organizationId: input.principal.organizationId,
+      connectionId: input.call.connectionId,
+      toolName: input.call.toolName,
+      requiredScopes: [],
+      granted: false,
+      denialReason: 'policy_configuration_missing',
+    }
+  }
+
   const grantedScopes = parseScopes(input.session.scopes)
   const missing = missingScopes(grantedScopes, requiredScopes)
 

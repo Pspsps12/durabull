@@ -4,45 +4,53 @@ import type {
   GetJobStacktracesHandlerInput,
   GetJobStacktracesHandlerOutput,
 } from '@durabull/mcp'
-import { decodeCursor, encodeCursor, resolveConnectionForPrincipal } from './shared'
+import { McpToolError, decodeCursor, encodeCursor, requireConnectionForPrincipal } from './shared'
 
-export async function getJobStacktracesHandler(
-  input: GetJobStacktracesHandlerInput
-): Promise<GetJobStacktracesHandlerOutput> {
-  const connection = await resolveConnectionForPrincipal(input.principal, input.connectionId)
-  if (!connection) {
-    throw new Error(`Connection ${input.connectionId} not found.`)
-  }
+interface GetJobStacktracesHandlerDeps {
+  getQueue: typeof getQueue
+  requireConnectionForPrincipal: typeof requireConnectionForPrincipal
+}
 
-  const queue = await getQueue(
-    connection.id,
-    connection.url,
-    input.queueName,
-    connection.prefix,
-    toRedisConnectionOptions(connection.allowSelfSignedCerts)
-  )
-  const job = await queue.getJob(input.jobId)
-  if (!job) {
-    throw new Error(`Job ${input.jobId} not found in queue ${input.queueName}.`)
-  }
+export function createGetJobStacktracesHandler(
+  deps: GetJobStacktracesHandlerDeps = { getQueue, requireConnectionForPrincipal }
+) {
+  return async function getJobStacktracesHandler(
+    input: GetJobStacktracesHandlerInput
+  ): Promise<GetJobStacktracesHandlerOutput> {
+    const connection = await deps.requireConnectionForPrincipal(input.principal, input.connectionId)
 
-  const allStacktraces = job.stacktrace ?? []
-  const pageSize = Math.min(100, Math.max(1, input.pageSize))
-  const offset = decodeCursor(input.cursor)
-  const reversed = [...allStacktraces].reverse()
-  const page = reversed.slice(offset, offset + pageSize)
-  const nextOffset = offset + page.length
+    const queue = await deps.getQueue(
+      connection.id,
+      connection.url,
+      input.queueName,
+      connection.prefix,
+      toRedisConnectionOptions(connection.allowSelfSignedCerts)
+    )
+    const job = await queue.getJob(input.jobId)
+    if (!job) {
+      throw new McpToolError('not_found', `Job ${input.jobId} not found in queue ${input.queueName}.`)
+    }
 
-  return {
-    connectionId: connection.id,
-    queueName: input.queueName,
-    jobId: input.jobId,
-    total: allStacktraces.length,
-    stacktraces: page.map((stacktrace, index) => ({
-      attemptNumber: allStacktraces.length - (offset + index),
-      stacktrace,
-      isLatest: offset + index === 0,
-    })),
-    nextCursor: nextOffset < allStacktraces.length ? encodeCursor(nextOffset) : null,
+    const allStacktraces = job.stacktrace ?? []
+    const pageSize = Math.min(100, Math.max(1, input.pageSize))
+    const offset = decodeCursor(input.cursor)
+    const reversed = [...allStacktraces].reverse()
+    const page = reversed.slice(offset, offset + pageSize)
+    const nextOffset = offset + page.length
+
+    return {
+      connectionId: connection.id,
+      queueName: input.queueName,
+      jobId: input.jobId,
+      total: allStacktraces.length,
+      stacktraces: page.map((stacktrace, index) => ({
+        attemptNumber: allStacktraces.length - (offset + index),
+        stacktrace,
+        isLatest: offset + index === 0,
+      })),
+      nextCursor: nextOffset < allStacktraces.length ? encodeCursor(nextOffset) : null,
+    }
   }
 }
+
+export const getJobStacktracesHandler = createGetJobStacktracesHandler()

@@ -1,7 +1,7 @@
 import { getQueue } from '../../lib/redis'
 import { toRedisConnectionOptions } from '../../lib/connection-options'
 import type { ListJobsHandlerInput, ListJobsHandlerOutput } from '@durabull/mcp'
-import { decodeCursor, encodeCursor, resolveConnectionForPrincipal } from './shared'
+import { decodeCursor, encodeCursor, requireConnectionForPrincipal } from './shared'
 
 type JobState =
   | 'waiting'
@@ -23,10 +23,7 @@ const ALL_STATES: JobState[] = [
 ]
 
 export async function listJobsHandler(input: ListJobsHandlerInput): Promise<ListJobsHandlerOutput> {
-  const connection = await resolveConnectionForPrincipal(input.principal, input.connectionId)
-  if (!connection) {
-    throw new Error(`Connection ${input.connectionId} not found.`)
-  }
+  const connection = await requireConnectionForPrincipal(input.principal, input.connectionId)
 
   const queue = await getQueue(
     connection.id,

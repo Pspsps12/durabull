@@ -1,13 +1,10 @@
 import { getQueue, safeGetWorkers } from '../../lib/redis'
 import { toRedisConnectionOptions } from '../../lib/connection-options'
 import type { GetQueueHandlerInput, GetQueueHandlerOutput } from '@durabull/mcp'
-import { resolveConnectionForPrincipal } from './shared'
+import { requireConnectionForPrincipal } from './shared'
 
 export async function getQueueHandler(input: GetQueueHandlerInput): Promise<GetQueueHandlerOutput> {
-  const connection = await resolveConnectionForPrincipal(input.principal, input.connectionId)
-  if (!connection) {
-    throw new Error(`Connection ${input.connectionId} not found.`)
-  }
+  const connection = await requireConnectionForPrincipal(input.principal, input.connectionId)
 
   const queue = await getQueue(
     connection.id,

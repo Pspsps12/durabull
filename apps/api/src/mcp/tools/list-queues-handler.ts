@@ -2,13 +2,10 @@ import { redisDiscoveredQueueRepository } from '@durabull/dal'
 import { getQueue } from '../../lib/redis'
 import { toRedisConnectionOptions } from '../../lib/connection-options'
 import type { ListQueuesHandlerInput, ListQueuesHandlerOutput } from '@durabull/mcp'
-import { decodeCursor, encodeCursor, resolveConnectionForPrincipal } from './shared'
+import { decodeCursor, encodeCursor, requireConnectionForPrincipal } from './shared'
 
 export async function listQueuesHandler(input: ListQueuesHandlerInput): Promise<ListQueuesHandlerOutput> {
-  const connection = await resolveConnectionForPrincipal(input.principal, input.connectionId)
-  if (!connection) {
-    throw new Error(`Connection ${input.connectionId} not found.`)
-  }
+  const connection = await requireConnectionForPrincipal(input.principal, input.connectionId)
 
   const offset = decodeCursor(input.cursor)
   const pageSize = Math.min(100, Math.max(1, input.pageSize))
