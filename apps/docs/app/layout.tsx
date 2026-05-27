@@ -1,6 +1,7 @@
 import { GeistMono } from 'geist/font/mono'
 import { GeistSans } from 'geist/font/sans'
 import type { Metadata } from 'next'
+import { MarketingGoogleAnalytics } from '@/components/google-analytics'
 import { PostHogProvider } from '@/components/posthog-provider'
 import '@/styles/globals.css'
 import '@/styles/landing.css'
@@ -69,6 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body
         className={`${GeistSans.variable} ${GeistMono.variable} min-h-screen bg-background font-sans antialiased`}
       >
+        <MarketingGoogleAnalytics />
         <PostHogProvider>{children}</PostHogProvider>
       </body>
     </html>

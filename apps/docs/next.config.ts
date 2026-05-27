@@ -14,6 +14,10 @@ function getFirstNonEmptyEnv(...keys: string[]) {
 
 const publicWebAppUrl = getFirstNonEmptyEnv('NEXT_PUBLIC_WEB_APP_URL', 'APP_BASE_URL')
 const publicPosthogKey = getFirstNonEmptyEnv('NEXT_PUBLIC_POSTHOG_KEY', 'POSTHOG_KEY')
+const publicGaMeasurementId = getFirstNonEmptyEnv(
+  'NEXT_PUBLIC_GA_MEASUREMENT_ID',
+  'GA_MEASUREMENT_ID',
+)
 
 const nextConfig: NextConfig = {
   output: isStaticExport ? 'export' : undefined,
@@ -26,6 +30,9 @@ const nextConfig: NextConfig = {
   env: {
     ...(publicWebAppUrl ? { NEXT_PUBLIC_WEB_APP_URL: publicWebAppUrl } : {}),
     ...(publicPosthogKey ? { NEXT_PUBLIC_POSTHOG_KEY: publicPosthogKey } : {}),
+    ...(publicGaMeasurementId
+      ? { NEXT_PUBLIC_GA_MEASUREMENT_ID: publicGaMeasurementId }
+      : {}),
   },
 }
 
