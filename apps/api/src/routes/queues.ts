@@ -250,12 +250,9 @@ const app = new Hono()
     const connectionUrl = c.get('connectionUrl')
     const connectionPrefix = c.get('connectionPrefix')
     const redisOptions = getConnectionRedisOptions(c)
-    const pageStr = c.req.query('page')
-    const pageSizeStr = c.req.query('pageSize')
-
-    const page = pageStr ? parseInt(pageStr, 10) : 1
+    const page = Math.max(1, parseInteger(c.req.query('page')) ?? 1)
     const pageSize = Math.min(
-      pageSizeStr ? parseInt(pageSizeStr, 10) : DEFAULT_PAGE_SIZE,
+      parseInteger(c.req.query('pageSize')) ?? DEFAULT_PAGE_SIZE,
       MAX_PAGE_SIZE
     )
 
@@ -292,6 +289,14 @@ const app = new Hono()
     const pageQueueNames = new Set(indexedQueues.map((q) => q.name))
     const totalJobCounts = { waiting: 0, active: 0, delayed: 0, completed: 0, failed: 0 }
 
+    function accumulateCounts(counts: Record<string, number>) {
+      totalJobCounts.waiting += counts.waiting ?? 0
+      totalJobCounts.active += counts.active ?? 0
+      totalJobCounts.delayed += counts.delayed ?? 0
+      totalJobCounts.completed += counts.completed ?? 0
+      totalJobCounts.failed += counts.failed ?? 0
+    }
+
     const [queuesData] = await Promise.all([
       Promise.all(
         indexedQueues.map(async (indexedQueue) => {
@@ -309,11 +314,7 @@ const app = new Hono()
             prioritized: counts.prioritized ?? 0,
           }
 
-          totalJobCounts.waiting += jobCounts.waiting
-          totalJobCounts.active += jobCounts.active
-          totalJobCounts.delayed += jobCounts.delayed
-          totalJobCounts.completed += jobCounts.completed
-          totalJobCounts.failed += jobCounts.failed
+          accumulateCounts(jobCounts)
 
           return {
             name: indexedQueue.name,
@@ -329,12 +330,7 @@ const app = new Hono()
           .filter((iq) => !pageQueueNames.has(iq.name))
           .map(async (iq) => {
             const queue = await getQueue(connectionId, connectionUrl, iq.name, connectionPrefix, redisOptions)
-            const counts = await queue.getJobCounts()
-            totalJobCounts.waiting += counts.waiting ?? 0
-            totalJobCounts.active += counts.active ?? 0
-            totalJobCounts.delayed += counts.delayed ?? 0
-            totalJobCounts.completed += counts.completed ?? 0
-            totalJobCounts.failed += counts.failed ?? 0
+            accumulateCounts(await queue.getJobCounts())
           })
       ),
     ])
