@@ -18,7 +18,8 @@ import { MCP_JSON_RPC_VERSION, parseSseJson } from '@durabull/mcp/testing'
 const baseUrl = process.env.APP_BASE_URL ?? 'http://localhost:3001'
 const host = new URL(baseUrl).host
 const authless = process.env.DURABULL_AUTHLESS === 'true'
-const authlessToken = 'durabull-authless-mcp'
+const authlessToken =
+  process.env.MCP_AUTHLESS_BEARER_TOKEN?.trim() || 'durabull-authless-mcp'
 
 type CheckResult = { name: string; pass: boolean; detail: string }
 

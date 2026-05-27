@@ -756,7 +756,7 @@ Finalize production quality and confirm spec/safety compliance.
 
 - [ ] PR-01 Security architecture baseline (in progress on `feat/no-linear-mcp-pr01-security-baseline`)
 - [x] PR-02 API `/mcp` ingress + transport (`@durabull/mcp` package + thin API mount)
-- [x] PR-03 OAuth discovery + token validation
+- [ ] PR-03 OAuth discovery + token validation (in review — PR #89)
 - [ ] PR-04 Principals + policy engine
 - [ ] PR-05 Read-only diagnostic tools
 - [ ] PR-06 Safety hardening

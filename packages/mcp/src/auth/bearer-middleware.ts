@@ -30,7 +30,14 @@ export function createMcpBearerAuthMiddleware(options: McpBearerAuthMiddlewareOp
       return buildMcpMissingBearerResponse(options.resourceMetadataUrl)
     }
 
-    const claims = await options.verifyAccessToken(bearerToken)
+    let claims: McpAccessTokenClaims | null = null
+    try {
+      claims = await options.verifyAccessToken(bearerToken)
+    } catch (error) {
+      console.error('[mcp] verifyAccessToken failed:', error)
+      return buildMcpUnauthorizedResponse(options.resourceMetadataUrl)
+    }
+
     if (!claims) {
       return buildMcpUnauthorizedResponse(options.resourceMetadataUrl)
     }

@@ -42,11 +42,11 @@ export function assertMcpAuthConfiguration(): void {
 
   if (
     env.DURABULL_AUTHLESS === true &&
-    !env.MCP_AUTHLESS_BEARER_TOKEN?.trim() &&
-    env.DURABULL_CLOUD !== true
+    env.NODE_ENV === 'production' &&
+    !env.MCP_AUTHLESS_BEARER_TOKEN?.trim()
   ) {
-    console.warn(
-      '[mcp] DURABULL_AUTHLESS is enabled without MCP_AUTHLESS_BEARER_TOKEN; using default dev bearer'
+    throw new Error(
+      'MCP_AUTHLESS_BEARER_TOKEN is required when DURABULL_AUTHLESS=true in production'
     )
   }
 }

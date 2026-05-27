@@ -16,6 +16,10 @@ describe('createMcpBearerAuthMiddleware', () => {
       resourceMetadataUrl,
       requiredScopes: [MCP_SCOPE_DISCOVER],
       verifyAccessToken: async (token) => {
+        if (token === 'throws') {
+          throw new Error('verification backend unavailable')
+        }
+
         if (token === 'valid') {
           return {
             accessToken: token,
@@ -108,5 +112,18 @@ describe('createMcpBearerAuthMiddleware', () => {
     })
 
     expect(response.status).toBe(200)
+  })
+
+  it('returns 401 when token verification throws', async () => {
+    const response = await app.request('/', {
+      headers: {
+        host: 'localhost:3000',
+        authorization: 'Bearer throws',
+      },
+    })
+
+    expect(response.status).toBe(401)
+    expect(response.headers.get('WWW-Authenticate')).toContain('invalid_token')
+    expect(response.headers.get('WWW-Authenticate')).toContain(resourceMetadataUrl)
   })
 })

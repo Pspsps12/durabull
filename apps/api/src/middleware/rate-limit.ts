@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { extractBearerToken } from '@durabull/mcp/auth'
 import { env } from '@durabull/env'
 import { createMiddleware } from 'hono/factory'
 
@@ -250,9 +251,9 @@ export const connectionTestRateLimiter = rateLimiter({
  * Rate limiter for MCP Streamable HTTP ingress at /mcp.
  */
 function mcpIngressRateLimitKey(c: Parameters<ReturnType<typeof createMiddleware>>[0]): string {
-  const authorization = c.req.header('Authorization')
-  if (authorization) {
-    return `bearer:${createHash('sha256').update(authorization).digest('hex').slice(0, 24)}`
+  const bearerToken = extractBearerToken(c.req.header('Authorization'))
+  if (bearerToken) {
+    return `bearer:${createHash('sha256').update(bearerToken).digest('hex').slice(0, 24)}`
   }
 
   const cfIp = c.req.header('cf-connecting-ip')

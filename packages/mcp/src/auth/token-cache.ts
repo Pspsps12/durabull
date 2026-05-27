@@ -36,7 +36,7 @@ export function createMcpTokenValidationCache(options?: {
   }
 
   function set(cacheKey: string, claims: McpAccessTokenClaims): void {
-    if (store.size >= maxEntries) {
+    if (!store.has(cacheKey) && store.size >= maxEntries) {
       const oldestKey = store.keys().next().value
       if (oldestKey) store.delete(oldestKey)
     }
