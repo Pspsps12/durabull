@@ -142,7 +142,15 @@ export function createMcpPolicyMiddleware() {
     }
     const payloadId =
       body && typeof body === 'object' && 'id' in body
-        ? (((body as JsonRpcToolCallBody).id as string | number | null | undefined) ?? null)
+        ? (() => {
+            const candidate = (body as { id?: unknown }).id
+            return typeof candidate === 'string' ||
+              typeof candidate === 'number' ||
+              candidate === null ||
+              candidate === undefined
+              ? (candidate ?? null)
+              : null
+          })()
         : null
     const isToolsCallMethod =
       body && typeof body === 'object' && !Array.isArray(body)
