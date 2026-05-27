@@ -43,7 +43,7 @@ export function createMcpRoutes(options: CreateMcpRoutesOptions): Hono {
         'Mcp-Protocol-Version',
         'Last-Event-ID',
       ],
-      exposeHeaders: ['mcp-session-id'],
+      exposeHeaders: ['mcp-session-id', 'WWW-Authenticate'],
     })
   )
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
+import { createMcpBearerAuthMiddleware, MCP_SCOPE_DISCOVER } from './auth'
 import { MCP_PROTOCOL_VERSION } from './constants'
 import { createMcpRoutes } from './routes'
 import {
@@ -8,15 +9,66 @@ import {
   readMcpJsonResponse,
 } from './testing/mcp-test-client'
 
+const canonicalResourceUri = 'http://localhost:3000/mcp'
+const resourceMetadataUrl = 'http://localhost:3000/.well-known/oauth-protected-resource'
+const validAuthorization = 'Bearer valid'
+
+function createTestAuthMiddleware() {
+  return createMcpBearerAuthMiddleware({
+    canonicalResourceUri,
+    resourceMetadataUrl,
+    requiredScopes: [MCP_SCOPE_DISCOVER],
+    verifyAccessToken: async (token) => {
+      if (token === 'valid') {
+        return {
+          accessToken: token,
+          clientId: 'client',
+          userId: 'user',
+          scopes: [MCP_SCOPE_DISCOVER],
+          accessTokenExpiresAt: new Date(Date.now() + 60_000),
+          resource: canonicalResourceUri,
+        }
+      }
+      return null
+    },
+  })
+}
+
 describe('createMcpRoutes', () => {
   const app = createMcpRoutes({
     version: 'test',
     allowedHosts: new Set(['localhost', '127.0.0.1', 'localhost:3000']),
     corsOrigins: ['http://localhost:3000'],
+    middleware: [createTestAuthMiddleware()],
   })
 
-  const postMcp = (body: Parameters<typeof postMcpJson>[2], options?: Parameters<typeof postMcpJson>[3]) =>
-    postMcpJson((path, init) => Promise.resolve(app.request(path, init)), '/', body, options)
+  const postMcp = (
+    body: Parameters<typeof postMcpJson>[2],
+    options?: Parameters<typeof postMcpJson>[3]
+  ) =>
+    postMcpJson((path, init) => Promise.resolve(app.request(path, init)), '/', body, {
+      authorization: validAuthorization,
+      ...options,
+    })
+
+  it('returns 401 without bearer token', async () => {
+    const response = await postMcp(
+      {
+        jsonrpc: MCP_JSON_RPC_VERSION,
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          capabilities: {},
+          clientInfo: { name: 'test', version: '1.0.0' },
+        },
+      },
+      { authorization: undefined }
+    )
+
+    expect(response.status).toBe(401)
+    expect(response.headers.get('WWW-Authenticate')).toContain(resourceMetadataUrl)
+  })
 
   it('rejects invalid Host header with 403', async () => {
     const response = await postMcp(
@@ -52,6 +104,17 @@ describe('createMcpRoutes', () => {
     )
 
     expect(response.status).toBe(403)
+  })
+
+  it('requires session id for non-initialize requests', async () => {
+    const response = await postMcp({
+      jsonrpc: MCP_JSON_RPC_VERSION,
+      id: 2,
+      method: 'tools/list',
+      params: {},
+    })
+
+    expect(response.status).toBe(400)
   })
 
   it('initializes MCP session and lists ping tool', async () => {

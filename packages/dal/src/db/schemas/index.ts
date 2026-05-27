@@ -47,6 +47,15 @@ export type {
 } from './linear-job-issue-event/types'
 export { linearOauthState } from './linear-oauth-state/schema'
 export type { LinearOauthState, NewLinearOauthState } from './linear-oauth-state/types'
+export { oauthAccessToken, oauthApplication, oauthConsent } from './oauth-mcp/schema'
+export type {
+  NewOauthAccessToken,
+  NewOauthApplication,
+  NewOauthConsent,
+  OauthAccessToken,
+  OauthApplication,
+  OauthConsent,
+} from './oauth-mcp/types'
 // Organization schema exports
 export { invitation, member, organization } from './organization/schema'
 export type {

@@ -3,7 +3,10 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Context } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 
+import { MCP_JSON_RPC_VERSION } from '../constants'
 import { createMcpServer } from '../server/create-mcp-server'
+
+const MAX_ACTIVE_SESSIONS = 256
 
 interface McpSessionEntry {
   transport: StreamableHTTPTransport
@@ -20,28 +23,65 @@ export function createMcpSessionRegistry(options: McpSessionRegistryOptions) {
   const sessions = new Map<string, McpSessionEntry>()
   const allowedHostList = [...options.allowedHosts]
 
+  async function teardownSession(sessionId: string): Promise<void> {
+    const session = sessions.get(sessionId)
+    if (!session) return
+
+    sessions.delete(sessionId)
+    try {
+      await session.server.close()
+    } catch {
+      // Session already torn down.
+    }
+  }
+
   function createSessionEntry(): McpSessionEntry {
     const server = createMcpServer({ version: options.version })
+    let entry: McpSessionEntry
+
     const transport = new StreamableHTTPTransport({
-      sessionIdGenerator: () => crypto.randomUUID(),
+      sessionIdGenerator: () => {
+        const sessionId = crypto.randomUUID()
+        sessions.set(sessionId, entry)
+        return sessionId
+      },
       enableDnsRebindingProtection: true,
       allowedHosts: allowedHostList,
-      // Origin checks are handled by Hono CORS middleware (non-browser MCP clients omit Origin).
-      onsessioninitialized: async (sessionId) => {
-        sessions.set(sessionId, { transport, server, connected: connectPromise })
+      onsessioninitialized: async () => {
+        // Session registered synchronously in sessionIdGenerator.
       },
       onsessionclosed: async (sessionId) => {
-        sessions.delete(sessionId)
-        try {
-          await server.close()
-        } catch {
-          // Session already torn down.
-        }
+        await teardownSession(sessionId)
       },
     })
 
-    const connectPromise = server.connect(transport)
-    return { transport, server, connected: connectPromise }
+    const connected = server.connect(transport)
+    entry = { transport, server, connected }
+    return entry
+  }
+
+  async function requestIsInitialize(c: Context): Promise<boolean> {
+    if (c.req.method !== 'POST') {
+      return false
+    }
+
+    try {
+      const body = (await c.req.raw.clone().json()) as { method?: string }
+      return body.method === 'initialize'
+    } catch {
+      return false
+    }
+  }
+
+  async function evictOldestSessionIfNeeded(): Promise<void> {
+    if (sessions.size < MAX_ACTIVE_SESSIONS) {
+      return
+    }
+
+    const oldestSessionId = sessions.keys().next().value
+    if (oldestSessionId) {
+      await teardownSession(oldestSessionId)
+    }
   }
 
   async function handleRequest(c: Context): Promise<Response | undefined> {
@@ -58,6 +98,16 @@ export function createMcpSessionRegistry(options: McpSessionRegistryOptions) {
         return session.transport.handleRequest(c)
       }
 
+      const isInitialize = await requestIsInitialize(c)
+      if (!isInitialize) {
+        return jsonRpcErrorResponse(
+          -32_000,
+          'Mcp-Session-Id header is required for non-initialize requests',
+          400
+        )
+      }
+
+      await evictOldestSessionIfNeeded()
       const session = createSessionEntry()
       await session.connected
       return session.transport.handleRequest(c)
@@ -74,13 +124,16 @@ export function createMcpSessionRegistry(options: McpSessionRegistryOptions) {
   return { handleRequest }
 }
 
-function jsonRpcErrorResponse(code: number, message: string): Response {
+function jsonRpcErrorResponse(code: number, message: string, httpStatus?: number): Response {
+  const status =
+    httpStatus ?? (code === 404 ? 404 : code === -32_000 ? 400 : code < 0 ? 500 : code)
+
   return Response.json(
     {
-      jsonrpc: '2.0',
+      jsonrpc: MCP_JSON_RPC_VERSION,
       error: { code, message },
       id: null,
     },
-    { status: code === 404 ? 404 : 500 }
+    { status }
   )
 }

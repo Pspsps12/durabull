@@ -34,6 +34,34 @@ export const relations = defineRelations(tables, (r) => ({
       to: r.user.id,
     }),
   },
+  oauthApplication: {
+    user: r.one.user({
+      from: r.oauthApplication.userId,
+      to: r.user.id,
+    }),
+    accessTokens: r.many.oauthAccessToken(),
+    consents: r.many.oauthConsent(),
+  },
+  oauthAccessToken: {
+    application: r.one.oauthApplication({
+      from: r.oauthAccessToken.clientId,
+      to: r.oauthApplication.clientId,
+    }),
+    user: r.one.user({
+      from: r.oauthAccessToken.userId,
+      to: r.user.id,
+    }),
+  },
+  oauthConsent: {
+    application: r.one.oauthApplication({
+      from: r.oauthConsent.clientId,
+      to: r.oauthApplication.clientId,
+    }),
+    user: r.one.user({
+      from: r.oauthConsent.userId,
+      to: r.user.id,
+    }),
+  },
   organization: {
     members: r.many.member(),
     invitations: r.many.invitation(),

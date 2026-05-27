@@ -85,6 +85,19 @@ export type {
 } from './db/schemas/linear-job-issue-event/types'
 export { linearOauthState } from './db/schemas/linear-oauth-state/schema'
 export type { LinearOauthState, NewLinearOauthState } from './db/schemas/linear-oauth-state/types'
+export {
+  oauthAccessToken,
+  oauthApplication,
+  oauthConsent,
+} from './db/schemas/oauth-mcp/schema'
+export type {
+  NewOauthAccessToken,
+  NewOauthApplication,
+  NewOauthConsent,
+  OauthAccessToken,
+  OauthApplication,
+  OauthConsent,
+} from './db/schemas/oauth-mcp/types'
 // Organization schema exports for Better Auth organization plugin
 export * as organizationSchema from './db/schemas/organization/schema'
 export { invitation, member, organization } from './db/schemas/organization/schema'

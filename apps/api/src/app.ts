@@ -11,6 +11,7 @@ import { secureHeaders } from 'hono/secure-headers'
 import { getAuth } from './lib/auth'
 import { isAuthlessMode } from './lib/authless'
 import { getAppVersionPayload } from './lib/build-info'
+import { mountMcpWellKnownRoutes } from './mcp/auth/mount-well-known'
 import { mountMcpIngress } from './mcp/mount'
 import { RedisUnavailableError } from './lib/redis'
 import { createSessionMiddleware } from './middleware/auth'
@@ -18,6 +19,7 @@ import { createConnectionMiddleware } from './middleware/connection'
 import {
   apiRateLimiter,
   authRateLimiter,
+  mcpOAuthRegisterRateLimiter,
   mcpRateLimiter,
   telemetryCollectRateLimiter,
 } from './middleware/rate-limit'
@@ -321,6 +323,9 @@ export async function createApiApp(options: CreateApiAppOptions = {}) {
     if (path.includes('/get-session') || path.includes('/session')) {
       return next()
     }
+    if (path.includes('/mcp/register')) {
+      return mcpOAuthRegisterRateLimiter(c, next)
+    }
     return authRateLimiter(c, next)
   })
 
@@ -413,10 +418,15 @@ export async function createApiApp(options: CreateApiAppOptions = {}) {
   // Mount API under /api prefix
   app.route('/api', api)
 
+  const appBaseUrl = env.APP_BASE_URL ?? 'http://localhost:5173'
+
+  // OAuth Protected Resource Metadata (RFC 9728) on app origin
+  app.route('/', mountMcpWellKnownRoutes(appBaseUrl))
+
   // MCP Streamable HTTP ingress (before SPA/static fallbacks in index.ts)
   app.use('/mcp', mcpRateLimiter)
   app.use('/mcp/*', mcpRateLimiter)
-  app.route('/mcp', mountMcpIngress())
+  app.route('/mcp', await mountMcpIngress())
 
   // PostHog reverse proxy to bypass ad blockers
   // See: https://posthog.com/docs/advanced/proxy

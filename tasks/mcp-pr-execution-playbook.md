@@ -671,10 +671,10 @@ Finalize production quality and confirm spec/safety compliance.
 - Branch: `cursor/mcp-pr02-api-ingress`
 - Linear issue: `NO-LINEAR (temporary)`
 - PR URL: https://github.com/durabullhq/durabull/pull/88
-- Status: `in review`
+- Status: `merged`
 - Agent owner: `cursor`
 - Start date: `2026-05-26`
-- Merge date:
+- Merge date: `2026-05-26`
 
 #### Scope Completed
 
@@ -705,11 +705,58 @@ Finalize production quality and confirm spec/safety compliance.
 
 ---
 
+### PR Record: PR-03
+
+- PR ID: `PR-03`
+- Branch: `cursor/mcp-pr03-oauth-discovery-token-validation`
+- Linear issue: `NO-LINEAR (temporary)`
+- PR URL: https://github.com/durabullhq/durabull/pull/89
+- Status: `in review`
+- Agent owner: `cursor`
+- Start date: `2026-05-26`
+- Merge date:
+
+#### Scope Completed
+
+- [x] Protected Resource Metadata at `GET /.well-known/oauth-protected-resource` on app origin.
+- [x] `WWW-Authenticate` challenges on unauthenticated `/mcp` requests (`resource_metadata` URL).
+- [x] Bearer required on all `/mcp` methods via Better Auth `getMcpSession` + Durabull scope middleware.
+- [x] Expired access tokens rejected with `401` (`isMcpAccessTokenExpired` after `getMcpSession`).
+- [x] Canonical resource URI `${APP_BASE_URL}/mcp` in PRM and validation helpers.
+- [x] `401` / `403` semantics (invalid token vs insufficient scope).
+- [x] Better Auth `mcp` plugin + `oauth_*` DAL tables/migration.
+- [x] Session registry: new sessions only on `initialize`; cap at 256 sessions.
+- [x] Operator doc `docs/mcp-oauth-operator.md`.
+
+#### Verification Evidence
+
+- [x] Commands run:
+  - [x] `bun run --filter @durabull/mcp test` (30 pass)
+  - [x] `bun run --filter @durabull/api test src/mcp/` (7 pass)
+  - [x] `bun run --filter @durabull/mcp typecheck`
+  - [x] `bun run --filter @durabull/auth typecheck`
+  - [x] Live e2e: `cd tooling/scripts && APP_BASE_URL=http://localhost:3001 bun run mcp:e2e` (10/10 Better Auth, 9/9 authless)
+- [x] Tests added:
+  - [x] `packages/mcp/src/auth/validate-token.test.ts`
+  - [x] `packages/mcp/src/auth/bearer-middleware.test.ts`
+  - [x] `packages/mcp/src/auth/session.test.ts`
+  - [x] Updated `packages/mcp/src/routes.test.ts` (401, session guard)
+  - [x] Updated `apps/api/src/mcp/mount.test.ts` (401, PRM, ping flow, expired OAuth token)
+  - [x] `tooling/scripts/mcp-e2e-smoke.ts` (repeatable live smoke)
+
+#### Handoff To Next PR
+
+- Next PR: `PR-04`
+- Known risks: RFC 8707 `resource` binding on opaque tokens is not persisted at issuance yet (`resource` column ready; wire in token handler when enabling full OAuth client flows).
+- Notes for next agent: add principal resolver + policy engine; enforce org/connection boundaries on tool calls.
+
+---
+
 ## Live PR Tracker
 
 - [ ] PR-01 Security architecture baseline (in progress on `feat/no-linear-mcp-pr01-security-baseline`)
 - [x] PR-02 API `/mcp` ingress + transport (`@durabull/mcp` package + thin API mount)
-- [ ] PR-03 OAuth discovery + token validation
+- [ ] PR-03 OAuth discovery + token validation (in review — PR #89)
 - [ ] PR-04 Principals + policy engine
 - [ ] PR-05 Read-only diagnostic tools
 - [ ] PR-06 Safety hardening

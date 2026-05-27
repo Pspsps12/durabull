@@ -12,3 +12,8 @@ export {
   MCP_SERVER_NAME,
 } from './constants'
 export { createMcpRoutes, type CreateMcpRoutesOptions } from './routes'
+export {
+  getCanonicalMcpResourceUri,
+  getMcpProtectedResourceMetadataUrl,
+  MCP_TRANSPORT_REQUIRED_SCOPES,
+} from './auth'

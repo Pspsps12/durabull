@@ -8,6 +8,10 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts"
     },
+    "./auth": {
+      "types": "./src/auth/index.ts",
+      "import": "./src/auth/index.ts"
+    },
     "./testing": {
       "types": "./src/testing/mcp-test-client.ts",
       "import": "./src/testing/mcp-test-client.ts"

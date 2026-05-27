@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto'
+
+import { extractBearerToken } from '@durabull/mcp/auth'
 import { env } from '@durabull/env'
 import { createMiddleware } from 'hono/factory'
 
@@ -247,18 +250,42 @@ export const connectionTestRateLimiter = rateLimiter({
 /**
  * Rate limiter for MCP Streamable HTTP ingress at /mcp.
  */
+function mcpIngressRateLimitKey(c: Parameters<ReturnType<typeof createMiddleware>>[0]): string {
+  const bearerToken = extractBearerToken(c.req.header('Authorization'))
+  if (bearerToken) {
+    return `bearer:${createHash('sha256').update(bearerToken).digest('hex').slice(0, 24)}`
+  }
+
+  const cfIp = c.req.header('cf-connecting-ip')
+  if (cfIp) return cfIp
+  const realIp = c.req.header('x-real-ip')
+  if (realIp) return realIp
+  return 'mcp-anonymous'
+}
+
+/** Stricter limit for dynamic MCP OAuth client registration. */
+export const mcpOAuthRegisterRateLimiter = rateLimiter({
+  windowMs: 60 * 1000,
+  limit: 20,
+  keyPrefix: 'rl:mcp-oauth-register',
+  keyGenerator: mcpIngressRateLimitKey,
+  onRateLimit: (c) =>
+    c.json(
+      {
+        error: 'Too Many Requests',
+        code: 'RATE_LIMITED',
+        message: 'MCP OAuth client registration rate limit exceeded.',
+        retryAfter: 60,
+      },
+      429
+    ),
+})
+
 export const mcpRateLimiter = rateLimiter({
   windowMs: 60 * 1000,
   limit: 120,
   keyPrefix: 'rl:mcp',
-  // Do not trust client-controlled x-forwarded-for for MCP throttling.
-  keyGenerator: (c) => {
-    const cfIp = c.req.header('cf-connecting-ip')
-    if (cfIp) return cfIp
-    const realIp = c.req.header('x-real-ip')
-    if (realIp) return realIp
-    return 'mcp-anonymous'
-  },
+  keyGenerator: mcpIngressRateLimitKey,
   onRateLimit: (c) =>
     c.json(
       {
