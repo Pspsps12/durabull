@@ -13,7 +13,7 @@ export function CreateAlertRuleRoute() {
   const { orgSlug, connectionId } = Route.useParams()
   const navigate = useNavigate()
   const { currentConnection } = useConnection()
-  const queuesQuery = useQueues()
+  const queuesQuery = useQueues({ pageSize: 100 })
   const createRuleMutation = useCreateAlertRule(connectionId)
   const linearIntegrationQuery = useLinearIntegration()
 
