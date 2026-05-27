@@ -7,9 +7,19 @@ export interface McpRequestPrincipal {
   organizationId?: string
 }
 
+export interface McpResolvedConnection {
+  id: string
+  organizationId: string
+  url: string
+  prefix: string
+  allowSelfSignedCerts: boolean
+}
+
 export interface McpRequestContext {
   principal?: McpRequestPrincipal
   correlationId?: string
+  grantedScopes?: string[]
+  resolvedConnection?: McpResolvedConnection
 }
 
 const store = new AsyncLocalStorage<McpRequestContext>()

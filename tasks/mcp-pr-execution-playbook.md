@@ -849,15 +849,23 @@ Finalize production quality and confirm spec/safety compliance.
 
 #### Handoff To Next PR
 
-- Next PR: `PR-05` continuation (remaining tool catalog)
+- Next PR: `PR-06` (safety hardening)
 - Known risks:
-  - partial read catalog shipped; remaining diagnostic endpoints still pending (`get_failure_events`, `get_queue_metrics`, `get_workers`, `explain_job_failure`).
+  - MCP output redaction is minimal (alert context key filtering only); full sanitizer lands in PR-06.
 - Follow-up tasks:
-  - add per-tool schemas/contract tests for remaining read tools.
-  - validate pagination/limits on log and stacktrace-heavy tools.
+  - land remaining tools on `feat/mcp-pr05-remaining-read-tools` (`get_failure_events`, `get_queue_metrics`, `get_workers`, `explain_job_failure`).
 - Notes for next agent:
   - keep all MCP tools read-only and route through existing policy middleware.
   - preserve request-context bridge; do not bypass principal/policy/audit path when adding tools.
+
+#### PR-05 continuation (`feat/mcp-pr05-remaining-read-tools`)
+
+- [x] `get_failure_events` (`mcp:failures:read`) with paginated alert events + sanitized context.
+- [x] `get_queue_metrics` (`mcp:diagnostics:read`) with bounded summary (no Prometheus/raw series export).
+- [x] `get_workers` (`mcp:jobs:read`) with queue-scoped worker snapshots.
+- [x] `explain_job_failure` (`mcp:diagnostics:read`) deterministic composed summary.
+- [x] Policy scope mappings + `tools/list` integration tests updated.
+- [x] Unit tests: `explain-job-failure-handler.test.ts`, policy scope mapping test.
 
 ---
 
@@ -866,8 +874,8 @@ Finalize production quality and confirm spec/safety compliance.
 - [ ] PR-01 Security architecture baseline (folded into PR-04 completion work)
 - [x] PR-02 API `/mcp` ingress + transport (`@durabull/mcp` package + thin API mount)
 - [x] PR-03 OAuth discovery + token validation (merged — PR #89)
-- [ ] PR-04 Principals + policy engine (in progress on `feat/no-linear-mcp-pr04-principals-policy-engine`)
-- [ ] PR-05 Read-only diagnostic tools (in progress: first 7 tools + remaining catalog)
+- [x] PR-04 Principals + policy engine (merged — PR #94)
+- [ ] PR-05 Read-only diagnostic tools (complete on branch `feat/mcp-pr05-remaining-read-tools`; pending merge)
 - [ ] PR-06 Safety hardening
 - [ ] PR-07 Deployment + operations
 - [ ] PR-08 GA readiness + security closure

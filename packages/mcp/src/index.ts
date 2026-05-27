@@ -12,13 +12,25 @@ export {
   MCP_SERVER_NAME,
 } from './constants'
 export { createMcpRoutes, type CreateMcpRoutesOptions } from './routes'
-export type { McpRequestContext, McpRequestPrincipal } from './request-context'
+export {
+  getMcpRequestContext,
+  runWithMcpRequestContext,
+} from './request-context'
+export type {
+  McpRequestContext,
+  McpRequestPrincipal,
+  McpResolvedConnection,
+} from './request-context'
 export {
   getCanonicalMcpResourceUri,
   getMcpProtectedResourceMetadataUrl,
   MCP_TRANSPORT_REQUIRED_SCOPES,
 } from './auth'
 export type {
+  ExplainJobFailureHandlerInput,
+  ExplainJobFailureHandlerOutput,
+  GetFailureEventsHandlerInput,
+  GetFailureEventsHandlerOutput,
   GetJobHandlerInput,
   GetJobHandlerOutput,
   GetJobLogsHandlerInput,
@@ -27,6 +39,10 @@ export type {
   GetJobStacktracesHandlerOutput,
   GetQueueHandlerInput,
   GetQueueHandlerOutput,
+  GetQueueMetricsHandlerInput,
+  GetQueueMetricsHandlerOutput,
+  GetWorkersHandlerInput,
+  GetWorkersHandlerOutput,
   ListConnectionsHandlerInput,
   ListConnectionsHandlerOutput,
   ListJobsHandlerInput,

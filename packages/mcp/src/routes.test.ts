@@ -281,16 +281,14 @@ describe('createMcpRoutes', () => {
     const payload = (await readMcpJsonResponse(callResponse)) as {
       result?: {
         isError?: boolean
-        structuredContent?: {
-          error?: {
-            code?: string
-            message?: string
-          }
-        }
+        content?: Array<{ type: string; text?: string }>
       }
     }
     expect(payload.result?.isError).toBe(true)
-    expect(payload.result?.structuredContent?.error?.code).toBe('not_found')
-    expect(payload.result?.structuredContent?.error?.message).toContain('Connection missing for test')
+    const errorPayload = JSON.parse(payload.result?.content?.[0]?.text ?? '{}') as {
+      error?: { code?: string; message?: string }
+    }
+    expect(errorPayload.error?.code).toBe('not_found')
+    expect(errorPayload.error?.message).toContain('Connection missing for test')
   })
 })

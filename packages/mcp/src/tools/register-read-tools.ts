@@ -197,6 +197,160 @@ export interface GetJobStacktracesHandlerOutput {
   nextCursor: string | null
 }
 
+export interface GetFailureEventsHandlerInput {
+  principal: ListConnectionsHandlerInput['principal']
+  connectionId: string
+  queueName?: string
+  jobId?: string
+  status?: 'firing' | 'resolved' | 'suppressed'
+  cursor?: string
+  pageSize: number
+}
+
+export interface GetFailureEventsHandlerOutput {
+  [key: string]: unknown
+  connectionId: string
+  total: number
+  events: Array<{
+    id: string
+    alertRuleId: string
+    queueName: string
+    type: string
+    status: string
+    summary: string
+    context: Record<string, unknown> | null
+    firedAt: string
+    resolvedAt: string | null
+  }>
+  nextCursor: string | null
+}
+
+export interface GetQueueMetricsHandlerInput {
+  principal: ListConnectionsHandlerInput['principal']
+  connectionId: string
+  queueName: string
+  windowMinutes?: number
+}
+
+export interface GetQueueMetricsHandlerOutput {
+  [key: string]: unknown
+  connectionId: string
+  queueName: string
+  range: {
+    requestedWindowMinutes: number | null
+    returnedPoints: number
+    oldestPointTimestamp: number | null
+    newestPointTimestamp: number | null
+    latestPointAgeMs: number | null
+    requestedWindowCoverage: number | null
+  }
+  totals: {
+    completedInWindow: number
+    failedInWindow: number
+    finishedInWindow: number
+    successRateInWindow: number
+    failureRateInWindow: number
+    avgCompletedPerMinuteInWindow: number
+    avgFailedPerMinuteInWindow: number
+    longestFailureStreakMinutesInWindow: number
+    longestCompletionStreakMinutesInWindow: number
+    completedLifetime: number
+    failedLifetime: number
+    failureRateLifetime: number
+    estimatedDrainMinutes: number | null
+  }
+  counts: {
+    waiting: number
+    active: number
+    delayed: number
+    completed: number
+    failed: number
+    paused: number
+    prioritized: number
+    waitingChildren: number
+  }
+  queue: {
+    isPaused: boolean
+    isMaxed: boolean
+    waitingToProcess: number
+    workersCount: number
+    schedulersCount: number
+  }
+  warnings: string[]
+}
+
+export interface GetWorkersHandlerInput {
+  principal: ListConnectionsHandlerInput['principal']
+  connectionId: string
+  queueName?: string
+  cursor?: string
+  pageSize: number
+}
+
+export interface GetWorkersHandlerOutput {
+  [key: string]: unknown
+  connectionId: string
+  totalQueues: number
+  totalWorkersInPage: number
+  workers: Array<{
+    id: string
+    name: string
+    address: string
+    ageMs: number
+    idleMs: number
+    queueName: string
+  }>
+  queues: Array<{
+    name: string
+    workerCount: number
+    status: 'paused' | 'active'
+    jobCounts: {
+      active: number
+      waiting: number
+    }
+  }>
+  nextCursor: string | null
+}
+
+export interface ExplainJobFailureHandlerInput {
+  principal: ListConnectionsHandlerInput['principal']
+  connectionId: string
+  queueName: string
+  jobId: string
+}
+
+export interface ExplainJobFailureHandlerOutput {
+  [key: string]: unknown
+  connectionId: string
+  queueName: string
+  jobId: string
+  status: string
+  summary: string
+  failedReason: string | null
+  attemptTimeline: {
+    attemptsMade: number
+    maxAttempts: number
+    processedOn: number | null
+    finishedOn: number | null
+    timestamp: number | null
+  }
+  topSignal: {
+    source: 'failed_reason' | 'stacktrace' | 'logs' | 'none'
+    excerpt: string
+  }
+  relatedAlertEvents: Array<{
+    id: string
+    type: string
+    status: string
+    summary: string
+    firedAt: string
+    context: Record<string, unknown> | null
+  }>
+  recentLogLines: string[]
+  confidence: 'high' | 'medium' | 'low'
+  sources: string[]
+}
+
 export interface RegisterReadToolsOptions {
   listConnections?: (input: ListConnectionsHandlerInput) => Promise<ListConnectionsHandlerOutput>
   listQueues?: (input: ListQueuesHandlerInput) => Promise<ListQueuesHandlerOutput>
@@ -207,6 +361,12 @@ export interface RegisterReadToolsOptions {
   getJobStacktraces?: (
     input: GetJobStacktracesHandlerInput
   ) => Promise<GetJobStacktracesHandlerOutput>
+  getFailureEvents?: (input: GetFailureEventsHandlerInput) => Promise<GetFailureEventsHandlerOutput>
+  getQueueMetrics?: (input: GetQueueMetricsHandlerInput) => Promise<GetQueueMetricsHandlerOutput>
+  getWorkers?: (input: GetWorkersHandlerInput) => Promise<GetWorkersHandlerOutput>
+  explainJobFailure?: (
+    input: ExplainJobFailureHandlerInput
+  ) => Promise<ExplainJobFailureHandlerOutput>
 }
 
 function parsePageSize(raw: unknown): number {
@@ -256,16 +416,34 @@ function toToolError(error: unknown): { code: string; message: string } {
     typeof (error as { code: unknown }).code === 'string'
   ) {
     const code = (error as { code: string }).code
+    const message =
+      error instanceof Error && error.message
+        ? error.message
+        : KNOWN_CODES.has(code)
+          ? code
+          : INTERNAL_ERROR_MESSAGE
     return {
       code: KNOWN_CODES.has(code) ? code : 'internal_error',
-      message:
-        KNOWN_CODES.has(code) && error instanceof Error ? error.message : INTERNAL_ERROR_MESSAGE,
+      message: KNOWN_CODES.has(code) ? message : INTERNAL_ERROR_MESSAGE,
     }
   }
 
   return {
     code: 'internal_error',
     message: INTERNAL_ERROR_MESSAGE,
+  }
+}
+
+function mcpToolSuccess(result: Record<string, unknown>) {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+  }
+}
+
+function mcpToolFailure(toolError: { code: string; message: string }) {
+  return {
+    isError: true,
+    content: [{ type: 'text' as const, text: JSON.stringify({ error: toolError }) }],
   }
 }
 
@@ -287,17 +465,10 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
             cursor: parseCursor(args.cursor),
             pageSize: parsePageSize(args.pageSize),
           })
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result) }],
-            structuredContent: result,
-          }
+          return mcpToolSuccess(result)
         } catch (error) {
           const toolError = toToolError(error)
-          return {
-            isError: true,
-            content: [{ type: 'text', text: JSON.stringify({ error: toolError }) }],
-            structuredContent: { error: toolError },
-          }
+          return mcpToolFailure(toolError)
         }
       }
     )
@@ -320,17 +491,10 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
             cursor: parseCursor(args.cursor),
             pageSize: parsePageSize(args.pageSize),
           })
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result) }],
-            structuredContent: result,
-          }
+          return mcpToolSuccess(result)
         } catch (error) {
           const toolError = toToolError(error)
-          return {
-            isError: true,
-            content: [{ type: 'text', text: JSON.stringify({ error: toolError }) }],
-            structuredContent: { error: toolError },
-          }
+          return mcpToolFailure(toolError)
         }
       }
     )
@@ -351,17 +515,10 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
             connectionId: args.connectionId,
             queueName: args.queueName,
           })
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result) }],
-            structuredContent: result,
-          }
+          return mcpToolSuccess(result)
         } catch (error) {
           const toolError = toToolError(error)
-          return {
-            isError: true,
-            content: [{ type: 'text', text: JSON.stringify({ error: toolError }) }],
-            structuredContent: { error: toolError },
-          }
+          return mcpToolFailure(toolError)
         }
       }
     )
@@ -392,17 +549,10 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
             cursor: parseCursor(args.cursor),
             pageSize: parsePageSize(args.pageSize),
           })
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result) }],
-            structuredContent: result,
-          }
+          return mcpToolSuccess(result)
         } catch (error) {
           const toolError = toToolError(error)
-          return {
-            isError: true,
-            content: [{ type: 'text', text: JSON.stringify({ error: toolError }) }],
-            structuredContent: { error: toolError },
-          }
+          return mcpToolFailure(toolError)
         }
       }
     )
@@ -425,17 +575,10 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
             queueName: args.queueName,
             jobId: args.jobId,
           })
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result) }],
-            structuredContent: result,
-          }
+          return mcpToolSuccess(result)
         } catch (error) {
           const toolError = toToolError(error)
-          return {
-            isError: true,
-            content: [{ type: 'text', text: JSON.stringify({ error: toolError }) }],
-            structuredContent: { error: toolError },
-          }
+          return mcpToolFailure(toolError)
         }
       }
     )
@@ -462,17 +605,10 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
             cursor: parseCursor(args.cursor),
             pageSize: parsePageSize(args.pageSize),
           })
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result) }],
-            structuredContent: result,
-          }
+          return mcpToolSuccess(result)
         } catch (error) {
           const toolError = toToolError(error)
-          return {
-            isError: true,
-            content: [{ type: 'text', text: JSON.stringify({ error: toolError }) }],
-            structuredContent: { error: toolError },
-          }
+          return mcpToolFailure(toolError)
         }
       }
     )
@@ -499,17 +635,122 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
             cursor: parseCursor(args.cursor),
             pageSize: parsePageSize(args.pageSize),
           })
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result) }],
-            structuredContent: result,
-          }
+          return mcpToolSuccess(result)
         } catch (error) {
           const toolError = toToolError(error)
-          return {
-            isError: true,
-            content: [{ type: 'text', text: JSON.stringify({ error: toolError }) }],
-            structuredContent: { error: toolError },
-          }
+          return mcpToolFailure(toolError)
+        }
+      }
+    )
+  }
+
+  const getFailureEvents = options.getFailureEvents
+  if (getFailureEvents) {
+    server.tool(
+      'get_failure_events',
+      {
+        connectionId: z.string().min(1),
+        queueName: z.string().min(1).optional(),
+        jobId: z.string().min(1).optional(),
+        status: z.enum(['firing', 'resolved', 'suppressed']).optional(),
+        cursor: z.string().optional(),
+        pageSize: z.number().int().min(1).max(100).optional(),
+      },
+      async (args) => {
+        try {
+          const result = await getFailureEvents({
+            principal: getPrincipalFromContext(),
+            connectionId: args.connectionId,
+            queueName: args.queueName,
+            jobId: args.jobId,
+            status: args.status,
+            cursor: parseCursor(args.cursor),
+            pageSize: parsePageSize(args.pageSize),
+          })
+          return mcpToolSuccess(result)
+        } catch (error) {
+          const toolError = toToolError(error)
+          return mcpToolFailure(toolError)
+        }
+      }
+    )
+  }
+
+  const getQueueMetrics = options.getQueueMetrics
+  if (getQueueMetrics) {
+    server.tool(
+      'get_queue_metrics',
+      {
+        connectionId: z.string().min(1),
+        queueName: z.string().min(1),
+        windowMinutes: z.number().int().min(1).max(1440).optional(),
+      },
+      async (args) => {
+        try {
+          const result = await getQueueMetrics({
+            principal: getPrincipalFromContext(),
+            connectionId: args.connectionId,
+            queueName: args.queueName,
+            windowMinutes: args.windowMinutes,
+          })
+          return mcpToolSuccess(result)
+        } catch (error) {
+          const toolError = toToolError(error)
+          return mcpToolFailure(toolError)
+        }
+      }
+    )
+  }
+
+  const getWorkers = options.getWorkers
+  if (getWorkers) {
+    server.tool(
+      'get_workers',
+      {
+        connectionId: z.string().min(1),
+        queueName: z.string().min(1).optional(),
+        cursor: z.string().optional(),
+        pageSize: z.number().int().min(1).max(100).optional(),
+      },
+      async (args) => {
+        try {
+          const result = await getWorkers({
+            principal: getPrincipalFromContext(),
+            connectionId: args.connectionId,
+            queueName: args.queueName,
+            cursor: parseCursor(args.cursor),
+            pageSize: parsePageSize(args.pageSize),
+          })
+          return mcpToolSuccess(result)
+        } catch (error) {
+          const toolError = toToolError(error)
+          return mcpToolFailure(toolError)
+        }
+      }
+    )
+  }
+
+  const explainJobFailure = options.explainJobFailure
+  if (explainJobFailure) {
+    server.tool(
+      'explain_job_failure',
+      {
+        connectionId: z.string().min(1),
+        queueName: z.string().min(1),
+        jobId: z.string().min(1),
+      },
+      async (args) => {
+        try {
+          const result = await explainJobFailure({
+            principal: getPrincipalFromContext(),
+            connectionId: args.connectionId,
+            queueName: args.queueName,
+            jobId: args.jobId,
+          })
+          return mcpToolSuccess(result)
+        } catch (error) {
+          const toolError = toToolError(error)
+          return mcpToolFailure(toolError)
         }
       }
     )
