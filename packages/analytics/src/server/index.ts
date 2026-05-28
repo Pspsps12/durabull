@@ -13,7 +13,6 @@ export {
 export {
   captureAnonymousServerEvent,
   captureIdentifiedServerEvent,
-  getTelemetryHmacSecret,
   ingestTelemetryCollectBatch,
   isDurabullTelemetryCollectConfigured,
   resolveIdentifiedDistinctIds,

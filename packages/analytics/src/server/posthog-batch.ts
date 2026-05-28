@@ -17,6 +17,9 @@ export interface PosthogBatchClientConfig {
 
 export const DEFAULT_POSTHOG_BATCH_HOST = 'https://us.i.posthog.com'
 
+/** Upper bound on a single PostHog ingest round-trip; prevents hung sockets from tying up workers. */
+export const POSTHOG_FETCH_TIMEOUT_MS = 5_000
+
 function isPrivateOrLinkLocalIpv4(hostname: string): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(hostname)
   if (!match) return false
@@ -117,6 +120,7 @@ export async function sendPosthogBatch(
       batch,
     }),
     redirect: 'manual',
+    signal: AbortSignal.timeout(POSTHOG_FETCH_TIMEOUT_MS),
   })
 
   if (response.status >= 300 && response.status < 400) return false

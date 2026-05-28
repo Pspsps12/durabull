@@ -4,7 +4,11 @@ import {
   DEFAULT_CLOUD_COLLECT_URL,
   TELEMETRY_DISCLOSURE_URL,
 } from '@durabull/analytics/server'
-import { getDatabaseMode, shouldUseEnvConnections, telemetryInstallationRepository } from '@durabull/dal'
+import {
+  getDatabaseMode,
+  shouldUseEnvConnections,
+  telemetryInstallationRepository,
+} from '@durabull/dal'
 import { env } from '@durabull/env'
 
 import { isAuthlessMode } from './authless'
@@ -24,6 +28,34 @@ function getDurabullTelemetryPosthogKey(): string | null {
 }
 
 let cachedAnonymousInstanceId: string | null = null
+let inFlightAnonymousInstanceId: Promise<string> | null = null
+
+/**
+ * Resolve the anonymous installation id with a process cache and single-flight guard so
+ * concurrent cold-start callers share one DB round-trip instead of stampeding the repository.
+ */
+async function resolveAnonymousInstanceId(): Promise<string> {
+  if (cachedAnonymousInstanceId) {
+    return cachedAnonymousInstanceId
+  }
+
+  if (inFlightAnonymousInstanceId) {
+    return inFlightAnonymousInstanceId
+  }
+
+  inFlightAnonymousInstanceId = (async () => {
+    try {
+      // getOrCreateAnonymousInstanceId reads first, so this avoids a redundant SELECT.
+      const id = await telemetryInstallationRepository.getOrCreateAnonymousInstanceId()
+      cachedAnonymousInstanceId = id
+      return id
+    } finally {
+      inFlightAnonymousInstanceId = null
+    }
+  })()
+
+  return inFlightAnonymousInstanceId
+}
 
 export function bootstrapServerAnalytics(): void {
   const appPosthogKey = env.POSTHOG_KEY?.trim() || null
@@ -51,20 +83,18 @@ export function bootstrapServerAnalytics(): void {
       persistence: getDatabaseMode(),
       stateless: getDatabaseMode() === 'pglite',
     }),
-    resolveAnonymousInstanceId: async () => {
-      if (cachedAnonymousInstanceId) {
-        return cachedAnonymousInstanceId
-      }
-
-      const existing = await telemetryInstallationRepository.readAnonymousInstanceId()
-      cachedAnonymousInstanceId =
-        existing ?? (await telemetryInstallationRepository.getOrCreateAnonymousInstanceId())
-      return cachedAnonymousInstanceId
-    },
+    resolveAnonymousInstanceId,
   })
+
+  // Eagerly warm the installation id so request paths (/events, MCP analytics)
+  // never block on a cold DB read. Telemetry must never affect product runtime.
+  if (env.NODE_ENV === 'production' && env.CI !== true) {
+    void resolveAnonymousInstanceId().catch(() => {})
+  }
 }
 
 /** Test-only: clear cached installation id when re-bootstrapping. */
 export function resetCachedAnonymousInstanceIdForTests(): void {
   cachedAnonymousInstanceId = null
+  inFlightAnonymousInstanceId = null
 }
