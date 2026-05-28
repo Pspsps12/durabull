@@ -11,6 +11,7 @@ import {
   bootstrapServerAnalytics,
   resetCachedAnonymousInstanceIdForTests,
 } from '../lib/configure-server-analytics'
+import { resetTelemetryEventsQueueForTests } from './telemetry-events-queue'
 
 const QUEUE_PAUSED_EVENT = 'queue_paused'
 
@@ -76,6 +77,7 @@ describe('telemetry routes', () => {
     await closeDb()
     resetServerAnalyticsForTests()
     resetCachedAnonymousInstanceIdForTests()
+    resetTelemetryEventsQueueForTests()
     mutableEnv.APP_BASE_URL = originalAppBaseUrl
     mutableEnv.BETTER_AUTH_SECRET = originalBetterAuthSecret
     mutableEnv.CI = originalCi

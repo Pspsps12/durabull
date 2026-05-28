@@ -1,7 +1,6 @@
 import { AnalyticsEvents, AnalyticsProperties } from '@durabull/analytics/events'
 import {
-  captureAnonymousServerEvent,
-  captureIdentifiedServerEvent,
+  captureMcpAnalyticsServerEvent,
   hashMcpAnalyticsSessionId,
   resolveIdentifiedDistinctIds,
   shouldDedupeIdentifiedPosthogEvents,
@@ -60,42 +59,25 @@ async function processMcpAnalytics(input: McpAnalyticsInput): Promise<void> {
   const hasIdentifiedIdentity = identified.distinctId != null
   const shouldSkipAnonymous = shouldDedupeIdentifiedPosthogEvents() && hasIdentifiedIdentity
 
-  const tasks: Promise<void>[] = []
+  const includeAnonymous = !shouldSkipAnonymous
+  const anonymousInstanceId = includeAnonymous ? await options.resolveAnonymousInstanceId() : undefined
+  const secret = options.hmacSecret
+  const sessionId =
+    input.sessionKey ??
+    (identity && secret ? hashMcpAnalyticsSessionId(identity.principalId, secret) : 'mcp-server')
 
-  if (!shouldSkipAnonymous) {
-    const anonymousInstanceId = await options.resolveAnonymousInstanceId()
-    const secret = options.hmacSecret
-    const sessionId =
-      input.sessionKey ??
-      (identity && secret ? hashMcpAnalyticsSessionId(identity.principalId, secret) : 'mcp-server')
-
-    tasks.push(
-      captureAnonymousServerEvent({
-        anonymousInstanceId,
-        event: input.event,
-        properties,
-        sessionId,
-      })
-    )
-  }
-
-  if (identified.distinctId) {
-    tasks.push(
-      captureIdentifiedServerEvent({
-        event: input.event,
-        properties,
-        distinctId: identified.distinctId,
-        // Pass the raw org id; captureIdentifiedServerEvent hashes it once for
-        // the PostHog group. Passing identified.organizationGroup (already
-        // hashed) would double-hash and break org correlation.
-        organizationId: identity?.organizationId ?? null,
-      })
-    )
-  }
-
-  if (tasks.length > 0) {
-    await Promise.all(tasks)
-  }
+  await captureMcpAnalyticsServerEvent({
+    event: input.event,
+    properties,
+    includeAnonymous,
+    anonymousInstanceId,
+    sessionId,
+    identifiedDistinctId: identified.distinctId,
+    // Pass the raw org id; captureMcpAnalyticsServerEvent hashes it once for
+    // the PostHog group. Passing identified.organizationGroup (already hashed)
+    // would double-hash and break org correlation.
+    organizationId: identity?.organizationId ?? null,
+  })
 }
 
 export function recordMcpAnalytics(input: McpAnalyticsInput): void {

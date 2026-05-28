@@ -18,6 +18,7 @@ export function enqueueMcpAnalytics(
   }
 
   if (pendingAnalytics.length >= MAX_ANALYTICS_QUEUE_DEPTH) {
+    console.warn('[analytics] MCP analytics queue full; dropping event')
     return
   }
 

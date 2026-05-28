@@ -9,8 +9,8 @@ import {
   parseMcpJsonRpcPayloadId,
   parseMcpToolCallBody,
 } from '../json-rpc-tool-call'
-import { recordMcpRpcAnalytics } from '../observability/mcp-analytics'
-import { resolveConnectionForPrincipal } from '../tools/shared'
+import { recordMcpRpcAnalytics, type McpAnalyticsIdentity } from '../observability/mcp-analytics'
+import { resolveConnectionForPrincipal } from '../connections/resolve-connection'
 import { evaluateMcpToolPolicy } from './policy-engine'
 import { resolveMcpPrincipal } from './principal-resolver'
 import type { McpPolicyDecision, McpPrincipal } from './types'
@@ -64,6 +64,21 @@ function policyDenialErrorData(decision: McpPolicyDecision): Record<string, unkn
   return { code: 'policy_denied' }
 }
 
+function principalToAnalyticsIdentity(principal: McpPrincipal): McpAnalyticsIdentity {
+  return principal.type === 'delegated_user'
+    ? {
+        principalType: principal.type,
+        principalId: principal.principalId,
+        userId: principal.userId,
+        organizationId: null,
+      }
+    : {
+        principalType: principal.type,
+        principalId: principal.principalId,
+        organizationId: principal.organizationId,
+      }
+}
+
 export function createMcpPolicyMiddleware() {
   return createMiddleware(async (c, next) => {
     if (c.req.method !== 'POST') {
@@ -94,9 +109,13 @@ export function createMcpPolicyMiddleware() {
     }
     if (!toolCall) {
       const mcpMethod = parseMcpJsonRpcMethod(body)
-      const rpcAnalyticsMethods = RPC_ANALYTICS_METHODS
-      if (mcpMethod && rpcAnalyticsMethods.has(mcpMethod)) {
-        recordMcpRpcAnalytics({ mcpMethod })
+      if (mcpMethod && RPC_ANALYTICS_METHODS.has(mcpMethod)) {
+        const session = c.get('mcpSession')
+        const principal = await resolveMcpPrincipal(session)
+        recordMcpRpcAnalytics({
+          mcpMethod,
+          identity: principal ? principalToAnalyticsIdentity(principal) : null,
+        })
       }
       return next()
     }
@@ -178,7 +197,8 @@ export function createMcpPolicyMiddleware() {
             }
       const resolvedConnection = await resolveConnectionForPrincipal(
         principalForConnection,
-        toolCall.connectionId
+        toolCall.connectionId,
+        { skipDelegatedAccessCheck: principal.type === 'delegated_user' }
       )
       if (resolvedConnection) {
         c.set('mcpResolvedConnection', resolvedConnection)

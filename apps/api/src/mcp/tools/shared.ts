@@ -1,6 +1,6 @@
-import { mcpPolicyRepository, redisConnectionRepository } from '@durabull/dal'
-import type { ListConnectionsHandlerInput, McpResolvedConnection } from '@durabull/mcp'
-import { getMcpRequestContext } from '@durabull/mcp'
+import type { ListConnectionsHandlerInput } from '@durabull/mcp'
+
+import { resolveConnectionForPrincipal } from '../connections/resolve-connection'
 
 export type ToolPrincipal = ListConnectionsHandlerInput['principal']
 
@@ -12,47 +12,6 @@ export class McpToolError extends Error {
     this.name = 'McpToolError'
     this.code = code
   }
-}
-
-function toResolvedConnection(connection: {
-  id: string
-  organizationId: string
-  url: string
-  prefix: string
-  allowSelfSignedCerts: boolean
-}): McpResolvedConnection {
-  return {
-    id: connection.id,
-    organizationId: connection.organizationId,
-    url: connection.url,
-    prefix: connection.prefix,
-    allowSelfSignedCerts: connection.allowSelfSignedCerts,
-  }
-}
-
-export async function resolveConnectionForPrincipal(principal: ToolPrincipal, connectionId: string) {
-  const cached = getMcpRequestContext()?.resolvedConnection
-  if (cached?.id === connectionId) {
-    return cached
-  }
-
-  if (principal.type === 'service_account') {
-    const connection = await redisConnectionRepository.findById(
-      connectionId,
-      principal.organizationId
-    )
-    return connection ? toResolvedConnection(connection) : null
-  }
-
-  const hasAccess = await mcpPolicyRepository.canDelegatedUserAccessConnection(
-    principal.userId,
-    connectionId
-  )
-  if (!hasAccess) {
-    return null
-  }
-  const connection = await redisConnectionRepository.findByIdUnsafe(connectionId)
-  return connection ? toResolvedConnection(connection) : null
 }
 
 export async function requireConnectionForPrincipal(

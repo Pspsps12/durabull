@@ -1,16 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { AnalyticsEvents } from '@durabull/analytics/events'
-import { configureServerAnalytics, resetServerAnalyticsForTests } from '@durabull/analytics/server'
 import { env } from '@durabull/env'
 
-import { resetCachedAnonymousInstanceIdForTests } from '../../lib/configure-server-analytics'
-
-const captureAnonymousServerEvent = mock(async () => {})
-const captureIdentifiedServerEvent = mock(async () => {})
+const captureMcpAnalyticsServerEvent = mock(async () => {})
 
 mock.module('@durabull/analytics/server', () => ({
-  captureAnonymousServerEvent,
-  captureIdentifiedServerEvent,
+  captureMcpAnalyticsServerEvent,
   hashMcpAnalyticsSessionId: (value: string) => `session-${value}`,
   shouldDedupeIdentifiedPosthogEvents: () => false,
   resolveIdentifiedDistinctIds: ({
@@ -33,10 +28,11 @@ mock.module('@durabull/analytics/server', () => ({
   },
   tryGetServerAnalyticsOptions: () => ({
     enabled: true,
+    hmacSecret: 'test-secret',
     resolveAnonymousInstanceId: async () => 'test-instance-id',
   }),
-  configureServerAnalytics,
-  resetServerAnalyticsForTests,
+  configureServerAnalytics: () => undefined,
+  resetServerAnalyticsForTests: () => undefined,
 }))
 
 const { recordMcpAnalytics, recordMcpTelemetryAnalytics } = await import('./mcp-analytics')
@@ -58,41 +54,15 @@ describe('mcp analytics', () => {
     mutableEnv.NODE_ENV = 'production'
     mutableEnv.CI = false
     mutableEnv.BETTER_AUTH_SECRET = 'test-secret'
-    resetServerAnalyticsForTests()
-    resetCachedAnonymousInstanceIdForTests()
-    configureServerAnalytics({
-      enabled: true,
-      collectEnabled: true,
-      dedupeIdentifiedPosthogEvents: false,
-      disclosureUrl: 'https://durabull.io/privacy',
-      collectSigningSecret: 'test-collect-secret',
-      hmacSecret: 'test-secret',
-      durabullTelemetryPosthogKey: 'phc_test',
-      durabullTelemetryPosthogHost: 'https://us.i.posthog.com',
-      appPosthogKey: 'phc_app',
-      appPosthogHost: null,
-      cloudCollectUrl: 'https://app.durabull.io/api/telemetry/collect',
-      getRuntimeContext: () => ({
-        authless: false,
-        env_connections: false,
-        environment: 'production',
-        persistence: 'postgres',
-        stateless: false,
-      }),
-      resolveAnonymousInstanceId: async () => 'test-instance-id',
-    })
     resetMcpTelemetryForTests()
     resetMcpAnalyticsQueueForTests()
-    captureAnonymousServerEvent.mockClear()
-    captureIdentifiedServerEvent.mockClear()
+    captureMcpAnalyticsServerEvent.mockClear()
   })
 
   afterEach(() => {
     mutableEnv.NODE_ENV = originalNodeEnv
     mutableEnv.CI = originalCi
     mutableEnv.BETTER_AUTH_SECRET = originalSecret
-    resetServerAnalyticsForTests()
-    resetCachedAnonymousInstanceIdForTests()
   })
 
   it('maps tool success telemetry to mcp_tool_called analytics', async () => {
@@ -106,11 +76,11 @@ describe('mcp analytics', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10))
 
-    expect(captureAnonymousServerEvent).toHaveBeenCalled()
-    expect(captureIdentifiedServerEvent).toHaveBeenCalledWith(
+    expect(captureMcpAnalyticsServerEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         event: AnalyticsEvents.MCP_TOOL_CALLED,
-        distinctId: 'hashed-user:user-1',
+        identifiedDistinctId: 'hashed-user:user-1',
+        includeAnonymous: true,
         properties: expect.objectContaining({
           tool_name: 'list_jobs',
           response_class: 'success',
@@ -124,15 +94,15 @@ describe('mcp analytics', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10))
 
-    expect(captureAnonymousServerEvent).toHaveBeenCalledWith(
+    expect(captureMcpAnalyticsServerEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         event: AnalyticsEvents.MCP_AUTH_FAILED,
+        identifiedDistinctId: null,
         properties: expect.objectContaining({
           mcp_auth_failure: 'missing_bearer',
         }),
       })
     )
-    expect(captureIdentifiedServerEvent).not.toHaveBeenCalled()
   })
 
   it('records rpc requests for service accounts with hashed org distinct id', async () => {
@@ -148,9 +118,9 @@ describe('mcp analytics', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10))
 
-    expect(captureIdentifiedServerEvent).toHaveBeenCalledWith(
+    expect(captureMcpAnalyticsServerEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        distinctId: 'hashed-org:org-1',
+        identifiedDistinctId: 'hashed-org:org-1',
         // Raw org id is forwarded so capture hashes it exactly once (no double-hash).
         organizationId: 'org-1',
       })
@@ -167,7 +137,6 @@ describe('mcp analytics', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10))
 
-    expect(captureAnonymousServerEvent).not.toHaveBeenCalled()
-    expect(captureIdentifiedServerEvent).not.toHaveBeenCalled()
+    expect(captureMcpAnalyticsServerEvent).not.toHaveBeenCalled()
   })
 })
