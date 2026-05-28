@@ -35,7 +35,7 @@ services:
     restart: unless-stopped
     # Internal network only — do not publish Redis to the host in production.
     # For production, add Redis AUTH/ACL at the infrastructure layer; this file does not set requirepass.
-    # For local Redis CLI debugging, temporarily add: ports: ["6379:6379"]
+    # For local Redis CLI debugging, temporarily add: ports: ["127.0.0.1:6379:6379"]
     volumes:
       - redis_data:/data
     healthcheck:
