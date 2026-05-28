@@ -4,7 +4,11 @@ import {
   DEFAULT_CLOUD_COLLECT_URL,
   TELEMETRY_DISCLOSURE_URL,
 } from '@durabull/analytics/server'
-import { getDatabaseMode, shouldUseEnvConnections, telemetryInstallationRepository } from '@durabull/dal'
+import {
+  getDatabaseMode,
+  shouldUseEnvConnections,
+  telemetryInstallationRepository,
+} from '@durabull/dal'
 import { env } from '@durabull/env'
 
 import { isAuthlessMode } from './authless'
@@ -24,26 +28,33 @@ function getDurabullTelemetryPosthogKey(): string | null {
 }
 
 let cachedAnonymousInstanceId: string | null = null
-let anonymousInstanceIdInflight: Promise<string> | null = null
+let inFlightAnonymousInstanceId: Promise<string> | null = null
 
-async function resolveAnonymousInstanceIdSingleFlight(): Promise<string> {
+/**
+ * Resolve the anonymous installation id with a process cache and single-flight guard so
+ * concurrent cold-start callers share one DB round-trip instead of stampeding the repository.
+ */
+async function resolveAnonymousInstanceId(): Promise<string> {
   if (cachedAnonymousInstanceId) {
     return cachedAnonymousInstanceId
   }
 
-  anonymousInstanceIdInflight ??= (async () => {
+  if (inFlightAnonymousInstanceId) {
+    return inFlightAnonymousInstanceId
+  }
+
+  inFlightAnonymousInstanceId = (async () => {
     try {
-      const existing = await telemetryInstallationRepository.readAnonymousInstanceId()
-      const id = existing ?? (await telemetryInstallationRepository.getOrCreateAnonymousInstanceId())
+      // getOrCreateAnonymousInstanceId reads first, so this avoids a redundant SELECT.
+      const id = await telemetryInstallationRepository.getOrCreateAnonymousInstanceId()
       cachedAnonymousInstanceId = id
       return id
-    } catch (error) {
-      anonymousInstanceIdInflight = null
-      throw error
+    } finally {
+      inFlightAnonymousInstanceId = null
     }
   })()
 
-  return anonymousInstanceIdInflight
+  return inFlightAnonymousInstanceId
 }
 
 export function bootstrapServerAnalytics(): void {
@@ -73,18 +84,18 @@ export function bootstrapServerAnalytics(): void {
       persistence: getDatabaseMode(),
       stateless: getDatabaseMode() === 'pglite',
     }),
-    resolveAnonymousInstanceId: resolveAnonymousInstanceIdSingleFlight,
+    resolveAnonymousInstanceId,
   })
 
+  // Eagerly warm the installation id so request paths (/events, MCP analytics)
+  // never block on a cold DB read. Telemetry must never affect product runtime.
   if (env.NODE_ENV === 'production' && env.CI !== true) {
-    void resolveAnonymousInstanceIdSingleFlight().catch(() => {
-      // Warm cache at bootstrap; telemetry must never block API startup.
-    })
+    void resolveAnonymousInstanceId().catch(() => {})
   }
 }
 
 /** Test-only: clear cached installation id when re-bootstrapping. */
 export function resetCachedAnonymousInstanceIdForTests(): void {
   cachedAnonymousInstanceId = null
-  anonymousInstanceIdInflight = null
+  inFlightAnonymousInstanceId = null
 }

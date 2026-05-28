@@ -1,99 +1,66 @@
 # Handoff: Analytics package split + MCP product telemetry
 
-**Branch:** `cursor/analytics-collect-auth`  
-**Last verified:** 2026-05-28 — **48 tests pass** after parallel review loop (2 review rounds, all Critical/High fixed)  
-**Timeline:** #107 (merged) → #108 P0 hardening (merged) → **#109 open** (this branch)
+**Branch:** `cursor/analytics-collect-auth` (PR #110)  
+**Last verified:** 2026-05-28 — run full suite after merge with `main` (see Verification)  
+**Timeline:** #107 → #108 → #109 (merged to `main`) → **#110 open** (collect auth + XFF trust)
 
 ---
 
-## Status
+## Status timeline
 
-| Phase | State |
-|-------|--------|
-| #107 MCP PostHog + server capture package | ✅ merged |
-| #108 P0 runtime merge, /events 503, PostHog host allowlist | ✅ merged |
-| **#109 P0-A `/collect` HMAC auth + trusted OSS runtime** | ✅ **this branch** |
-| **#109 P0-B XFF trust for rate limiting** | ✅ **this branch** |
-| P1 single-flight instance ID + eager bootstrap | ✅ **this branch** |
-| P1 dedupe/coalesce, dup connection query, async collect | ⏳ deferred |
-| P2 dedicated HMAC secret (no BETTER_AUTH fallback) | ⏳ deferred |
-| P3 maintainability cleanups | ⏳ deferred |
+| Stage | What shipped | State |
+|-------|--------------|-------|
+| **PR #107** | Server capture package + MCP PostHog telemetry | ✅ merged |
+| **PR #108** | P0: server runtime on `/collect`, `/events` preflight, PostHog host allowlist | ✅ merged |
+| **PR #109** | MCP org `$groups` fix, fetch timeouts, single-flight instance id, timestamp clamp, hygiene | ✅ merged |
+| **PR #110** | P0-A `/collect` HMAC auth + trusted OSS runtime; P0-B XFF/proxy trust for rate limits | 🚧 **this branch** |
 
-**Start new work from:** `git fetch origin && git checkout -b <branch> origin/main`
+**Lesson:** Branch from latest `origin/main` before starting. PR #109 merged while #110 was in flight — rebase/merge required.
 
 ---
 
-## Completed on this branch
+## Completed on PR #110
 
 ### P0-A — `/collect` authentication
 
-- New env: `DURABULL_TELEMETRY_COLLECT_SECRET` — shared HMAC signing secret for OSS → cloud `/collect`.
-- `packages/analytics/src/server/collect-auth.ts` — webhook-style `sha256=` signatures with 5-minute tolerance.
-- `/collect` requires valid signature headers; unsigned → **401**.
-- Collect payload includes top-level `runtime` (required). Cloud ingest uses **authenticated client runtime**, not cloud server runtime.
-- OSS forward signs batches and sends `runtime` separately from event properties.
+- `DURABULL_TELEMETRY_COLLECT_SECRET` — HMAC-signed batches (`collect-auth.ts`)
+- Unsigned/invalid → **401**; top-level `runtime` required; cloud uses authenticated client runtime
+- OSS forward signs batches (preserves deployment attribution without reopening spoof hole)
 
-**Deploy note:** Cloud and self-hosted installs need matching `DURABULL_TELEMETRY_COLLECT_SECRET` before ship, or OSS→cloud forwarding stops (console warning).
+### P0-B — Rate-limit proxy trust
 
-### P0-B — XFF trust (rate limiting)
+- `TRUST_PROXY` (auto on `DURABULL_CLOUD`); ignore spoofable headers on untrusted ingress
+- Trusted priority: CF-Connecting-IP → X-Real-IP → rightmost XFF hop
 
-- New env: `TRUST_PROXY` (optional). Auto-enabled when `DURABULL_CLOUD=true`.
-- `getClientKey` / MCP ingress keys ignore `X-Forwarded-For`, `X-Real-IP`, and `CF-Connecting-IP` unless proxy is trusted.
-- Removed production bypass for `unknown-client` — untrusted ingress shares one bucket instead of skipping limits or minting per-spoofed-IP keys.
-- Tests: `apps/api/src/middleware/rate-limit.test.ts` (3 cases).
-- Docs: `security-and-hardening.mdx` updated.
+### Also merged from #109 (via `main`)
 
-### P1 (partial) — Single-flight instance ID
+- Timestamp clamp ±24h on `/collect`
+- Fetch timeouts + `redirect: 'manual'` on forward
+- Single-flight + eager instance id warm
+- MCP org `$groups` single-hash fix
 
-- `resolveAnonymousInstanceId` deduplicates concurrent DB reads via in-flight promise.
-- Eager warm at `bootstrapServerAnalytics()` in production (non-blocking).
+### Parallel review on #110
 
-### Parallel review loop (complete)
-
-Two `/parallel-code-review` rounds. Fixed Critical/High findings:
-
-| Finding | Fix |
-|---------|-----|
-| Single-flight promise poisoned on DB error | Clear `anonymousInstanceIdInflight` in catch |
-| XFF leftmost spoof when proxy trusted | CF-Connecting-IP → X-Real-IP → rightmost XFF |
-| `collectSigningSecret` blocked cloud `/events` ingest | Decouple from PostHog ingest config |
-| `/events` awaited instance ID (500 on DB blip) | Fire-and-forget async capture |
-| `apiRateLimiter` JSON `retryAfter: 10` vs 60s window | Use window seconds |
-
-**Accepted deferrals (Medium/Low):** per-process rate limit store, `BETTER_AUTH_SECRET` HMAC fallback (P2), shared collect secret, 5m signature replay window.
+Fixed Critical/High: poisoned inflight promise, XFF leftmost spoof, collect secret decoupled from ingest config, `/events` fire-and-forget (202 always), `apiRateLimiter` retryAfter.
 
 ---
 
-## Remaining work (one PR each recommended)
+## Remaining deferrals
 
-### P1 — Performance
-
-| Task | Files | Notes |
-|------|-------|-------|
-| Single-flight instance ID | `configure-server-analytics.ts`, `app.ts` | ✅ done this branch |
-| Dedupe/coalesce PostHog when same project | `mcp-analytics.ts`, `capture.ts` | One `sendPosthogBatch` per MCP event when keys match |
-| Remove duplicate connection access DB query | `policy-engine.ts`, `mcp-policy-middleware.ts`, `tools/shared.ts` | Set `mcpResolvedConnection` once after grant |
-| Async `/collect` flush | `telemetry.ts`, `capture.ts` | Bounded worker like MCP analytics queue |
-
-### P2 — Security hardening
-
-| Task | Notes |
-|------|-------|
-| Require `DURABULL_TELEMETRY_HMAC_SECRET` in prod collect mode | Remove `BETTER_AUTH_SECRET` fallback |
-| Clamp/ignore client `timestamp` on collect | Anti-replay enrichment |
-| Browser `client.ts` runtime merge | Before `/events` |
-
-### P3 — Maintainability
-
-See original handoff §4 P3 table (barrel exports, `McpPrincipalType`, shared queue helper, etc.)
+| Priority | Item |
+|----------|------|
+| P1 | PostHog dedupe/coalesce, dup connection query, async `/collect` |
+| P2 | Dedicated `DURABULL_TELEMETRY_HMAC_SECRET` (drop `BETTER_AUTH_SECRET` fallback), signature replay LRU |
+| P3 | Barrel migration, shared queue helper, telemetry signal docs |
 
 ---
 
-## Verification commands
+## Verification
 
 ```bash
 bun test \
   packages/analytics/src/server/collect-auth.test.ts \
+  packages/analytics/src/server/capture.test.ts \
   packages/analytics/src/server/validate.test.ts \
   packages/analytics/src/server/identifiers.test.ts \
   packages/analytics/src/server/posthog-batch.test.ts \
@@ -103,9 +70,7 @@ bun test \
   apps/api/src/middleware/rate-limit.test.ts
 ```
 
-**Expected:** 48 pass.
-
-**Gotcha:** `apps/api/src/app.test.ts` may fail locally with `CI=true` or missing `MCP_AUTHLESS_BEARER_TOKEN` — not a telemetry regression.
+**Gotcha:** `apps/api/src/app.test.ts` fails in sandbox with `CI=true` / missing `MCP_AUTHLESS_BEARER_TOKEN`.
 
 ---
 
@@ -113,21 +78,14 @@ bun test \
 
 | Variable | Purpose |
 |----------|---------|
-| `DURABULL_TELEMETRY_COLLECT_SECRET` | HMAC signing for `/collect` batches (OSS + cloud) |
-| `TRUST_PROXY` | Honor forwarding headers for rate limits (auto on `DURABULL_CLOUD`) |
+| `DURABULL_TELEMETRY_COLLECT_SECRET` | HMAC signing for `/collect` (OSS + cloud) |
+| `TRUST_PROXY` | Honor forwarding headers for rate limits |
 | `DURABULL_TELEMETRY_HMAC_SECRET` | distinct_id / instance_key HMAC |
-| `DURABULL_TELEMETRY_POSTHOG_KEY` | Durabull product PostHog key |
-| `DURABULL_TELEMETRY_POSTHOG_HOST` | Batch ingest host (HTTPS allowlist) |
-| `DURABULL_CLOUD` | Enables `/collect` on cloud API + trusted proxy |
+| `DURABULL_CLOUD` | Enables `/collect` + trusted proxy |
 
 ---
 
 ## Lessons
 
-- **Do not `git stash` to peek while holding uncommitted work** — a failed pop can silently strip edits. Use a worktree or WIP commit instead.
-
----
-
-## Definition of done (#109)
-
-P0 complete ✅ — parallel review + PR still needed before merge claim.
+- **Always `git fetch origin main` and rebase/merge before opening a telemetry PR** — parallel PRs (#109 vs #110) touched the same files.
+- **Do not `git stash` to peek** while holding uncommitted work — use a worktree or WIP commit.

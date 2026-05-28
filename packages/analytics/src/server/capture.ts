@@ -1,9 +1,4 @@
-import {
-  getServerAnalyticsOptions,
-  tryGetServerAnalyticsOptions,
-  type ServerAnalyticsOptions,
-  type ServerAnalyticsRuntimeContext,
-} from './config'
+import { tryGetServerAnalyticsOptions, type ServerAnalyticsOptions, type ServerAnalyticsRuntimeContext } from './config'
 import {
   signTelemetryCollectBody,
   TELEMETRY_COLLECT_SIGNATURE_HEADER,
@@ -15,12 +10,33 @@ import {
   hashTelemetryIdentifier,
 } from './identifiers'
 import {
+  POSTHOG_FETCH_TIMEOUT_MS,
   resolvePosthogBatchUrl,
   sendPosthogBatch,
   type PosthogBatchCapture,
   type PosthogBatchClientConfig,
 } from './posthog-batch'
 import { validateTelemetryPayload } from './validate'
+
+/**
+ * Maximum drift (past or future) allowed for client-supplied event timestamps on
+ * the public `/collect` ingest path. Untrusted clients can otherwise backdate or
+ * future-date events to pollute analytics time series.
+ */
+const MAX_COLLECT_TIMESTAMP_SKEW_MS = 24 * 60 * 60 * 1000
+
+/** Clamp a client-supplied timestamp to server time when it is missing or outside the skew window. */
+function resolveCollectTimestamp(clientTimestamp: string | undefined, nowMs: number): string {
+  if (!clientTimestamp) return new Date(nowMs).toISOString()
+
+  const parsed = Date.parse(clientTimestamp)
+  if (Number.isNaN(parsed)) return new Date(nowMs).toISOString()
+  if (Math.abs(parsed - nowMs) > MAX_COLLECT_TIMESTAMP_SKEW_MS) {
+    return new Date(nowMs).toISOString()
+  }
+
+  return clientTimestamp
+}
 
 interface DurabullPosthogIngestConfig extends PosthogBatchClientConfig {
   hmacSecret: string
@@ -30,9 +46,7 @@ function getOptions(): ServerAnalyticsOptions | null {
   return tryGetServerAnalyticsOptions()
 }
 
-export function isDurabullTelemetryCollectConfigured(
-  options: ServerAnalyticsOptions
-): boolean {
+export function isDurabullTelemetryCollectConfigured(options: ServerAnalyticsOptions): boolean {
   return getDurabullPosthogIngestConfig(options) !== null
 }
 
@@ -48,7 +62,9 @@ function getDurabullPosthogIngestConfig(
   return { hmacSecret, posthogBatchUrl, posthogKey }
 }
 
-function getIdentifiedPosthogConfig(options: ServerAnalyticsOptions): PosthogBatchClientConfig | null {
+function getIdentifiedPosthogConfig(
+  options: ServerAnalyticsOptions
+): PosthogBatchClientConfig | null {
   const posthogKey = options.appPosthogKey
   if (!posthogKey) return null
 
@@ -126,6 +142,7 @@ async function forwardAnonymousToCloudCollect(input: {
     },
     body: rawBody,
     redirect: 'manual',
+    signal: AbortSignal.timeout(POSTHOG_FETCH_TIMEOUT_MS),
   })
 
   if (!response.ok) {
@@ -265,6 +282,7 @@ export async function ingestTelemetryCollectBatch(input: {
   }
 
   const runtimeContext = input.clientRuntime ?? options.getRuntimeContext()
+  const nowMs = Date.now()
   const batch: PosthogBatchCapture[] = []
 
   for (const event of input.events) {
@@ -279,7 +297,7 @@ export async function ingestTelemetryCollectBatch(input: {
         sessionId: event.sessionId,
         event: validated.event,
         properties: validated.properties,
-        timestamp: event.timestamp ?? input.sentAt ?? new Date().toISOString(),
+        timestamp: resolveCollectTimestamp(event.timestamp ?? input.sentAt, nowMs),
         hmacSecret: config.hmacSecret,
       })
     )

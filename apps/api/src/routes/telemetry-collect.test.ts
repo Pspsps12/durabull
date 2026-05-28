@@ -20,6 +20,9 @@ const SESSION_ID = 'ephemeral-session'
 const HMAC_SECRET = 'test-telemetry-collect-hmac-secret'
 const COLLECT_SECRET = 'test-telemetry-collect-signing-secret'
 const POSTHOG_KEY = 'phc_test_project_key'
+// Within the collect timestamp skew window so the value is forwarded unchanged.
+const RECENT_EVENT_TIMESTAMP = new Date(Date.now() - 60_000).toISOString()
+const RECENT_SENT_AT = new Date(Date.now() - 30_000).toISOString()
 
 const DEFAULT_RUNTIME = {
   authless: false,
@@ -77,14 +80,14 @@ function collectPayload(
 ) {
   return JSON.stringify({
     instanceId: INSTANCE_ID,
-    sentAt: '2026-04-28T12:00:00.000Z',
+    sentAt: RECENT_SENT_AT,
     runtime,
     events: [
       {
         event: 'queue_paused',
         properties,
         sessionId: SESSION_ID,
-        timestamp: '2026-04-28T12:00:01.000Z',
+        timestamp: RECENT_EVENT_TIMESTAMP,
       },
     ],
   })
@@ -216,7 +219,7 @@ describe('telemetry collect route', () => {
 
     expect(body.api_key).toBe(POSTHOG_KEY)
     expect(body.batch[0].event).toBe('queue_paused')
-    expect(body.batch[0].timestamp).toBe('2026-04-28T12:00:01.000Z')
+    expect(body.batch[0].timestamp).toBe(RECENT_EVENT_TIMESTAMP)
     expect(properties.success).toBe(true)
     expect(properties.authless).toBe(false)
     expect(properties.environment).toBe('production')

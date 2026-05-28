@@ -3,9 +3,7 @@ import { AnalyticsEvents } from '@durabull/analytics/events'
 import { configureServerAnalytics, resetServerAnalyticsForTests } from '@durabull/analytics/server'
 import { env } from '@durabull/env'
 
-import {
-  resetCachedAnonymousInstanceIdForTests,
-} from '../../lib/configure-server-analytics'
+import { resetCachedAnonymousInstanceIdForTests } from '../../lib/configure-server-analytics'
 
 const captureAnonymousServerEvent = mock(async () => {})
 const captureIdentifiedServerEvent = mock(async () => {})
@@ -15,13 +13,21 @@ mock.module('@durabull/analytics/server', () => ({
   captureIdentifiedServerEvent,
   hashMcpAnalyticsSessionId: (value: string) => `session-${value}`,
   shouldDedupeIdentifiedPosthogEvents: () => false,
-  getTelemetryHmacSecret: () => 'test-secret',
-  resolveIdentifiedDistinctIds: ({ userId, organizationId }: { userId?: string; organizationId?: string }) => {
+  resolveIdentifiedDistinctIds: ({
+    userId,
+    organizationId,
+  }: {
+    userId?: string
+    organizationId?: string
+  }) => {
     if (userId) {
       return { distinctId: `hashed-user:${userId}`, organizationGroup: null }
     }
     if (organizationId) {
-      return { distinctId: `hashed-org:${organizationId}`, organizationGroup: `hashed-org:${organizationId}` }
+      return {
+        distinctId: `hashed-org:${organizationId}`,
+        organizationGroup: `hashed-org:${organizationId}`,
+      }
     }
     return { distinctId: null, organizationGroup: null }
   },
@@ -145,7 +151,8 @@ describe('mcp analytics', () => {
     expect(captureIdentifiedServerEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         distinctId: 'hashed-org:org-1',
-        organizationId: 'hashed-org:org-1',
+        // Raw org id is forwarded so capture hashes it exactly once (no double-hash).
+        organizationId: 'org-1',
       })
     )
   })

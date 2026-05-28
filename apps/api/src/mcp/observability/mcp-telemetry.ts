@@ -1,4 +1,4 @@
-import type { McpPrincipalType } from './mcp-analytics'
+import type { McpPrincipalType } from '@durabull/dal'
 import { recordMcpTelemetryAnalytics } from './mcp-analytics'
 import type { McpTelemetrySignal } from './mcp-telemetry-signals'
 
