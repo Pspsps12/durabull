@@ -17,7 +17,6 @@ import {
   AlertTriangle,
   Braces,
   Check,
-  ChevronRight,
   Clock,
   Copy,
   Database,
@@ -32,6 +31,7 @@ import {
   RefreshCw,
   Search,
   Trash2,
+  X,
   Zap,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -52,7 +52,12 @@ import {
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useDeleteRedisKey, useRedisKeySearch, useRedisKeyValue } from '@/hooks/use-redis-keys'
+import {
+  type GetKeyValueResponse,
+  useDeleteRedisKey,
+  useRedisKeySearch,
+  useRedisKeyValue,
+} from '@/hooks/use-redis-keys'
 import { cn } from '@/lib/utils'
 
 // Helper to check if a key is a bull-related key
@@ -112,10 +117,10 @@ function RedisKeysPage() {
     return () => clearTimeout(timer)
   }, [searchPattern])
 
-  // Reset selected key when pattern changes
+  // Reset selected key when the result set changes
   useEffect(() => {
     setSelectedKey(null)
-  }, [])
+  }, [debouncedPattern, excludeBullKeys])
 
   const {
     data,
@@ -202,9 +207,9 @@ function RedisKeysPage() {
   useAppTopBar(topBarConfig)
 
   return (
-    <div className="space-y-6 h-full">
+    <div className="flex h-full min-h-0 flex-col gap-6">
       {/* Stats Bar */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid shrink-0 gap-4 md:grid-cols-4">
         <StatCard
           title="Connection"
           value={currentConnection?.name ?? 'Not connected'}
@@ -229,9 +234,16 @@ function RedisKeysPage() {
       </div>
 
       {/* Main Content */}
-      <div className="grid gap-6 lg:grid-cols-[400px,1fr] h-[calc(100vh-320px)] min-h-[500px]">
-        {/* Left Panel - Key List */}
-        <Card className="flex flex-col overflow-hidden">
+      <div
+        className={cn(
+          'grid min-h-[500px] flex-1 gap-4 overflow-hidden',
+          selectedKey
+            ? 'grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]'
+            : 'grid-cols-1'
+        )}
+      >
+        {/* Key List */}
+        <Card className="flex min-h-0 min-w-0 flex-col overflow-hidden">
           <CardHeader className="border-b bg-muted/30 py-3 shrink-0">
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-base font-medium flex items-center gap-2">
@@ -387,91 +399,15 @@ function RedisKeysPage() {
           </CardContent>
         </Card>
 
-        {/* Right Panel - Value Display */}
-        <Card className="flex flex-col overflow-hidden">
-          <CardHeader className="border-b bg-muted/30 py-3 shrink-0">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-medium flex items-center gap-2">
-                <Braces className="h-4 w-4 text-muted-foreground" />
-                Value
-              </CardTitle>
-              {keyValue && (
-                <div className="flex items-center gap-2">
-                  <TypeBadge type={keyValue.type} />
-                  {keyValue.ttl > 0 && (
-                    <Badge variant="outline" className="font-mono text-xs">
-                      <Clock className="h-3 w-3 mr-1" />
-                      TTL: {formatTTL(keyValue.ttl)}
-                    </Badge>
-                  )}
-                  {keyValue.memoryBytes && (
-                    <Badge variant="outline" className="font-mono text-xs">
-                      <MemoryStick className="h-3 w-3 mr-1" />
-                      {formatBytes(keyValue.memoryBytes)}
-                    </Badge>
-                  )}
-                </div>
-              )}
-            </div>
-            {selectedKey && (
-              <div className="mt-2 flex items-center gap-2">
-                <code className="text-sm font-mono bg-muted px-2 py-1 rounded flex-1 truncate">
-                  {selectedKey}
-                </code>
-                <CopyButton text={selectedKey} />
-              </div>
-            )}
-          </CardHeader>
-
-          <CardContent className="flex-1 p-4 overflow-auto">
-            {!selectedKey ? (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <div className="rounded-full bg-muted p-6 mb-4">
-                  <ChevronRight className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-semibold mb-1">Select a key</h3>
-                <p className="text-sm text-muted-foreground max-w-sm">
-                  Click on a key from the list to view its value and details
-                </p>
-              </div>
-            ) : isLoadingValue ? (
-              <div className="flex flex-col items-center justify-center h-full">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-3" />
-                <p className="text-sm text-muted-foreground">Loading value...</p>
-              </div>
-            ) : isValueError ? (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <div className="rounded-full bg-destructive/10 p-4 mb-3">
-                  <AlertCircle className="h-6 w-6 text-destructive" />
-                </div>
-                <p className="font-medium text-destructive">Failed to load value</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  The key may have been deleted or expired
-                </p>
-              </div>
-            ) : keyValue ? (
-              <div className="space-y-4">
-                {/* Collection length info */}
-                {keyValue.length !== undefined && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Badge variant="secondary">
-                      {keyValue.length.toLocaleString()} {keyValue.length === 1 ? 'item' : 'items'}
-                    </Badge>
-                    {keyValue.length > 100 && <span className="text-xs">(showing first 100)</span>}
-                  </div>
-                )}
-
-                {/* Value display */}
-                <JsonViewer
-                  data={keyValue.value}
-                  className="max-h-[calc(100vh-500px)]"
-                  initialExpanded={true}
-                  maxInitialDepth={3}
-                />
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
+        {selectedKey && (
+          <ValuePanel
+            selectedKey={selectedKey}
+            keyValue={keyValue}
+            isLoadingValue={isLoadingValue}
+            isValueError={isValueError}
+            onClose={() => setSelectedKey(null)}
+          />
+        )}
       </div>
 
       {/* Delete Confirmation Dialog */}
@@ -627,6 +563,102 @@ function KeyRow({ keyInfo, isSelected, onClick, onDelete, style }: KeyRowProps) 
         </Tooltip>
       </TooltipProvider>
     </div>
+  )
+}
+
+interface ValuePanelProps {
+  selectedKey: string
+  keyValue?: GetKeyValueResponse
+  isLoadingValue: boolean
+  isValueError: boolean
+  onClose: () => void
+}
+
+function ValuePanel({
+  selectedKey,
+  keyValue,
+  isLoadingValue,
+  isValueError,
+  onClose,
+}: ValuePanelProps) {
+  return (
+    <Card className="flex min-h-0 min-w-0 flex-col overflow-hidden animate-in slide-in-from-right-2 fade-in duration-200">
+      <CardHeader className="border-b bg-muted/30 py-3 shrink-0">
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="text-base font-medium flex items-center gap-2">
+            <Braces className="h-4 w-4 text-muted-foreground" />
+            Value Details
+          </CardTitle>
+          <div className="flex min-w-0 items-center gap-2">
+            {keyValue && (
+              <>
+                <TypeBadge type={keyValue.type} />
+                {keyValue.ttl > 0 && (
+                  <Badge variant="outline" className="hidden font-mono text-xs sm:inline-flex">
+                    <Clock className="h-3 w-3 mr-1" />
+                    TTL: {formatTTL(keyValue.ttl)}
+                  </Badge>
+                )}
+                {keyValue.memoryBytes && (
+                  <Badge variant="outline" className="hidden font-mono text-xs xl:inline-flex">
+                    <MemoryStick className="h-3 w-3 mr-1" />
+                    {formatBytes(keyValue.memoryBytes)}
+                  </Badge>
+                )}
+              </>
+            )}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onClose}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Close value panel</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <code className="text-sm font-mono bg-muted px-2 py-1 rounded flex-1 truncate">
+            {selectedKey}
+          </code>
+          <CopyButton text={selectedKey} />
+        </div>
+      </CardHeader>
+
+      <CardContent className="flex-1 overflow-auto p-4">
+        {isLoadingValue ? (
+          <div className="flex h-full flex-col items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-3" />
+            <p className="text-sm text-muted-foreground">Loading value...</p>
+          </div>
+        ) : isValueError ? (
+          <div className="flex h-full flex-col items-center justify-center text-center">
+            <div className="rounded-full bg-destructive/10 p-4 mb-3">
+              <AlertCircle className="h-6 w-6 text-destructive" />
+            </div>
+            <p className="font-medium text-destructive">Failed to load value</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              The key may have been deleted or expired
+            </p>
+          </div>
+        ) : keyValue ? (
+          <div className="space-y-4">
+            {keyValue.length !== undefined && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Badge variant="secondary">
+                  {keyValue.length.toLocaleString()} {keyValue.length === 1 ? 'item' : 'items'}
+                </Badge>
+                {keyValue.length > 100 && <span className="text-xs">(showing first 100)</span>}
+              </div>
+            )}
+
+            <JsonViewer data={keyValue.value} initialExpanded={true} maxInitialDepth={3} />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   )
 }
 
