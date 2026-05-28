@@ -7,15 +7,15 @@ import {
   oauthConsent,
   organizationSchema,
   user,
+  type NewOauthAccessToken,
 } from '@durabull/dal'
 import { env } from '@durabull/env'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { mcp, organization } from 'better-auth/plugins'
-import {
-  getCanonicalMcpResourceUri,
-  MCP_PHASE1_SCOPES,
-} from '@durabull/mcp/auth'
+import { getCanonicalMcpResourceUri } from '@durabull/mcp/auth'
+import { MCP_OAUTH_CONSENT_PATH } from './mcp-consent'
+import { MCP_PHASE1_SCOPES } from './mcp-scope-labels'
 
 const isProduction = env.NODE_ENV === 'production'
 
@@ -199,6 +199,17 @@ export async function createAuth(options?: CreateAuthOptions) {
       },
       oauthAccessToken: {
         create: {
+          before: async (token: NewOauthAccessToken) => {
+            const canonicalResource = getCanonicalMcpResourceUri(
+              options?.baseURL ?? env.APP_BASE_URL
+            )
+            return {
+              data: {
+                ...token,
+                resource: token.resource ?? canonicalResource,
+              },
+            }
+          },
           after: async (token: { id: string; resource: string | null }) => {
             const canonicalResource = getCanonicalMcpResourceUri(
               options?.baseURL ?? env.APP_BASE_URL
@@ -231,6 +242,7 @@ export async function createAuth(options?: CreateAuthOptions) {
         resource: getCanonicalMcpResourceUri(options?.baseURL ?? env.APP_BASE_URL),
         oidcConfig: {
           loginPage: '/login',
+          consentPage: MCP_OAUTH_CONSENT_PATH,
           scopes: [...MCP_PHASE1_SCOPES],
           metadata: {
             scopes_supported: [

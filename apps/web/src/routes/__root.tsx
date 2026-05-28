@@ -76,7 +76,7 @@ const USE_DEVTOOLS = false
 
 // Public routes that don't require authentication (auth-related only)
 // Marketing/landing pages are now in the separate docs app
-const PUBLIC_ROUTES = ['/login', '/signup', '/auth-error']
+const PUBLIC_ROUTES = ['/login', '/signup', '/auth-error', '/consent']
 
 // Check if a path matches an invite route pattern
 const isInviteRoute = (pathname: string) => pathname.startsWith('/invite/')

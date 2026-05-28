@@ -16,7 +16,25 @@ Example (production): `https://app.durabull.io/mcp`
 
 Do not add a trailing slash unless your OAuth client library requires it consistently everywhere.
 
-`APP_BASE_URL` must be the **public origin clients use to reach `/mcp`** (same host/port as the API in production). If the API listens on port `3001` locally, set `APP_BASE_URL=http://localhost:3001`, not the Vite dev server port.
+`APP_BASE_URL` must be the **public origin clients use to reach `/mcp`** (same host/port as the API in production).
+
+**Local monorepo dev:** the Vite app (`http://localhost:5173`) proxies `/mcp` and `/.well-known` to the API process. Set `APP_BASE_URL=http://localhost:5173` so PRM, tokens, and browser consent use one origin. Use `http://localhost:3001` only when calling the API directly without the web proxy (for example `tooling/scripts/mcp:e2e`).
+
+## Browser consent flow
+
+Durabull serves a first-party consent screen at **`/consent`** (configured via Better Auth `consentPage`).
+
+Typical delegated-user flow:
+
+1. MCP client opens `GET /api/auth/mcp/authorize` with **PKCE** and `prompt=consent` (required to show the consent UI).
+2. Unauthenticated users sign in at `/login` (Durabull preserves the authorize request).
+3. Authenticated users review scopes at `/consent` and choose **Allow** or **Deny**.
+4. Durabull redirects to the client `redirect_uri` with an authorization `code`.
+5. Client exchanges the code at `POST /api/auth/mcp/token` with `resource={APP_BASE_URL}/mcp`.
+
+Consent submission calls `POST /api/auth/oauth2/consent` (session cookie required). Deny returns `error=access_denied` to the client redirect URI.
+
+**Not the same as Linear alerts OAuth:** [Linear integration](https://github.com/durabullhq/durabull/blob/main/apps/docs/content/documentation/integrations/linear.mdx) is Durabull acting as an OAuth **client** to Linear. MCP OAuth is Durabull acting as the **authorization server** for external MCP clients (Cursor, custom agents, etc.).
 
 ## Discovery endpoints
 
@@ -37,8 +55,8 @@ Protected resource metadata advertises:
 
 ## Client configuration checklist
 
-1. Register an OAuth client via `POST /api/auth/mcp/register` (or the Durabull UI when available).
-2. Complete authorization code + PKCE against `/api/auth/mcp/authorize`.
+1. Register an OAuth client via `POST /api/auth/mcp/register`.
+2. Complete authorization code + PKCE against `/api/auth/mcp/authorize` with `prompt=consent` and `resource={APP_BASE_URL}/mcp`.
 3. Exchange the code at `/api/auth/mcp/token` with `resource={APP_BASE_URL}/mcp`.
 4. Call MCP transport at `POST/GET/DELETE {APP_BASE_URL}/mcp` with `Authorization: Bearer <access_token>`.
 5. Request at least the `mcp:discover` scope for transport smoke (`ping`). Diagnostic tools require additional scopes (`mcp:jobs:read`, `mcp:logs:read`, `mcp:failures:read`, `mcp:diagnostics:read`) — see [MCP Server docs](https://github.com/durabullhq/durabull/blob/main/apps/docs/content/documentation/integrations/mcp-server.mdx).
@@ -60,7 +78,7 @@ When `DURABULL_AUTHLESS=true`, use bearer token from `MCP_AUTHLESS_BEARER_TOKEN`
 
 Never enable authless mode on Durabull Cloud (`DURABULL_CLOUD=true` refuses startup with authless enabled). **Internet-facing production must use OAuth** (`DURABULL_AUTHLESS=false`). Authless with `MCP_AUTHLESS_BEARER_TOKEN` is only for isolated lab networks, not DMZ or VPN-wide production substitutes.
 
-Access tokens must include the RFC 8707 `resource` indicator matching `{APP_BASE_URL}/mcp` (Better Auth sets this on issuance; Durabull rejects tokens without it).
+Access tokens must validate against `{APP_BASE_URL}/mcp` (RFC 8707). Durabull sets the canonical resource on issuance and treats missing `resource` columns as the canonical URI during MCP ingress validation.
 
 ## Operations
 

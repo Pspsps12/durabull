@@ -13,6 +13,7 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SetupOrganizationRouteImport } from './routes/setup-organization'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as AuthErrorRouteImport } from './routes/auth-error'
 import { Route as OrgSlugRouteImport } from './routes/$orgSlug'
 import { Route as IndexRouteImport } from './routes/index'
@@ -58,6 +59,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsentRoute = ConsentRouteImport.update({
+  id: '/consent',
+  path: '/consent',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthErrorRoute = AuthErrorRouteImport.update({
@@ -210,6 +216,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteWithChildren
   '/auth-error': typeof AuthErrorRoute
+  '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/setup-organization': typeof SetupOrganizationRoute
@@ -241,6 +248,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth-error': typeof AuthErrorRoute
+  '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/setup-organization': typeof SetupOrganizationRoute
@@ -272,6 +280,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteWithChildren
   '/auth-error': typeof AuthErrorRoute
+  '/consent': typeof ConsentRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/setup-organization': typeof SetupOrganizationRoute
@@ -306,6 +315,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$orgSlug'
     | '/auth-error'
+    | '/consent'
     | '/login'
     | '/settings'
     | '/setup-organization'
@@ -337,6 +347,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth-error'
+    | '/consent'
     | '/login'
     | '/settings'
     | '/setup-organization'
@@ -367,6 +378,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$orgSlug'
     | '/auth-error'
+    | '/consent'
     | '/login'
     | '/settings'
     | '/setup-organization'
@@ -400,6 +412,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OrgSlugRoute: typeof OrgSlugRouteWithChildren
   AuthErrorRoute: typeof AuthErrorRoute
+  ConsentRoute: typeof ConsentRoute
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
   SetupOrganizationRoute: typeof SetupOrganizationRoute
@@ -435,6 +448,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/consent': {
+      id: '/consent'
+      path: '/consent'
+      fullPath: '/consent'
+      preLoaderRoute: typeof ConsentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth-error': {
@@ -706,6 +726,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRoute: OrgSlugRouteWithChildren,
   AuthErrorRoute: AuthErrorRoute,
+  ConsentRoute: ConsentRoute,
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
   SetupOrganizationRoute: SetupOrganizationRoute,

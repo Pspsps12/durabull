@@ -154,6 +154,15 @@ Wire your aggregator to count per hour:
 
 Alert thresholds are environment-specific; start with sustained 5× baseline on rate limits and policy denies.
 
+### SEC-04 edge alert (pre-GA)
+
+Before announcing customer MCP GA, configure an edge or access-log alert on **`POST /api/auth/mcp/register`** (unauthenticated dynamic registration). Example thresholds:
+
+- **Warning:** > 50 registrations / 5 min per environment (adjust to baseline)
+- **Critical:** sustained > 200 / 5 min or spike > 10× 7-day median
+
+Mitigation: block path at edge, rotate compromised clients, review `oauth_client` rows and `mcp_audit_event`.
+
 ## Common incidents
 
 ### Clients receive `403` on `Host`

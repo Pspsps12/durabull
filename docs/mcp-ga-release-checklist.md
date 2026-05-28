@@ -6,15 +6,16 @@ Use this checklist when enabling or announcing read-only MCP GA on Durabull Clou
 
 ## Pre-release
 
-- [ ] `main` includes PR-02 through PR-08 (GA docs + ADR).
-- [ ] Automated tests green — commands and results: [validation evidence](./mcp-ga-validation-evidence.md).
+- [x] `main` includes PR-02 through PR-08 (GA docs + ADR) plus OAuth consent UI follow-up.
+- [x] Automated tests green — commands and results: [validation evidence](./mcp-ga-validation-evidence.md) (includes Playwright `mcp-oauth.spec.ts`).
 - [ ] [Compliance checklist](./mcp-ga-compliance-checklist.md) reviewed.
 - [ ] [Security closure](./mcp-ga-security-closure.md) reviewed (human sign-off if required).
 - [ ] Staging: PRM + health checks per [mcp-operations-runbook.md](./mcp-operations-runbook.md).
 - [ ] Staging: `cd tooling/scripts && APP_BASE_URL=<staging> bun run mcp:e2e` (staging DB only).
+- [ ] Staging: `cd apps/web && bun run test:e2e e2e/mcp-oauth.spec.ts` (browser OAuth consent path).
 - [ ] Staging: alert or edge rate limit on `POST /api/auth/mcp/register` (SEC-04).
 - [ ] Production config: `APP_BASE_URL` matches public URL; `DURABULL_AUTHLESS=false`.
-- [ ] Docs published: [MCP Server](https://github.com/durabullhq/durabull/blob/main/apps/docs/content/documentation/integrations/mcp-server.mdx), [GA index](./mcp-ga-index.md).
+- [x] Docs published: [MCP Server](https://github.com/durabullhq/durabull/blob/main/apps/docs/content/documentation/integrations/mcp-server.mdx) (consent flow), [GA index](./mcp-ga-index.md), [OAuth operator guide](./mcp-oauth-operator.md).
 
 ## Release steps
 

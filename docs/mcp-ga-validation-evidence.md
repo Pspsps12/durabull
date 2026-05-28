@@ -49,6 +49,21 @@ cd tooling/scripts && APP_BASE_URL=http://localhost:3001 bun run mcp:e2e
 # Better Auth: 10/10 pass; authless: 9/9 pass
 ```
 
+### Browser OAuth E2E (Playwright)
+
+**Recorded:** 2026-05-28 (OAuth consent UI)
+
+```text
+cd apps/web && bun run test:e2e e2e/mcp-oauth.spec.ts
+# 4 passed:
+#   - POST /mcp 401 → WWW-Authenticate → PRM (app + auth paths) → AS metadata → register
+#   - register → authorize → consent → token → MCP ping (authenticated)
+#   - consent Deny → access_denied callback
+#   - logged-out authorize → login → consent → token → ping
+```
+
+Uses real authorization code + PKCE (no DB token seeding). Requires `@durabull/api` + `@durabull/web` dev servers (Playwright `webServer`). Runs in CI via `bun run test:e2e`.
+
 **Operator gate:** Re-run on staging before production GA announcement (see release checklist).
 
 ## Regression scope
