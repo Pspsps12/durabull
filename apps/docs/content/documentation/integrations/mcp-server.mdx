@@ -17,6 +17,8 @@ MCP runs inside the unified Durabull API process. There is no separate MCP port 
 
 Phase 1 ships diagnostic tools only — no queue mutations, retries, pauses, or purges.
 
+**GA status:** Read-only MCP is implemented on the unified deployment. Before announcing production use, complete the [release checklist](https://github.com/durabullhq/durabull/blob/main/docs/mcp-ga-release-checklist.md) (staging smoke, config verification). Full GA doc set: [GA index](https://github.com/durabullhq/durabull/blob/main/docs/mcp-ga-index.md) (ADR, compliance, security closure, validation evidence).
+
 | Tool | Scope | Purpose |
 | --- | --- | --- |
 | `ping` | `mcp:discover` | Transport smoke check |
@@ -37,7 +39,7 @@ Phase 1 ships diagnostic tools only — no queue mutations, retries, pauses, or 
 Remote MCP clients authenticate with **OAuth 2.1 bearer tokens** issued by Durabull (Better Auth MCP plugin).
 
 1. Discover protected resource metadata at `GET /.well-known/oauth-protected-resource`.
-2. Register an OAuth client (`POST /api/auth/mcp/register`) or use an existing client.
+2. Register an OAuth client (`POST /api/auth/mcp/register`) or use an existing client. On internet-facing deployments, registration is **unauthenticated** (rate-limited only) — monitor volume at the edge and prefer pre-provisioned clients where possible.
 3. Complete authorization code + PKCE.
 4. Request tokens with `resource={APP_BASE_URL}/mcp`.
 5. Call MCP with `Authorization: Bearer <access_token>`.
@@ -60,7 +62,7 @@ See the [MCP OAuth operator guide](https://github.com/durabullhq/durabull/blob/m
 | `mcp:jobs:read` | Connection/queue/job/worker reads |
 | `mcp:logs:read` | Logs and stacktraces |
 | `mcp:failures:read` | Failure/alert events |
-| `mcp:diagnostics:read` | Metrics and composed diagnostics |
+| `mcp:diagnostics:read` | Queue metrics; required (with jobs/logs/failures scopes) for `explain_job_failure` |
 
 Delegated users receive scopes from OAuth consent. Service accounts require explicit policy bindings per tool/scope.
 
@@ -70,7 +72,7 @@ Authenticated callers still receive:
 
 - **Output redaction** — sensitive keys and inline secrets stripped; `_mcpSafety.redactionCount` when redactions occur
 - **Rate limits** (when `NODE_ENV=production`) — 120 HTTP requests/min on `/mcp` ingress (initialize, session, and tool RPCs); **60 calls/min per tool** per bearer (30/min for `get_job_logs`, `get_job_stacktraces`, `get_failure_events`, `get_queue_metrics`, `explain_job_failure`)
-- **Audit** — each `tools/call` records principal, tool, input hash, and outcome in `mcp_audit_event`
+- **Audit** — best-effort `mcp_audit_event` rows for tool calls (may drop under backpressure; see runbook)
 
 Operators: telemetry signals, SQL examples, and incident playbooks are in the [MCP operations runbook](https://github.com/durabullhq/durabull/blob/main/docs/mcp-operations-runbook.md).
 
@@ -80,15 +82,7 @@ Authless mode (`DURABULL_AUTHLESS=true`) is for **local/private** setups only. N
 
 Use the **API port** for `APP_BASE_URL` (`3001` in monorepo dev, `3000` in Docker).
 
-```bash
-bun run --filter @durabull/mcp test
-bun run --filter @durabull/api test src/mcp/
-
-cd tooling/scripts
-APP_BASE_URL=http://localhost:3001 bun run mcp:e2e
-```
-
-Run `mcp:e2e` only against local or staging databases (see runbook).
+For test commands and CI evidence, see [validation evidence](https://github.com/durabullhq/durabull/blob/main/docs/mcp-ga-validation-evidence.md). Run `mcp:e2e` only against local or staging databases (see runbook).
 
 ## Deployment and operations
 

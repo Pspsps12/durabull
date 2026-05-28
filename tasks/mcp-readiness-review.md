@@ -1,7 +1,7 @@
-# MCP Readiness Review — Post PR-06 / PR-07 (2026-05-28)
+# MCP Readiness Review — Post PR-08 (2026-05-28)
 
-**Branch:** `feat/no-linear-mcp-pr07-cloud-selfhost-ops`  
-**Plan position:** PR-06 merged (#98); PR-07 deployment/ops in progress; PR-08 GA closure next.
+**Branch:** `feat/no-linear-mcp-pr08-ga-readiness`  
+**Plan position:** PR-02–PR-07 merged on `main`; PR-08 GA closure in review on branch (not merged until PR #100 lands).
 
 ---
 
@@ -9,11 +9,12 @@
 
 | Dimension | Verdict |
 | --- | --- |
-| **Read-only diagnostic catalog** | **Complete** — all 11 tools + `ping` merged on `main` (PR #94, #97). |
+| **Read-only diagnostic catalog** | **Complete** on `main` — 11 tools + `ping` (policy PR #94; remaining tools PR #97). |
 | **Authorization** | **Complete** — principals, policy engine, org/connection boundaries (PR #94). |
-| **Safety hardening (PR-06)** | **Complete** — merged PR #98 (redaction, rate limits, audit, telemetry). |
-| **Deployment / ops (PR-07)** | **In progress** — runbook + deployment docs (review fixes applied on branch). |
-| **Production / GA** | **Not ready** — PR-07 smoke on staging + PR-08 security/E2E signoff remain. |
+| **Safety hardening (PR-06)** | **Complete** — merged PR #98. |
+| **Deployment / ops (PR-07)** | **Complete** — merged PR #99 (runbook + deployment docs). |
+| **GA artifacts (PR-08)** | **Complete in branch** — ADR, compliance, security closure, release checklist, validation evidence. |
+| **Production announcement** | **Pending operator gates** — staging `mcp:e2e`, release checklist execution, optional human security sign-off. |
 
 ---
 
@@ -25,15 +26,17 @@
 - Ingress + per-tool rate limits (in-memory; per-process)
 - Audit events with input hash + response class for tool invocations
 - Structured `mcp_telemetry` logs for operational signals
+- Operator runbook and GA checklists under `docs/mcp-ga-*.md`
 
 ---
 
-## Remaining stack
+## Remaining before production announcement
 
-| PR | Capability |
+| Gate | Owner |
 | --- | --- |
-| PR-07 | Cloud/self-host deploy docs, env contract, operator runbooks (in progress) |
-| PR-08 | Security review closure, GA docs, staged E2E verification |
+| Staging `mcp:e2e` smoke | Operator |
+| Release checklist (`docs/mcp-ga-release-checklist.md`) | Operator |
+| Human security sign-off (recommended before production announcement) | Security / owner |
 
 ---
 
@@ -43,7 +46,11 @@
 bun run --filter @durabull/mcp test
 bun run --filter @durabull/api test src/mcp/
 
-cd tooling/scripts && APP_BASE_URL=http://localhost:3001 bun run mcp:e2e   # API port in monorepo dev; use 3000 for Docker
+cd tooling/scripts && APP_BASE_URL=http://localhost:3001 bun run mcp:e2e   # staging/local only
 ```
 
-See [MCP Server](/documentation/integrations/mcp-server) and the [MCP operations runbook](https://github.com/durabullhq/durabull/blob/main/docs/mcp-operations-runbook.md).
+## GA documentation index
+
+Start at [mcp-ga-index.md](../docs/mcp-ga-index.md) for reading order and terminology.
+
+See also [MCP Server](/documentation/integrations/mcp-server) in the docs app.
