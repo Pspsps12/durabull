@@ -10,6 +10,7 @@ import { secureHeaders } from 'hono/secure-headers'
 
 import { getAuth } from './lib/auth'
 import { isAuthlessMode } from './lib/authless'
+import { bootstrapServerAnalytics } from './lib/configure-server-analytics'
 import { getAppVersionPayload } from './lib/build-info'
 import { mountMcpWellKnownRoutes } from './mcp/auth/mount-well-known'
 import { mountMcpIngress } from './mcp/mount'
@@ -38,6 +39,8 @@ import teamRoutes from './routes/team'
 import telemetryRoutes, { getTelemetryStatus } from './routes/telemetry'
 import userSettingsRoutes from './routes/user-settings'
 import workersRoutes from './routes/workers'
+
+bootstrapServerAnalytics()
 
 const DEFAULT_POSTHOG_API_HOST = 'https://us.i.posthog.com'
 const DEFAULT_POSTHOG_UI_HOST = 'https://us.posthog.com'

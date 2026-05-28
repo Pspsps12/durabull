@@ -108,6 +108,16 @@ export const AnalyticsEvents = {
 
   // App Lifecycle Events
   APP_UPDATE_CLICKED: 'app_update_clicked',
+
+  // MCP Events
+  MCP_RPC_REQUESTED: 'mcp_rpc_requested',
+  MCP_TOOL_CALLED: 'mcp_tool_called',
+  MCP_TOOL_DENIED: 'mcp_tool_denied',
+  MCP_AUTH_FAILED: 'mcp_auth_failed',
+  MCP_RATE_LIMITED: 'mcp_rate_limited',
+  MCP_CLIENT_REGISTERED: 'mcp_client_registered',
+  MCP_CONSENT_GRANTED: 'mcp_consent_granted',
+  MCP_CONSENT_DENIED: 'mcp_consent_denied',
 } as const
 
 /**
@@ -193,6 +203,15 @@ export const AnalyticsProperties = {
   TAB: 'tab',
   UPDATE_REASON: 'update_reason',
   VISIBLE: 'visible',
+
+  // MCP properties (sanitized — no raw IDs or connection names)
+  MCP_METHOD: 'mcp_method',
+  TOOL_NAME: 'tool_name',
+  PRINCIPAL_TYPE: 'principal_type',
+  RESPONSE_CLASS: 'response_class',
+  DENIAL_REASON_CATEGORY: 'denial_reason_category',
+  MCP_AUTH_FAILURE: 'mcp_auth_failure',
+  MCP_RATE_LIMIT_SCOPE: 'mcp_rate_limit_scope',
 } as const
 
 /**

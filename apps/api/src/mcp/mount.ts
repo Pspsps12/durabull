@@ -68,7 +68,11 @@ export async function mountMcpIngress() {
           signal: input.responseClass === 'success' ? 'tool_success' : 'tool_error',
           toolName: input.toolName,
           principalId: decision.principalId,
+          principalType: decision.principalType,
+          userId: principal.type === 'delegated_user' ? principal.userId : null,
+          organizationId: decision.organizationId,
           correlationId: decision.correlationId,
+          redactionCount: input.redactionCount,
         })
 
         writeMcpAuditEventNonBlocking({
@@ -106,6 +110,11 @@ export async function mountMcpIngress() {
           recordMcpTelemetry({
             signal: 'redaction_applied',
             count: redactionCount,
+            toolName: decision?.toolName,
+            principalId: decision?.principalId,
+            principalType: decision?.principalType,
+            userId: principal.type === 'delegated_user' ? principal.userId : null,
+            organizationId: decision?.organizationId,
             correlationId: decision?.correlationId,
           })
         },

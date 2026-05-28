@@ -8,9 +8,25 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts"
     },
+    "./events": {
+      "types": "./src/events.ts",
+      "import": "./src/events.ts"
+    },
+    "./browser": {
+      "types": "./src/browser.ts",
+      "import": "./src/browser.ts"
+    },
+    "./react": {
+      "types": "./src/react.ts",
+      "import": "./src/react.ts"
+    },
     "./client": {
       "types": "./src/client.ts",
       "import": "./src/client.ts"
+    },
+    "./server": {
+      "types": "./src/server/index.ts",
+      "import": "./src/server/index.ts"
     },
     "./sanitizer": {
       "types": "./src/sanitizer.ts",

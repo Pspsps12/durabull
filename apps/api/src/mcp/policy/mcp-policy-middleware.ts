@@ -3,11 +3,19 @@ import { createMiddleware } from 'hono/factory'
 
 import type { McpSession } from '../auth/mcp-session-middleware'
 import { hashMcpToolInput, writeMcpAuditEventNonBlocking } from '../audit/mcp-audit'
-import { parseMcpJsonRpcPayloadId, parseMcpToolCallBody, isMcpToolsCallMethod } from '../json-rpc-tool-call'
+import {
+  isMcpToolsCallMethod,
+  parseMcpJsonRpcMethod,
+  parseMcpJsonRpcPayloadId,
+  parseMcpToolCallBody,
+} from '../json-rpc-tool-call'
+import { recordMcpRpcAnalytics } from '../observability/mcp-analytics'
 import { resolveConnectionForPrincipal } from '../tools/shared'
 import { evaluateMcpToolPolicy } from './policy-engine'
 import { resolveMcpPrincipal } from './principal-resolver'
 import type { McpPolicyDecision, McpPrincipal } from './types'
+
+const RPC_ANALYTICS_METHODS = new Set(['initialize', 'tools/list'])
 
 function buildCorrelationId(): string {
   return crypto.randomUUID()
@@ -85,6 +93,11 @@ export function createMcpPolicyMiddleware() {
       )
     }
     if (!toolCall) {
+      const mcpMethod = parseMcpJsonRpcMethod(body)
+      const rpcAnalyticsMethods = RPC_ANALYTICS_METHODS
+      if (mcpMethod && rpcAnalyticsMethods.has(mcpMethod)) {
+        recordMcpRpcAnalytics({ mcpMethod })
+      }
       return next()
     }
 
@@ -129,6 +142,7 @@ export function createMcpPolicyMiddleware() {
         correlationId: decision.correlationId,
         principalType: decision.principalType,
         principalId: decision.principalId,
+        userId: principal.type === 'delegated_user' ? principal.userId : null,
         organizationId: decision.organizationId,
         connectionId: decision.connectionId,
         toolName: decision.toolName,

@@ -1,26 +1,16 @@
-import { createHmac } from 'node:crypto'
 import {
-  isKnownDurabullTelemetryEvent,
-  sanitizeTelemetryEvent,
-} from '@durabull/analytics/sanitizer'
-import {
-  getDatabaseMode,
-  shouldUseEnvConnections,
-  telemetryInstallationRepository,
-} from '@durabull/dal'
-import { env } from '@durabull/env'
+  captureAnonymousServerEvent,
+  getTelemetryStatusFromOptions,
+  ingestTelemetryCollectBatch,
+  TELEMETRY_DISCLOSURE_URL,
+  tryGetServerAnalyticsOptions,
+  validateTelemetryPayload,
+} from '@durabull/analytics/server'
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { isAuthlessMode } from '../lib/authless'
 
-// Self-hosted instances forward sanitized batches to the existing Durabull cloud API.
-// There is no separate event-ingestion app or alternate telemetry hostname to deploy.
-const DURABULL_CLOUD_API_HOST = 'app.durabull.io'
-const DURABULL_TELEMETRY_INGEST_ENDPOINT = `https://${DURABULL_CLOUD_API_HOST}/api/telemetry/collect`
-const DEFAULT_POSTHOG_BATCH_HOST = 'https://us.i.posthog.com'
 const MAX_COLLECT_EVENTS_PER_BATCH = 50
-export const TELEMETRY_DISCLOSURE_URL = 'https://durabull.io/privacy'
 
 const telemetryPayloadSchema = z.object({
   event: z.string().min(1).max(128),
@@ -42,120 +32,23 @@ const telemetryCollectPayloadSchema = z.object({
   events: z.array(telemetryCollectEventSchema).min(1).max(MAX_COLLECT_EVENTS_PER_BATCH),
 })
 
-interface TelemetryCollectConfig {
-  hmacSecret: string
-  posthogBatchUrl: string
-  posthogKey: string
-}
-
-export function isDurabullTelemetryEnabled(): boolean {
-  if (env.NODE_ENV === 'test' || env.CI === true) return false
-  return env.NODE_ENV === 'production'
-}
-
-export function isDurabullManagedPosthogProject(): boolean {
-  if (env.DURABULL_CLOUD === true) return true
-
-  try {
-    return new URL(env.APP_BASE_URL).hostname === DURABULL_CLOUD_API_HOST
-  } catch {
-    return false
+export function getTelemetryStatus() {
+  const options = tryGetServerAnalyticsOptions()
+  if (!options) {
+    return {
+      enabled: false,
+      collectionRequired: true as const,
+      dedupeIdentifiedPosthogEvents: false,
+      disclosureUrl: TELEMETRY_DISCLOSURE_URL,
+    }
   }
+
+  return getTelemetryStatusFromOptions(options)
 }
 
 export function isDurabullTelemetryCollectEnabled(): boolean {
-  return env.DURABULL_CLOUD === true || isDurabullManagedPosthogProject()
-}
-
-export function getTelemetryStatus() {
-  return {
-    enabled: isDurabullTelemetryEnabled(),
-    collectionRequired: true as const,
-    dedupeIdentifiedPosthogEvents: shouldDedupeIdentifiedPosthogEvents(),
-    disclosureUrl: TELEMETRY_DISCLOSURE_URL,
-  }
-}
-
-export function hashTelemetryIdentifier(value: string, secret: string): string {
-  return createHmac('sha256', secret).update(value).digest('hex')
-}
-
-function getDurabullTelemetryPosthogKey(): string | null {
-  return env.DURABULL_TELEMETRY_POSTHOG_KEY?.trim() || env.POSTHOG_KEY?.trim() || null
-}
-
-function shouldDedupeIdentifiedPosthogEvents(): boolean {
-  const appPosthogKey = env.POSTHOG_KEY?.trim()
-  if (!appPosthogKey || !isDurabullManagedPosthogProject()) return false
-
-  return getDurabullTelemetryPosthogKey() === appPosthogKey
-}
-
-function getPosthogBatchUrl(): string | null {
-  const rawHost = env.DURABULL_TELEMETRY_POSTHOG_HOST?.trim() || DEFAULT_POSTHOG_BATCH_HOST
-  const hostWithProtocol = /^https?:\/\//i.test(rawHost) ? rawHost : `https://${rawHost}`
-
-  try {
-    const parsed = new URL(hostWithProtocol)
-    const basePath = parsed.pathname.replace(/\/$/, '')
-    const batchPath = basePath.endsWith('/batch') ? basePath : `${basePath}/batch`
-
-    return `${parsed.origin}${batchPath}/`
-  } catch {
-    return null
-  }
-}
-
-function getTelemetryCollectConfig(): TelemetryCollectConfig | null {
-  const posthogKey = getDurabullTelemetryPosthogKey()
-  const hmacSecret = env.DURABULL_TELEMETRY_HMAC_SECRET?.trim() || env.BETTER_AUTH_SECRET?.trim()
-  const posthogBatchUrl = getPosthogBatchUrl()
-
-  if (!posthogKey || !hmacSecret || !posthogBatchUrl) return null
-
-  return {
-    hmacSecret,
-    posthogBatchUrl,
-    posthogKey,
-  }
-}
-
-async function forwardTelemetryEvent(payload: {
-  anonymousInstanceId: string
-  event: string
-  properties: Record<string, unknown>
-  sessionId: string
-  timestamp: string
-}) {
-  try {
-    await fetch(DURABULL_TELEMETRY_INGEST_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        sentAt: new Date().toISOString(),
-        instanceId: payload.anonymousInstanceId,
-        events: [
-          {
-            event: payload.event,
-            properties: {
-              ...payload.properties,
-              authless: isAuthlessMode(),
-              env_connections: shouldUseEnvConnections(),
-              environment: env.NODE_ENV ?? 'development',
-              persistence: getDatabaseMode(),
-              stateless: getDatabaseMode() === 'pglite',
-            },
-            sessionId: payload.sessionId,
-            timestamp: payload.timestamp,
-          },
-        ],
-      }),
-    })
-  } catch {
-    // Telemetry collection must never affect the local product experience.
-  }
+  const options = tryGetServerAnalyticsOptions()
+  return (options?.collectEnabled && options.enabled) ?? false
 }
 
 const telemetryRoutes = new Hono()
@@ -165,60 +58,27 @@ const telemetryRoutes = new Hono()
       return c.json({ error: 'Not Found' }, 404)
     }
 
-    const config = getTelemetryCollectConfig()
-    if (!config) {
-      return c.json({ error: 'Telemetry collection is not configured' }, 503)
-    }
-
     const payload = c.req.valid('json')
-    const batch = []
+    const result = await ingestTelemetryCollectBatch({
+      instanceId: payload.instanceId,
+      sentAt: payload.sentAt,
+      events: payload.events,
+    })
 
-    for (const event of payload.events) {
-      if (!isKnownDurabullTelemetryEvent(event.event)) {
+    if (!result.ok) {
+      if (result.error === 'disabled' || result.error === 'not_configured') {
+        return c.json({ error: 'Telemetry collection is not configured' }, 503)
+      }
+      if (result.error === 'unknown_event') {
         return c.json({ error: 'Unknown telemetry event' }, 400)
       }
-
-      const sanitized = sanitizeTelemetryEvent(event.event, event.properties)
-      if (sanitized.droppedProperties.length > 0) {
+      if (result.error === 'invalid_properties') {
         return c.json({ error: 'Invalid telemetry properties' }, 400)
       }
-
-      const distinctId = hashTelemetryIdentifier(
-        `${payload.instanceId}:${event.sessionId}`,
-        config.hmacSecret
-      )
-      const instanceKey = hashTelemetryIdentifier(payload.instanceId, config.hmacSecret)
-
-      batch.push({
-        event: sanitized.event,
-        properties: {
-          ...sanitized.properties,
-          $geoip_disable: true,
-          $process_person_profile: false,
-          distinct_id: distinctId,
-          instance_key: instanceKey,
-        },
-        timestamp: event.timestamp ?? payload.sentAt ?? new Date().toISOString(),
-      })
-    }
-
-    try {
-      const posthogResponse = await fetch(config.posthogBatchUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          api_key: config.posthogKey,
-          batch,
-        }),
-      })
-
-      if (!posthogResponse.ok) {
-        return c.json({ error: 'Telemetry upstream rejected batch' }, 502)
+      if (result.error === 'upstream_unavailable') {
+        return c.json({ error: 'Telemetry upstream unavailable' }, 503)
       }
-    } catch {
-      return c.json({ error: 'Telemetry upstream unavailable' }, 502)
+      return c.json({ error: 'Telemetry upstream rejected batch' }, 502)
     }
 
     return c.json({ accepted: true }, 202)
@@ -230,20 +90,40 @@ const telemetryRoutes = new Hono()
     }
 
     const body = c.req.valid('json')
-    if (!isKnownDurabullTelemetryEvent(body.event)) {
-      return c.json({ error: 'Unknown telemetry event' }, 400)
+    const options = tryGetServerAnalyticsOptions()
+    if (!options) {
+      return c.json({ error: 'Telemetry is not configured' }, 503)
     }
 
-    const sanitized = sanitizeTelemetryEvent(body.event, body.properties ?? {})
-    const anonymousInstanceId =
-      await telemetryInstallationRepository.getOrCreateAnonymousInstanceId()
+    const validated = validateTelemetryPayload(
+      body.event,
+      body.properties ?? {},
+      options.getRuntimeContext()
+    )
+    if (!validated.ok) {
+      if (validated.error === 'unknown_event') {
+        return c.json({ error: 'Unknown telemetry event' }, 400)
+      }
+      return c.json({ error: 'Invalid telemetry properties' }, 400)
+    }
 
-    void forwardTelemetryEvent({
+    if (
+      options.collectEnabled &&
+      (!options.durabullTelemetryPosthogKey?.trim() || !options.hmacSecret?.trim())
+    ) {
+      return c.json({ error: 'Telemetry collection is not configured' }, 503)
+    }
+
+    const anonymousInstanceId = await options.resolveAnonymousInstanceId()
+
+    void captureAnonymousServerEvent({
       anonymousInstanceId,
-      event: sanitized.event,
-      properties: sanitized.properties,
+      event: validated.event,
+      properties: validated.properties,
       sessionId: body.sessionId,
       timestamp: body.timestamp ?? new Date().toISOString(),
+    }).catch(() => {
+      // Telemetry must never affect the local product experience.
     })
 
     return c.json({ accepted: true }, 202)

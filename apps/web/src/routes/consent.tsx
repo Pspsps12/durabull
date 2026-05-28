@@ -1,3 +1,5 @@
+import { AnalyticsEvents } from '@durabull/analytics/events'
+import { trackEvent } from '@durabull/analytics/browser'
 import {
   labelConsentScopes,
   type McpOAuthConsentContext,
@@ -128,6 +130,10 @@ function ConsentPage() {
       const result = await submitOAuthConsent({
         accept,
         consentCode: search.consent_code,
+      })
+      trackEvent(accept ? AnalyticsEvents.MCP_CONSENT_GRANTED : AnalyticsEvents.MCP_CONSENT_DENIED, {
+        success: accept,
+        scope_count: context?.scopes.length ?? 0,
       })
       window.location.assign(result.redirectURI)
     } catch (error) {

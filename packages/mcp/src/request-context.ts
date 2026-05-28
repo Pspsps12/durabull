@@ -20,6 +20,7 @@ export interface McpToolInvocationAuditInput {
   arguments: Record<string, unknown>
   connectionId?: string | null
   responseClass: 'success' | 'tool_error'
+  redactionCount?: number
 }
 
 export interface McpRequestContext {
