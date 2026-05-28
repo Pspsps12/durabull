@@ -1,7 +1,7 @@
-# MCP Readiness Review — Post PR-05 / PR-06 (2026-05-28)
+# MCP Readiness Review — Post PR-06 / PR-07 (2026-05-28)
 
-**Branch:** `feat/no-linear-mcp-pr06-safety-hardening`  
-**Plan position:** PR-06 safety hardening in progress; PR-07 deployment/ops is next.
+**Branch:** `feat/no-linear-mcp-pr07-cloud-selfhost-ops`  
+**Plan position:** PR-06 merged (#98); PR-07 deployment/ops in progress; PR-08 GA closure next.
 
 ---
 
@@ -11,8 +11,9 @@
 | --- | --- |
 | **Read-only diagnostic catalog** | **Complete** — all 11 tools + `ping` merged on `main` (PR #94, #97). |
 | **Authorization** | **Complete** — principals, policy engine, org/connection boundaries (PR #94). |
-| **Safety hardening (PR-06)** | **In progress** — redaction, per-tool rate limits, expanded audit, telemetry. |
-| **Production / GA** | **Not ready** — deployment runbooks (PR-07) and security closure (PR-08) remain. |
+| **Safety hardening (PR-06)** | **Complete** — merged PR #98 (redaction, rate limits, audit, telemetry). |
+| **Deployment / ops (PR-07)** | **In progress** — runbook + deployment docs (review fixes applied on branch). |
+| **Production / GA** | **Not ready** — PR-07 smoke on staging + PR-08 security/E2E signoff remain. |
 
 ---
 
@@ -31,7 +32,7 @@
 
 | PR | Capability |
 | --- | --- |
-| PR-07 | Cloud/self-host deploy docs, env contract, operator runbooks |
+| PR-07 | Cloud/self-host deploy docs, env contract, operator runbooks (in progress) |
 | PR-08 | Security review closure, GA docs, staged E2E verification |
 
 ---
@@ -42,7 +43,7 @@
 bun run --filter @durabull/mcp test
 bun run --filter @durabull/api test src/mcp/
 
-cd tooling/scripts && APP_BASE_URL=http://localhost:3001 bun run mcp:e2e
+cd tooling/scripts && APP_BASE_URL=http://localhost:3001 bun run mcp:e2e   # API port in monorepo dev; use 3000 for Docker
 ```
 
-See [MCP Server docs](/documentation/integrations/mcp-server) in the docs app for operator-facing guidance.
+See [MCP Server](/documentation/integrations/mcp-server) and the [MCP operations runbook](https://github.com/durabullhq/durabull/blob/main/docs/mcp-operations-runbook.md).

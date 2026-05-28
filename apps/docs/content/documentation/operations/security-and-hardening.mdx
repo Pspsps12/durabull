@@ -39,19 +39,19 @@ Built-in controls include:
 - secure headers
 - CORS policy
 - request body size limit (`1MB`)
-- in-memory rate limiting in production
+- in-memory rate limiting when `NODE_ENV=production`
 
 ### MCP (`/mcp`)
 
-Durabull's hosted MCP endpoint adds layered read protections:
+Durabull's hosted MCP endpoint adds layered read protections (enforced when `NODE_ENV=production`):
 
-- **Ingress rate limit:** 120 requests/minute per bearer token (or client IP fallback)
-- **Per-tool rate limit:** 60 calls/minute by default; 30/minute for log, stacktrace, metrics, and failure-heavy tools
+- **Ingress rate limit:** 120 HTTP requests/minute per bearer token, or per `cf-connecting-ip` / `x-real-ip` when unauthenticated (not `X-Forwarded-For`) on all `/mcp` traffic
+- **Per-tool rate limit:** 60 calls/minute per tool name by default; 30/minute for `get_job_logs`, `get_job_stacktraces`, `get_failure_events`, `get_queue_metrics`, `explain_job_failure`
 - **Output redaction:** central sanitizer removes Redis URLs, credential-like keys, and bearer tokens from tool payloads
 - **Audit events:** every MCP tool call records principal, tool, input hash, and outcome in `mcp_audit_event`
-- **Structured telemetry:** JSON `mcp_telemetry` logs for auth/policy/rate-limit/tool outcomes
+- **Structured telemetry:** JSON `mcp_telemetry` logs for policy denies, rate limits, and tool outcomes (auth failures: use HTTP access logs until auth telemetry is wired)
 
-See [MCP Server](/documentation/integrations/mcp-server) for scopes, tools, and client setup.
+See [MCP Server](/documentation/integrations/mcp-server) for scopes, tools, and client setup. Operators: [MCP operations runbook](https://github.com/durabullhq/durabull/blob/main/docs/mcp-operations-runbook.md).
 
 If running multiple API replicas, consider moving rate limits to a shared backend.
 
