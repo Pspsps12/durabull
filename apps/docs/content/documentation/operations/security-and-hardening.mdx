@@ -41,6 +41,18 @@ Built-in controls include:
 - request body size limit (`1MB`)
 - in-memory rate limiting in production
 
+### MCP (`/mcp`)
+
+Durabull's hosted MCP endpoint adds layered read protections:
+
+- **Ingress rate limit:** 120 requests/minute per bearer token (or client IP fallback)
+- **Per-tool rate limit:** 60 calls/minute by default; 30/minute for log, stacktrace, metrics, and failure-heavy tools
+- **Output redaction:** central sanitizer removes Redis URLs, credential-like keys, and bearer tokens from tool payloads
+- **Audit events:** every MCP tool call records principal, tool, input hash, and outcome in `mcp_audit_event`
+- **Structured telemetry:** JSON `mcp_telemetry` logs for auth/policy/rate-limit/tool outcomes
+
+See [MCP Server](/documentation/integrations/mcp-server) for scopes, tools, and client setup.
+
 If running multiple API replicas, consider moving rate limits to a shared backend.
 
 ## Secrets Handling

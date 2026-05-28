@@ -92,6 +92,8 @@ export const mcpAuditEvent = pgTable(
     requiredScopes: text('required_scopes').notNull(),
     granted: boolean('granted').notNull(),
     denialReason: text('denial_reason'),
+    inputHash: text('input_hash'),
+    responseClass: text('response_class'),
   },
   (table) => [
     index('mcp_audit_event_correlation_idx').on(table.correlationId),

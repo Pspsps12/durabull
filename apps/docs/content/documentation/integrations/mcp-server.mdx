@@ -1,0 +1,124 @@
+---
+title: MCP Server
+description: Connect AI assistants to Durabull read-only queue diagnostics through the hosted MCP endpoint.
+---
+
+Durabull exposes a **read-only** [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server on the same origin as the web app and API.
+
+```txt
+{APP_BASE_URL}/mcp
+```
+
+Example: `https://app.durabull.io/mcp`
+
+MCP runs inside the unified Durabull API process. There is no separate MCP port or container in phase 1.
+
+## What MCP provides
+
+Phase 1 ships diagnostic tools only — no queue mutations, retries, pauses, or purges.
+
+| Tool | Scope | Purpose |
+| --- | --- | --- |
+| `ping` | `mcp:discover` | Transport smoke check |
+| `list_connections` | `mcp:jobs:read` | Connections visible to the principal |
+| `list_queues` | `mcp:jobs:read` | Queue inventory for a connection |
+| `get_queue` | `mcp:jobs:read` | Queue detail and counts |
+| `list_jobs` | `mcp:jobs:read` | Paginated job summaries |
+| `get_job` | `mcp:jobs:read` | Safe job detail |
+| `get_job_logs` | `mcp:logs:read` | Paginated job logs |
+| `get_job_stacktraces` | `mcp:logs:read` | Attempt-indexed stacktraces |
+| `get_failure_events` | `mcp:failures:read` | Alert/failure events |
+| `get_queue_metrics` | `mcp:diagnostics:read` | Queue metrics window |
+| `get_workers` | `mcp:jobs:read` | Worker snapshots |
+| `explain_job_failure` | `mcp:failures:read` + `mcp:logs:read` + `mcp:diagnostics:read` | Deterministic failure summary |
+
+## Authentication
+
+Remote MCP clients authenticate with **OAuth 2.1 bearer tokens** issued by Durabull (Better Auth MCP plugin).
+
+1. Discover protected resource metadata at `GET /.well-known/oauth-protected-resource`.
+2. Register an OAuth client (`POST /api/auth/mcp/register`) or use an existing client.
+3. Complete authorization code + PKCE.
+4. Request tokens with `resource={APP_BASE_URL}/mcp`.
+5. Call MCP with `Authorization: Bearer <access_token>`.
+
+Canonical resource URI:
+
+```txt
+{APP_BASE_URL}/mcp
+```
+
+`APP_BASE_URL` must match the public origin clients use to reach `/mcp` (including port in local dev).
+
+See the operator guide in the repo at `docs/mcp-oauth-operator.md` for HTTP status semantics and discovery endpoints.
+
+## Scopes
+
+| Scope | Grants |
+| --- | --- |
+| `mcp:discover` | Transport + `ping` |
+| `mcp:jobs:read` | Connection/queue/job/worker reads |
+| `mcp:logs:read` | Logs and stacktraces |
+| `mcp:failures:read` | Failure/alert events |
+| `mcp:diagnostics:read` | Metrics and composed diagnostics |
+
+Delegated users receive scopes from OAuth consent. Service accounts require explicit policy bindings per tool/scope.
+
+## Safety controls (PR-06)
+
+Durabull hardens MCP reads even for authenticated callers:
+
+### Output redaction
+
+All read-tool responses pass through a central sanitizer that:
+
+- strips sensitive object keys (for example `apiKey`, `redisUrl`, `password`)
+- redacts inline Redis URLs and bearer tokens in text fields
+- truncates oversized strings
+- adds `_mcpSafety.redactionCount` when redactions occur
+
+### Rate limits
+
+| Layer | Default limit | Key |
+| --- | --- | --- |
+| `/mcp` ingress | 120 requests/minute | Bearer token hash (or client IP) |
+| Per tool | 60 calls/minute (30 for log/stacktrace/metrics-heavy tools) | Bearer token hash + tool name |
+
+Responses include `X-RateLimit-*` headers. Exceeded limits return HTTP `429`.
+
+Set `DISABLE_RATE_LIMIT=true` to bypass all rate limiting (not recommended in production).
+
+### Audit trail
+
+Every `tools/call` writes an `mcp_audit_event` row with:
+
+- principal id/type and org context
+- tool name and required scopes
+- SHA-256 hash of tool arguments (not raw args)
+- allow/deny decision and `response_class` (`success`, `tool_error`, `policy_denied`, `rate_limited`)
+
+Audit writes are non-blocking with bounded in-memory backpressure.
+
+### Observability
+
+Structured JSON logs emit `mcp_telemetry` signals for auth denials, policy denies, ingress/tool rate limits, tool success/error, and redaction events. Wire these into your log aggregator or metrics pipeline.
+
+## Local development
+
+Authless mode (`DURABULL_AUTHLESS=true`) accepts the dev bearer token for `/mcp` only on private/local setups. Never enable authless mode on Durabull Cloud.
+
+Smoke scripts:
+
+```bash
+bun run --filter @durabull/mcp test
+bun run --filter @durabull/api test src/mcp/
+
+cd tooling/scripts
+APP_BASE_URL=http://localhost:3001 bun run mcp:e2e
+```
+
+## Related docs
+
+- [Security and Hardening](/documentation/operations/security-and-hardening)
+- [Environment Variables](/documentation/getting-started/environment-variables)
+- [HTTP API Reference](/documentation/reference/http-api)

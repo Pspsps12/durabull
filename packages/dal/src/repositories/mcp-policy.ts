@@ -295,6 +295,8 @@ export const mcpPolicyRepository = {
     requiredScopes: string[]
     granted: boolean
     denialReason?: string | null
+    inputHash?: string | null
+    responseClass?: string | null
   }) {
     const db = await getDb()
     const now = new Date()
@@ -313,6 +315,8 @@ export const mcpPolicyRepository = {
         requiredScopes: input.requiredScopes.join(' '),
         granted: input.granted,
         denialReason: input.denialReason ?? null,
+        inputHash: input.inputHash ?? null,
+        responseClass: input.responseClass ?? null,
       })
       .returning()
     return record

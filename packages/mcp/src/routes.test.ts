@@ -289,6 +289,6 @@ describe('createMcpRoutes', () => {
       error?: { code?: string; message?: string }
     }
     expect(errorPayload.error?.code).toBe('not_found')
-    expect(errorPayload.error?.message).toContain('Connection missing for test')
+    expect(errorPayload.error?.message).toBe('Resource not found.')
   })
 })

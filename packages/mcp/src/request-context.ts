@@ -15,11 +15,20 @@ export interface McpResolvedConnection {
   allowSelfSignedCerts: boolean
 }
 
+export interface McpToolInvocationAuditInput {
+  toolName: string
+  arguments: Record<string, unknown>
+  connectionId?: string | null
+  responseClass: 'success' | 'tool_error'
+}
+
 export interface McpRequestContext {
   principal?: McpRequestPrincipal
   correlationId?: string
   grantedScopes?: string[]
   resolvedConnection?: McpResolvedConnection
+  onToolInvocationComplete?: (input: McpToolInvocationAuditInput) => void
+  onRedactionApplied?: (redactionCount: number) => void
 }
 
 const store = new AsyncLocalStorage<McpRequestContext>()

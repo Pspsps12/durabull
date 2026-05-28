@@ -1,21 +1,17 @@
-const SENSITIVE_KEY = /(secret|password|token|authorization|api[_-]?key|credential|redis|url)/i
-const REDIS_URL_PATTERN = /redis(s)?:\/\/[^\s]+/gi
-const MAX_MCP_TEXT_LENGTH = 500
+import {
+  sanitizeMcpText as sanitizeMcpTextImpl,
+  truncateMcpText as truncateMcpTextImpl,
+} from '@durabull/mcp/safety/sanitize-output'
+
+export { sanitizeMcpOutput } from '@durabull/mcp/safety/sanitize-output'
+
+const SENSITIVE_KEY =
+  /(^|_)(secret|password|authorization|api[_-]?key|credential|private[_-]?key|redis[_-]?url|connection[_-]?url|access[_-]?token)(_|$)/i
 const MAX_CONTEXT_DEPTH = 4
 const MAX_CONTEXT_ARRAY_ITEMS = 50
-const MAX_CONTEXT_STRING_LENGTH = 512
 
-export function truncateMcpText(value: string, maxLength = MAX_MCP_TEXT_LENGTH): string {
-  if (value.length <= maxLength) return value
-  return `${value.slice(0, maxLength)}…`
-}
-
-export function sanitizeMcpText(value: string | null | undefined): string | null {
-  if (value == null) return null
-  const redacted = value.replace(REDIS_URL_PATTERN, '[redacted]').trim()
-  if (!redacted) return null
-  return truncateMcpText(redacted)
-}
+export const truncateMcpText = truncateMcpTextImpl
+export const sanitizeMcpText = sanitizeMcpTextImpl
 
 export function sanitizeAlertEventContext(
   context: unknown,
@@ -54,8 +50,7 @@ export function sanitizeAlertEventContext(
 function sanitizeAlertContextValue(value: unknown, depth: number): unknown | undefined {
   if (value == null) return value
   if (typeof value === 'string') {
-    const redacted = value.replace(REDIS_URL_PATTERN, '[redacted]')
-    return truncateMcpText(redacted, MAX_CONTEXT_STRING_LENGTH)
+    return sanitizeMcpText(value) ?? undefined
   }
   if (typeof value === 'number' || typeof value === 'boolean') {
     return value

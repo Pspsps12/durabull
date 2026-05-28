@@ -869,14 +869,54 @@ Finalize production quality and confirm spec/safety compliance.
 
 ---
 
+### PR Record: PR-06
+
+- PR ID: `PR-06`
+- Branch: `feat/no-linear-mcp-pr06-safety-hardening`
+- Linear issue: `NO-LINEAR`
+- PR URL:
+- Status: `in progress`
+- Agent owner: `cursor`
+- Start date: `2026-05-28`
+- Merge date:
+
+#### Scope Completed
+
+- [x] Central output sanitizer in `@durabull/mcp` applied to all read-tool responses with `_mcpSafety.redactionCount` metadata.
+- [x] Per-tool rate limiting middleware (60/min default, 30/min for heavy diagnostic tools) with JSON-RPC `429` responses.
+- [x] Ingress MCP rate limit telemetry hooks (`rate_limited_ingress`).
+- [x] Audit schema expansion (`input_hash`, `response_class`) and invocation audit on successful tool calls.
+- [x] Structured `mcp_telemetry` JSON logging for policy denies, rate limits, and tool outcomes.
+- [x] Docs app page: `integrations/mcp-server` + security/env var updates.
+
+#### Verification Evidence
+
+- [x] Commands run:
+  - [x] `bun run --filter @durabull/mcp test` (39 pass)
+  - [x] `bun run --filter @durabull/api test src/mcp/` (32 pass)
+  - [x] `bun run --filter @durabull/mcp typecheck`
+- [x] Tests added:
+  - [x] `packages/mcp/src/safety/sanitize-output.test.ts`
+  - [x] `apps/api/src/mcp/middleware/mcp-tool-rate-limit.test.ts`
+  - [x] `apps/api/src/mcp/audit/mcp-audit.test.ts`
+  - [x] `apps/api/src/mcp/tools/mcp-sanitize.test.ts`
+
+#### Handoff To Next PR
+
+- Next PR: `PR-07`
+- Known risks: in-memory rate limits are per-process; multi-replica deployments should plan Redis-backed limits.
+- Notes for next agent: document unified `/mcp` deployment for cloud/self-host and operator runbooks.
+
+---
+
 ## Live PR Tracker
 
 - [ ] PR-01 Security architecture baseline (folded into PR-04 completion work)
 - [x] PR-02 API `/mcp` ingress + transport (`@durabull/mcp` package + thin API mount)
 - [x] PR-03 OAuth discovery + token validation (merged — PR #89)
 - [x] PR-04 Principals + policy engine (merged — PR #94)
-- [ ] PR-05 Read-only diagnostic tools (complete on branch `feat/mcp-pr05-remaining-read-tools`; pending merge)
-- [ ] PR-06 Safety hardening
+- [x] PR-05 Read-only diagnostic tools (merged — PR #97)
+- [ ] PR-06 Safety hardening (in progress on `feat/no-linear-mcp-pr06-safety-hardening`)
 - [ ] PR-07 Deployment + operations
 - [ ] PR-08 GA readiness + security closure
 

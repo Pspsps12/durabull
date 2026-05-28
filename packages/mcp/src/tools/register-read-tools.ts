@@ -2,6 +2,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 
 import { getMcpRequestContext } from '../request-context'
+import type { McpToolInvocationAuditInput } from '../request-context'
+import { sanitizeMcpOutput } from '../safety/sanitize-output'
 
 export interface ListConnectionsHandlerInput {
   principal:
@@ -367,6 +369,7 @@ export interface RegisterReadToolsOptions {
   explainJobFailure?: (
     input: ExplainJobFailureHandlerInput
   ) => Promise<ExplainJobFailureHandlerOutput>
+  onToolInvocationComplete?: (input: McpToolInvocationAuditInput) => void
 }
 
 function parsePageSize(raw: unknown): number {
@@ -407,7 +410,11 @@ function getPrincipalFromContext(): ToolPrincipal {
 
 function toToolError(error: unknown): { code: string; message: string } {
   const INTERNAL_ERROR_MESSAGE = 'Tool invocation failed.'
-  const KNOWN_CODES = new Set(['not_found', 'validation_error', 'forbidden'])
+  const KNOWN_MESSAGES: Record<string, string> = {
+    not_found: 'Resource not found.',
+    validation_error: 'Invalid input.',
+    forbidden: 'Forbidden.',
+  }
 
   if (
     typeof error === 'object' &&
@@ -416,15 +423,12 @@ function toToolError(error: unknown): { code: string; message: string } {
     typeof (error as { code: unknown }).code === 'string'
   ) {
     const code = (error as { code: string }).code
-    const message =
-      error instanceof Error && error.message
-        ? error.message
-        : KNOWN_CODES.has(code)
-          ? code
-          : INTERNAL_ERROR_MESSAGE
+    if (code in KNOWN_MESSAGES) {
+      return { code, message: KNOWN_MESSAGES[code]! }
+    }
     return {
-      code: KNOWN_CODES.has(code) ? code : 'internal_error',
-      message: KNOWN_CODES.has(code) ? message : INTERNAL_ERROR_MESSAGE,
+      code: 'internal_error',
+      message: INTERNAL_ERROR_MESSAGE,
     }
   }
 
@@ -434,16 +438,70 @@ function toToolError(error: unknown): { code: string; message: string } {
   }
 }
 
-function mcpToolSuccess(result: Record<string, unknown>) {
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(result) }],
-  }
-}
-
 function mcpToolFailure(toolError: { code: string; message: string }) {
   return {
     isError: true,
     content: [{ type: 'text' as const, text: JSON.stringify({ error: toolError }) }],
+  }
+}
+
+function finalizeReadToolSuccess(
+  options: RegisterReadToolsOptions,
+  toolName: string,
+  args: Record<string, unknown>,
+  result: Record<string, unknown>
+) {
+  const { value, redactionCount } = sanitizeMcpOutput(result)
+  const sanitizedResult =
+    typeof value === 'object' && value != null && !Array.isArray(value)
+      ? ({ ...(value as Record<string, unknown>) } as Record<string, unknown>)
+      : ({ value } as Record<string, unknown>)
+
+  if (redactionCount > 0) {
+    sanitizedResult._mcpSafety = { redactionCount }
+    getMcpRequestContext()?.onRedactionApplied?.(redactionCount)
+  }
+
+  const auditInput = {
+    toolName,
+    arguments: args,
+    connectionId: typeof args.connectionId === 'string' ? args.connectionId : null,
+    responseClass: 'success' as const,
+  }
+  getMcpRequestContext()?.onToolInvocationComplete?.(auditInput)
+
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(sanitizedResult) }],
+  }
+}
+
+function finalizeReadToolFailure(
+  options: RegisterReadToolsOptions,
+  toolName: string,
+  args: Record<string, unknown>,
+  error: unknown
+) {
+  const auditInput = {
+    toolName,
+    arguments: args,
+    connectionId: typeof args.connectionId === 'string' ? args.connectionId : null,
+    responseClass: 'tool_error' as const,
+  }
+  getMcpRequestContext()?.onToolInvocationComplete?.(auditInput)
+  return mcpToolFailure(toToolError(error))
+}
+
+async function runReadTool(
+  options: RegisterReadToolsOptions,
+  toolName: string,
+  args: Record<string, unknown>,
+  invoke: () => Promise<Record<string, unknown>>
+) {
+  try {
+    const result = await invoke()
+    return finalizeReadToolSuccess(options, toolName, args, result)
+  } catch (error) {
+    return finalizeReadToolFailure(options, toolName, args, error)
   }
 }
 
@@ -458,19 +516,14 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
     server.tool(
       'list_connections',
       listConnectionsSchema,
-      async (args) => {
-        try {
-          const result = await listConnections({
+      async (args) =>
+        runReadTool(options, 'list_connections', args, () =>
+          listConnections({
             principal: getPrincipalFromContext(),
             cursor: parseCursor(args.cursor),
             pageSize: parsePageSize(args.pageSize),
           })
-          return mcpToolSuccess(result)
-        } catch (error) {
-          const toolError = toToolError(error)
-          return mcpToolFailure(toolError)
-        }
-      }
+        )
     )
   }
 
@@ -483,20 +536,15 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
         cursor: z.string().optional(),
         pageSize: z.number().int().min(1).max(100).optional(),
       },
-      async (args) => {
-        try {
-          const result = await listQueues({
+      async (args) =>
+        runReadTool(options, 'list_queues', args, () =>
+          listQueues({
             principal: getPrincipalFromContext(),
             connectionId: args.connectionId,
             cursor: parseCursor(args.cursor),
             pageSize: parsePageSize(args.pageSize),
           })
-          return mcpToolSuccess(result)
-        } catch (error) {
-          const toolError = toToolError(error)
-          return mcpToolFailure(toolError)
-        }
-      }
+        )
     )
   }
 
@@ -508,19 +556,14 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
         connectionId: z.string().min(1),
         queueName: z.string().min(1),
       },
-      async (args) => {
-        try {
-          const result = await getQueue({
+      async (args) =>
+        runReadTool(options, 'get_queue', args, () =>
+          getQueue({
             principal: getPrincipalFromContext(),
             connectionId: args.connectionId,
             queueName: args.queueName,
           })
-          return mcpToolSuccess(result)
-        } catch (error) {
-          const toolError = toToolError(error)
-          return mcpToolFailure(toolError)
-        }
-      }
+        )
     )
   }
 
@@ -537,9 +580,9 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
         cursor: z.string().optional(),
         pageSize: z.number().int().min(1).max(100).optional(),
       },
-      async (args) => {
-        try {
-          const result = await listJobs({
+      async (args) =>
+        runReadTool(options, 'list_jobs', args, () =>
+          listJobs({
             principal: getPrincipalFromContext(),
             connectionId: args.connectionId,
             queueName: args.queueName,
@@ -549,12 +592,7 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
             cursor: parseCursor(args.cursor),
             pageSize: parsePageSize(args.pageSize),
           })
-          return mcpToolSuccess(result)
-        } catch (error) {
-          const toolError = toToolError(error)
-          return mcpToolFailure(toolError)
-        }
-      }
+        )
     )
   }
 
@@ -567,20 +605,15 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
         queueName: z.string().min(1),
         jobId: z.string().min(1),
       },
-      async (args) => {
-        try {
-          const result = await getJob({
+      async (args) =>
+        runReadTool(options, 'get_job', args, () =>
+          getJob({
             principal: getPrincipalFromContext(),
             connectionId: args.connectionId,
             queueName: args.queueName,
             jobId: args.jobId,
           })
-          return mcpToolSuccess(result)
-        } catch (error) {
-          const toolError = toToolError(error)
-          return mcpToolFailure(toolError)
-        }
-      }
+        )
     )
   }
 
@@ -595,9 +628,9 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
         cursor: z.string().optional(),
         pageSize: z.number().int().min(1).max(100).optional(),
       },
-      async (args) => {
-        try {
-          const result = await getJobLogs({
+      async (args) =>
+        runReadTool(options, 'get_job_logs', args, () =>
+          getJobLogs({
             principal: getPrincipalFromContext(),
             connectionId: args.connectionId,
             queueName: args.queueName,
@@ -605,12 +638,7 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
             cursor: parseCursor(args.cursor),
             pageSize: parsePageSize(args.pageSize),
           })
-          return mcpToolSuccess(result)
-        } catch (error) {
-          const toolError = toToolError(error)
-          return mcpToolFailure(toolError)
-        }
-      }
+        )
     )
   }
 
@@ -625,9 +653,9 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
         cursor: z.string().optional(),
         pageSize: z.number().int().min(1).max(100).optional(),
       },
-      async (args) => {
-        try {
-          const result = await getJobStacktraces({
+      async (args) =>
+        runReadTool(options, 'get_job_stacktraces', args, () =>
+          getJobStacktraces({
             principal: getPrincipalFromContext(),
             connectionId: args.connectionId,
             queueName: args.queueName,
@@ -635,12 +663,7 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
             cursor: parseCursor(args.cursor),
             pageSize: parsePageSize(args.pageSize),
           })
-          return mcpToolSuccess(result)
-        } catch (error) {
-          const toolError = toToolError(error)
-          return mcpToolFailure(toolError)
-        }
-      }
+        )
     )
   }
 
@@ -656,9 +679,9 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
         cursor: z.string().optional(),
         pageSize: z.number().int().min(1).max(100).optional(),
       },
-      async (args) => {
-        try {
-          const result = await getFailureEvents({
+      async (args) =>
+        runReadTool(options, 'get_failure_events', args, () =>
+          getFailureEvents({
             principal: getPrincipalFromContext(),
             connectionId: args.connectionId,
             queueName: args.queueName,
@@ -667,12 +690,7 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
             cursor: parseCursor(args.cursor),
             pageSize: parsePageSize(args.pageSize),
           })
-          return mcpToolSuccess(result)
-        } catch (error) {
-          const toolError = toToolError(error)
-          return mcpToolFailure(toolError)
-        }
-      }
+        )
     )
   }
 
@@ -685,20 +703,15 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
         queueName: z.string().min(1),
         windowMinutes: z.number().int().min(1).max(1440).optional(),
       },
-      async (args) => {
-        try {
-          const result = await getQueueMetrics({
+      async (args) =>
+        runReadTool(options, 'get_queue_metrics', args, () =>
+          getQueueMetrics({
             principal: getPrincipalFromContext(),
             connectionId: args.connectionId,
             queueName: args.queueName,
             windowMinutes: args.windowMinutes,
           })
-          return mcpToolSuccess(result)
-        } catch (error) {
-          const toolError = toToolError(error)
-          return mcpToolFailure(toolError)
-        }
-      }
+        )
     )
   }
 
@@ -712,21 +725,16 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
         cursor: z.string().optional(),
         pageSize: z.number().int().min(1).max(100).optional(),
       },
-      async (args) => {
-        try {
-          const result = await getWorkers({
+      async (args) =>
+        runReadTool(options, 'get_workers', args, () =>
+          getWorkers({
             principal: getPrincipalFromContext(),
             connectionId: args.connectionId,
             queueName: args.queueName,
             cursor: parseCursor(args.cursor),
             pageSize: parsePageSize(args.pageSize),
           })
-          return mcpToolSuccess(result)
-        } catch (error) {
-          const toolError = toToolError(error)
-          return mcpToolFailure(toolError)
-        }
-      }
+        )
     )
   }
 
@@ -739,20 +747,15 @@ export function registerReadTools(server: McpServer, options: RegisterReadToolsO
         queueName: z.string().min(1),
         jobId: z.string().min(1),
       },
-      async (args) => {
-        try {
-          const result = await explainJobFailure({
+      async (args) =>
+        runReadTool(options, 'explain_job_failure', args, () =>
+          explainJobFailure({
             principal: getPrincipalFromContext(),
             connectionId: args.connectionId,
             queueName: args.queueName,
             jobId: args.jobId,
           })
-          return mcpToolSuccess(result)
-        } catch (error) {
-          const toolError = toToolError(error)
-          return mcpToolFailure(toolError)
-        }
-      }
+        )
     )
   }
 }

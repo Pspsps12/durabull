@@ -1,9 +1,13 @@
 import { createMcpRoutes, getDefaultAllowedHosts, getProductionAllowedHosts } from '@durabull/mcp'
+import type { McpToolInvocationAuditInput } from '@durabull/mcp'
 import { env } from '@durabull/env'
 
 import { APP_VERSION } from '../lib/build-info'
+import { hashMcpToolInput, writeMcpAuditEventNonBlocking } from './audit/mcp-audit'
 import { assertMcpAuthConfiguration } from './auth/mcp-auth-config'
 import { createMcpSessionMiddleware } from './auth/mcp-session-middleware'
+import { createMcpToolRateLimitMiddleware } from './middleware/mcp-tool-rate-limit'
+import { recordMcpTelemetry } from './observability/mcp-telemetry'
 import { createMcpPolicyMiddleware } from './policy/mcp-policy-middleware'
 import { explainJobFailureHandler } from './tools/explain-job-failure-handler'
 import { getFailureEventsHandler } from './tools/get-failure-events-handler'
@@ -28,6 +32,7 @@ export async function mountMcpIngress() {
   const isProduction = env.NODE_ENV === 'production'
   const authMiddleware = await createMcpSessionMiddleware(appBaseUrl)
   const policyMiddleware = createMcpPolicyMiddleware()
+  const toolRateLimitMiddleware = createMcpToolRateLimitMiddleware()
 
   return createMcpRoutes({
     version: APP_VERSION,
@@ -55,6 +60,31 @@ export async function mountMcpIngress() {
       if (!principal) {
         return undefined
       }
+
+      const recordToolInvocation = (input: McpToolInvocationAuditInput) => {
+        if (!decision) return
+
+        recordMcpTelemetry({
+          signal: input.responseClass === 'success' ? 'tool_success' : 'tool_error',
+          toolName: input.toolName,
+          principalId: decision.principalId,
+          correlationId: decision.correlationId,
+        })
+
+        writeMcpAuditEventNonBlocking({
+          correlationId: decision.correlationId,
+          principalType: decision.principalType,
+          principalId: decision.principalId,
+          organizationId: decision.organizationId,
+          connectionId: input.connectionId ?? decision.connectionId,
+          toolName: input.toolName,
+          requiredScopes: decision.requiredScopes,
+          granted: true,
+          inputHash: c.get('mcpToolInputHash') ?? hashMcpToolInput(input.arguments),
+          responseClass: input.responseClass,
+        })
+      }
+
       return {
         principal:
           principal.type === 'delegated_user'
@@ -71,8 +101,16 @@ export async function mountMcpIngress() {
         correlationId: decision?.correlationId,
         grantedScopes: c.get('mcpGrantedScopes'),
         resolvedConnection: c.get('mcpResolvedConnection'),
+        onToolInvocationComplete: recordToolInvocation,
+        onRedactionApplied: (redactionCount) => {
+          recordMcpTelemetry({
+            signal: 'redaction_applied',
+            count: redactionCount,
+            correlationId: decision?.correlationId,
+          })
+        },
       }
     },
-    middleware: [authMiddleware, policyMiddleware],
+    middleware: [authMiddleware, toolRateLimitMiddleware, policyMiddleware],
   })
 }

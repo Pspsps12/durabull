@@ -97,9 +97,22 @@ forwards sanitized telemetry to Durabull's existing cloud API.
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `DISABLE_RATE_LIMIT` | No | Disable in-memory rate limiting |
+| `DISABLE_RATE_LIMIT` | No | Disable in-memory rate limiting (API + MCP ingress + MCP per-tool limits) |
+| `MCP_AUTHLESS_BEARER_TOKEN` | When authless + production | Bearer token for local/private MCP authless mode |
 | `ASSET_PRELOAD_MAX_SIZE` | No | Asset preload tuning |
 | `ASSET_PRELOAD_VERBOSE_LOGGING` | No | Extra preload diagnostics |
+
+## MCP
+
+MCP is served at `{APP_BASE_URL}/mcp` on the unified API deployment. No separate MCP port is required.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `APP_BASE_URL` | Recommended | Canonical OAuth resource URI (`{APP_BASE_URL}/mcp`) and MCP host allowlist |
+| `DURABULL_AUTHLESS` | No | Must remain `false` on internet-facing deployments |
+| `DISABLE_RATE_LIMIT` | No | When `true`, disables MCP ingress and per-tool rate limits |
+
+See [MCP Server](/documentation/integrations/mcp-server) for scopes, tools, and client setup.
 
 ## Recommended Production Baseline
 
