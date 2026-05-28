@@ -87,7 +87,7 @@ export async function createMcpSessionMiddleware(appBaseUrl: string) {
         requireResourceIndicator,
       })
       if (!cachedValidation.ok) {
-        tokenCache.delete(cacheKey)
+        tokenCache.invalidate(cacheKey)
         if (cachedValidation.status === 403) {
           return buildMcpInsufficientScopeResponse(
             resourceMetadataUrl,

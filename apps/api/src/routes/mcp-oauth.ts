@@ -37,6 +37,9 @@ const app = new Hono()
 app.get('/oauth-consent/:consentCode', requireSession, async (c) => {
   const consentCode = c.req.param('consentCode')
   const user = c.get('user')
+  if (!user) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
   if (!consentCode) {
     return c.json({ error: 'consent_code is required' }, 400)
   }

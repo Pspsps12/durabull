@@ -7,6 +7,7 @@ import {
   oauthConsent,
   organizationSchema,
   user,
+  type NewOauthAccessToken,
 } from '@durabull/dal'
 import { env } from '@durabull/env'
 import { betterAuth } from 'better-auth'
@@ -198,7 +199,7 @@ export async function createAuth(options?: CreateAuthOptions) {
       },
       oauthAccessToken: {
         create: {
-          before: async (token) => {
+          before: async (token: NewOauthAccessToken) => {
             const canonicalResource = getCanonicalMcpResourceUri(
               options?.baseURL ?? env.APP_BASE_URL
             )

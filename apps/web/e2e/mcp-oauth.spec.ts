@@ -296,9 +296,11 @@ test.describe('MCP OAuth browser flow', () => {
 
     expect(authorizationCode).toBeTruthy()
     expect(callbackState).toBe(state)
+    const code = authorizationCode!
+    expect(code.length).toBeGreaterThan(0)
 
     const accessToken = await exchangeAuthorizationCode({
-      code: authorizationCode as string,
+      code,
       clientId,
       codeVerifier,
       resource,
@@ -389,9 +391,12 @@ test.describe('MCP OAuth browser flow (logged out)', () => {
     await expect(page.getByTestId('mcp-consent-allow')).toBeEnabled({ timeout: 30_000 })
     await page.getByTestId('mcp-consent-allow').click()
     await expect.poll(() => authorizationCode, { timeout: 30_000 }).not.toBeNull()
+    expect(authorizationCode).toBeTruthy()
+    const code = authorizationCode!
+    expect(code.length).toBeGreaterThan(0)
 
     const accessToken = await exchangeAuthorizationCode({
-      code: authorizationCode as string,
+      code,
       clientId,
       codeVerifier,
       resource: CANONICAL_MCP_RESOURCE,
