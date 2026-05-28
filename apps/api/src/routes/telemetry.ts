@@ -1,7 +1,5 @@
 import {
-  captureAnonymousServerEvent,
   getTelemetryStatusFromOptions,
-  ingestTelemetryCollectBatch,
   isDurabullTelemetryCollectConfigured,
   TELEMETRY_COLLECT_SIGNATURE_HEADER,
   TELEMETRY_COLLECT_TIMESTAMP_HEADER,
@@ -13,6 +11,8 @@ import {
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { z } from 'zod'
+import { enqueueTelemetryCollectBatch } from './telemetry-collect-queue'
+import { enqueueTelemetryEvent } from './telemetry-events-queue'
 
 const MAX_COLLECT_EVENTS_PER_BATCH = 50
 
@@ -102,27 +102,29 @@ const telemetryRoutes = new Hono()
     }
 
     const payload = payloadResult.data
-    const result = await ingestTelemetryCollectBatch({
+    if (!options || !isDurabullTelemetryCollectConfigured(options)) {
+      return c.json({ error: 'Telemetry collection is not configured' }, 503)
+    }
+
+    for (const event of payload.events) {
+      const validated = validateTelemetryPayload(event.event, event.properties, payload.runtime)
+      if (!validated.ok) {
+        if (validated.error === 'unknown_event') {
+          return c.json({ error: 'Unknown telemetry event' }, 400)
+        }
+        return c.json({ error: 'Invalid telemetry properties' }, 400)
+      }
+    }
+
+    const enqueued = enqueueTelemetryCollectBatch({
       instanceId: payload.instanceId,
       sentAt: payload.sentAt,
       events: payload.events,
       clientRuntime: payload.runtime,
     })
 
-    if (!result.ok) {
-      if (result.error === 'disabled' || result.error === 'not_configured') {
-        return c.json({ error: 'Telemetry collection is not configured' }, 503)
-      }
-      if (result.error === 'unknown_event') {
-        return c.json({ error: 'Unknown telemetry event' }, 400)
-      }
-      if (result.error === 'invalid_properties') {
-        return c.json({ error: 'Invalid telemetry properties' }, 400)
-      }
-      if (result.error === 'upstream_unavailable') {
-        return c.json({ error: 'Telemetry upstream unavailable' }, 503)
-      }
-      return c.json({ error: 'Telemetry upstream rejected batch' }, 502)
+    if (!enqueued) {
+      return c.json({ error: 'Telemetry collect queue is full' }, 503)
     }
 
     return c.json({ accepted: true }, 202)
@@ -155,20 +157,16 @@ const telemetryRoutes = new Hono()
       return c.json({ error: 'Telemetry collection is not configured' }, 503)
     }
 
-    void (async () => {
-      try {
-        const anonymousInstanceId = await options.resolveAnonymousInstanceId()
-        await captureAnonymousServerEvent({
-          anonymousInstanceId,
-          event: validated.event,
-          properties: validated.properties,
-          sessionId: body.sessionId,
-          timestamp: body.timestamp ?? new Date().toISOString(),
-        })
-      } catch {
-        // Telemetry must never affect the local product experience.
-      }
-    })()
+    const enqueued = enqueueTelemetryEvent({
+      event: validated.event,
+      properties: validated.properties,
+      sessionId: body.sessionId,
+      timestamp: body.timestamp ?? new Date().toISOString(),
+    })
+
+    if (!enqueued) {
+      return c.json({ error: 'Telemetry event queue is full' }, 503)
+    }
 
     return c.json({ accepted: true }, 202)
   })

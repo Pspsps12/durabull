@@ -49,9 +49,11 @@ Fixed Critical/High: poisoned inflight promise, XFF leftmost spoof, collect secr
 
 | Priority | Item |
 |----------|------|
-| P1 | PostHog dedupe/coalesce, dup connection query, async `/collect` |
+| P1 | ✅ Done on `main` (2026-05-28): PostHog dedupe/coalesce, delegated connection query de-dup, async `/collect` queue, bounded `/events` queue |
 | P2 | Dedicated `DURABULL_TELEMETRY_HMAC_SECRET` (drop `BETTER_AUTH_SECRET` fallback), signature replay LRU |
 | P3 | Barrel migration, shared queue helper, telemetry signal docs |
+
+**Parallel review loop:** Pass 1 found High items in `/events` backpressure, MCP RPC identity, policy/tools layering, and MCP analytics drop visibility. Fixed them, reran four-lens review, and pass 2 reported **no Critical/High issues**.
 
 ---
 
@@ -64,6 +66,9 @@ bun test \
   packages/analytics/src/server/validate.test.ts \
   packages/analytics/src/server/identifiers.test.ts \
   packages/analytics/src/server/posthog-batch.test.ts \
+  apps/api/src/mcp/observability/mcp-analytics-queue.test.ts \
+  apps/api/src/mcp/tools/shared.test.ts \
+  apps/api/src/routes/telemetry-events-queue.test.ts \
   apps/api/src/routes/telemetry.test.ts \
   apps/api/src/routes/telemetry-collect.test.ts \
   apps/api/src/mcp/observability/mcp-analytics.test.ts \

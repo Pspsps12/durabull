@@ -20,6 +20,7 @@ export {
 export {
   captureAnonymousServerEvent,
   captureIdentifiedServerEvent,
+  captureMcpAnalyticsServerEvent,
   ingestTelemetryCollectBatch,
   isDurabullTelemetryCollectConfigured,
   resolveIdentifiedDistinctIds,

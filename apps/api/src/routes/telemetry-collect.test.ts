@@ -13,6 +13,7 @@ import {
   bootstrapServerAnalytics,
   resetCachedAnonymousInstanceIdForTests,
 } from '../lib/configure-server-analytics'
+import { resetTelemetryCollectQueueForTests } from './telemetry-collect-queue'
 import telemetryRoutes from './telemetry'
 
 const INSTANCE_ID = '41111111-1111-4111-8111-111111111111'
@@ -140,6 +141,7 @@ describe('telemetry collect route', () => {
   afterEach(() => {
     resetServerAnalyticsForTests()
     resetCachedAnonymousInstanceIdForTests()
+    resetTelemetryCollectQueueForTests()
     mutableEnv.APP_BASE_URL = originalAppBaseUrl
     mutableEnv.BETTER_AUTH_SECRET = originalBetterAuthSecret
     mutableEnv.CI = originalCi
@@ -302,18 +304,19 @@ describe('telemetry collect route', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('returns 502 when PostHog rejects the batch', async () => {
+  it('accepts collect requests even when PostHog rejects the batch asynchronously', async () => {
     const fetchMock = mock(async () => new Response(null, { status: 400 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
     const response = await postCollect(app, collectPayload())
 
-    expect(response.status).toBe(502)
-    expect(await response.json()).toEqual({ error: 'Telemetry upstream rejected batch' })
+    expect(response.status).toBe(202)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(fetchMock).toHaveBeenCalled()
   })
 
-  it('returns 502 when PostHog responds with a redirect', async () => {
+  it('accepts collect requests even when PostHog responds with a redirect', async () => {
     const fetchMock = mock(
       async () =>
         new Response(null, {
@@ -326,11 +329,12 @@ describe('telemetry collect route', () => {
 
     const response = await postCollect(app, collectPayload())
 
-    expect(response.status).toBe(502)
-    expect(await response.json()).toEqual({ error: 'Telemetry upstream rejected batch' })
+    expect(response.status).toBe(202)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(fetchMock).toHaveBeenCalled()
   })
 
-  it('returns 503 when PostHog is unreachable', async () => {
+  it('accepts collect requests even when PostHog is unreachable', async () => {
     const fetchMock = mock(async () => {
       throw new Error('PostHog unavailable')
     })
@@ -339,8 +343,9 @@ describe('telemetry collect route', () => {
 
     const response = await postCollect(app, collectPayload())
 
-    expect(response.status).toBe(503)
-    expect(await response.json()).toEqual({ error: 'Telemetry upstream unavailable' })
+    expect(response.status).toBe(202)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(fetchMock).toHaveBeenCalled()
   })
 
   it('returns not found when product telemetry is disabled', async () => {

@@ -102,6 +102,37 @@ function buildAnonymousCapture(input: {
   }
 }
 
+function buildIdentifiedCapture(input: {
+  event: string
+  properties: Record<string, string | number | boolean | null>
+  distinctId: string
+  organizationId?: string | null
+  timestamp?: string
+  hmacSecret: string | null
+}): PosthogBatchCapture {
+  const organizationGroup =
+    input.organizationId && input.hmacSecret
+      ? hashIdentifiedOrganizationDistinctId(input.organizationId, input.hmacSecret)
+      : null
+
+  return {
+    event: input.event,
+    properties: input.properties,
+    distinctId: input.distinctId,
+    organizationId: organizationGroup,
+    processPersonProfile: true,
+    timestamp: input.timestamp,
+  }
+}
+
+function isSamePosthogConfig(
+  left: PosthogBatchClientConfig | null,
+  right: PosthogBatchClientConfig | null
+): left is PosthogBatchClientConfig {
+  if (!left || !right) return false
+  return left.posthogBatchUrl === right.posthogBatchUrl && left.posthogKey === right.posthogKey
+}
+
 async function forwardAnonymousToCloudCollect(input: {
   cloudCollectUrl: string
   collectSigningSecret: string
@@ -223,26 +254,147 @@ export async function captureIdentifiedServerEvent(input: {
   const config = getIdentifiedPosthogConfig(options)
   if (!config) return
 
-  const hmacSecret = options.hmacSecret
-  const organizationGroup =
-    input.organizationId && hmacSecret
-      ? hashIdentifiedOrganizationDistinctId(input.organizationId, hmacSecret)
-      : null
-
   await sendPosthogBatch(
     config,
     [
-      {
+      buildIdentifiedCapture({
         event: validated.event,
         properties: validated.properties,
         distinctId: input.distinctId,
-        organizationId: organizationGroup,
-        processPersonProfile: true,
+        organizationId: input.organizationId,
         timestamp: input.timestamp,
-      },
+        hmacSecret: options.hmacSecret,
+      }),
     ],
     { runtimeContext, mergeRuntime: true }
   )
+}
+
+export async function captureMcpAnalyticsServerEvent(input: {
+  event: string
+  properties: Record<string, unknown>
+  includeAnonymous: boolean
+  anonymousInstanceId?: string
+  sessionId?: string
+  identifiedDistinctId?: string | null
+  organizationId?: string | null
+  timestamp?: string
+}): Promise<void> {
+  const options = getOptions()
+  if (!options?.enabled) return
+
+  const runtimeContext = options.getRuntimeContext()
+  const validated = validateTelemetryPayload(input.event, input.properties, runtimeContext)
+  if (!validated.ok) return
+
+  const timestamp = input.timestamp ?? new Date().toISOString()
+  const shouldCaptureAnonymous = input.includeAnonymous && !!input.anonymousInstanceId && !!input.sessionId
+  const shouldCaptureIdentified = !!input.identifiedDistinctId
+
+  if (!shouldCaptureAnonymous && !shouldCaptureIdentified) {
+    return
+  }
+
+  if (options.collectEnabled) {
+    const anonymousConfig = shouldCaptureAnonymous ? getDurabullPosthogIngestConfig(options) : null
+    const identifiedConfig = shouldCaptureIdentified ? getIdentifiedPosthogConfig(options) : null
+    const anonymousCapture =
+      shouldCaptureAnonymous && anonymousConfig
+        ? buildAnonymousCapture({
+            anonymousInstanceId: input.anonymousInstanceId!,
+            sessionId: input.sessionId!,
+            event: validated.event,
+            properties: validated.properties,
+            timestamp,
+            hmacSecret: anonymousConfig.hmacSecret,
+          })
+        : null
+    const identifiedCapture =
+      shouldCaptureIdentified && identifiedConfig
+        ? buildIdentifiedCapture({
+            event: validated.event,
+            properties: validated.properties,
+            distinctId: input.identifiedDistinctId!,
+            organizationId: input.organizationId ?? null,
+            timestamp,
+            hmacSecret: options.hmacSecret,
+          })
+        : null
+
+    if (
+      anonymousCapture &&
+      identifiedCapture &&
+      isSamePosthogConfig(anonymousConfig, identifiedConfig)
+    ) {
+      await sendPosthogBatch(anonymousConfig, [anonymousCapture, identifiedCapture], {
+        runtimeContext,
+        mergeRuntime: true,
+      })
+      return
+    }
+
+    const tasks: Promise<boolean>[] = []
+    if (anonymousCapture && anonymousConfig) {
+      tasks.push(
+        sendPosthogBatch(anonymousConfig, [anonymousCapture], { runtimeContext, mergeRuntime: true })
+      )
+    }
+    if (identifiedCapture && identifiedConfig) {
+      tasks.push(
+        sendPosthogBatch(identifiedConfig, [identifiedCapture], { runtimeContext, mergeRuntime: true })
+      )
+    }
+    if (tasks.length > 0) {
+      await Promise.all(tasks)
+    }
+    return
+  }
+
+  const tasks: Promise<void>[] = []
+  if (shouldCaptureAnonymous) {
+    if (!options.collectSigningSecret) {
+      console.warn('[analytics] cloud collect forward skipped: missing collect signing secret')
+    } else {
+      tasks.push(
+        forwardAnonymousToCloudCollect({
+          cloudCollectUrl: options.cloudCollectUrl,
+          collectSigningSecret: options.collectSigningSecret,
+          anonymousInstanceId: input.anonymousInstanceId!,
+          event: validated.event,
+          properties: validated.properties,
+          sessionId: input.sessionId!,
+          timestamp,
+          runtimeContext,
+        })
+      )
+    }
+  }
+
+  if (shouldCaptureIdentified) {
+    const identifiedConfig = getIdentifiedPosthogConfig(options)
+    if (identifiedConfig) {
+      tasks.push(
+        sendPosthogBatch(
+          identifiedConfig,
+          [
+            buildIdentifiedCapture({
+              event: validated.event,
+              properties: validated.properties,
+              distinctId: input.identifiedDistinctId!,
+              organizationId: input.organizationId ?? null,
+              timestamp,
+              hmacSecret: options.hmacSecret,
+            }),
+          ],
+          { runtimeContext, mergeRuntime: true }
+        ).then(() => {})
+      )
+    }
+  }
+
+  if (tasks.length > 0) {
+    await Promise.all(tasks)
+  }
 }
 
 export interface TelemetryCollectEventInput {
