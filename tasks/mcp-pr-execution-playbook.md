@@ -233,7 +233,7 @@ If a Linear issue is temporarily unavailable, use:
 - Must include:
   - [ ] cloud deploy evidence (single Render web service; `/mcp` on app domain)
   - [ ] self-host smoke evidence (`/api/health` and `/mcp` on same port)
-  - [ ] env contract docs (`APP_BASE_URL`, optional `DURABULL_MCP_ENABLED`, no `MCP_PORT` publish)
+  - [ ] env contract docs (`APP_BASE_URL`, `MCP_TELEMETRY_LOG`, no `MCP_PORT` publish; MCP always on)
   - [ ] operator runbook links
   - [ ] explicit note: no separate MCP container/service in phase 1
 - Acceptance statement to include verbatim:
@@ -450,7 +450,7 @@ Ship useful read-only tools using existing Durabull domain logic.
 - [ ] `get_failure_events`
 - [ ] `get_queue_metrics`
 - [ ] `get_workers`
-- [ ] `explain_job_failure` (composed diagnostic summary)
+- [x] `explain_job_failure` (composed diagnostic summary)
 
 ### Tool Implementation Rules
 
@@ -514,12 +514,12 @@ Document and verify MCP on the **unified** Durabull deployment (API + web + `/mc
 
 ### Deliverables
 
-- [ ] Cloud deployment docs updated (Render single web service; `https://app.durabull.io/mcp`).
-- [ ] Self-host Docker/compose docs: one port, `/mcp` path (remove `MCP_PORT` / `:3020` publish if present).
-- [ ] Environment variable contract (`APP_BASE_URL`, optional MCP enable flag, host allowlist notes).
-- [ ] TLS and ingress guidance: path-based `/mcp` on app domain (no second hostname required).
-- [ ] Operator runbook for key rotation, auth failures, and MCP client URL configuration.
-- [ ] Dashboards/metrics definitions for `/mcp` auth failures and tool error rates on unified service.
+- [x] Cloud deployment docs updated (Render single web service; `https://app.durabull.io/mcp`).
+- [x] Self-host Docker/compose docs: one port, `/mcp` path (remove `MCP_PORT` / `:3020` publish if present).
+- [x] Environment variable contract (`APP_BASE_URL`, MCP telemetry/rate-limit notes; MCP always on — no enable flag).
+- [x] TLS and ingress guidance: path-based `/mcp` on app domain (no second hostname required).
+- [x] Operator runbook for key rotation, auth failures, and MCP client URL configuration.
+- [x] Dashboards/metrics definitions for `/mcp` auth failures and tool error rates on unified service.
 
 ### File Targets
 
@@ -863,7 +863,7 @@ Finalize production quality and confirm spec/safety compliance.
 - [x] `get_failure_events` (`mcp:failures:read`) with paginated alert events + sanitized context.
 - [x] `get_queue_metrics` (`mcp:diagnostics:read`) with bounded summary (no Prometheus/raw series export).
 - [x] `get_workers` (`mcp:jobs:read`) with queue-scoped worker snapshots.
-- [x] `explain_job_failure` (`mcp:diagnostics:read`) deterministic composed summary.
+- [x] `explain_job_failure` (`mcp:diagnostics:read` + `mcp:jobs:read` + `mcp:logs:read` + `mcp:failures:read`) deterministic composed summary.
 - [x] Policy scope mappings + `tools/list` integration tests updated.
 - [x] Unit tests: `explain-job-failure-handler.test.ts`, policy scope mapping test.
 
@@ -874,11 +874,11 @@ Finalize production quality and confirm spec/safety compliance.
 - PR ID: `PR-06`
 - Branch: `feat/no-linear-mcp-pr06-safety-hardening`
 - Linear issue: `NO-LINEAR`
-- PR URL:
-- Status: `in progress`
+- PR URL: https://github.com/durabullhq/durabull/pull/98
+- Status: `merged`
 - Agent owner: `cursor`
 - Start date: `2026-05-28`
-- Merge date:
+- Merge date: `2026-05-28`
 
 #### Scope Completed
 
@@ -909,6 +909,44 @@ Finalize production quality and confirm spec/safety compliance.
 
 ---
 
+### PR Record: PR-07
+
+- PR ID: `PR-07`
+- Branch: `feat/no-linear-mcp-pr07-cloud-selfhost-ops`
+- Linear issue: `NO-LINEAR`
+- PR URL:
+- Status: `in progress`
+- Agent owner: `cursor`
+- Start date: `2026-05-28`
+- Merge date:
+
+#### Scope Completed
+
+- [x] Cloud deployment docs: Render section in `deployment/render-and-demo.mdx` (unified `/mcp` on web service).
+- [x] Self-host Docker/compose docs: MCP validation in `deployment/docker.mdx`; compose header comment (single port).
+- [x] Environment contract: MCP always on; `MCP_TELEMETRY_LOG` documented; no `DURABULL_MCP_ENABLED`.
+- [x] TLS/ingress guidance in `docs/mcp-operations-runbook.md` (path-based `/mcp`, same upstream as API).
+- [x] Operator runbook: `docs/mcp-operations-runbook.md` (smoke, telemetry, audit, incidents, rotation).
+- [x] Metrics definitions: `mcp_telemetry` signal table and suggested alerts in runbook.
+- [x] Cross-links: deployment pages, troubleshooting MCP section, `mcp-oauth-operator.md`, `integrations/mcp-server.mdx`.
+- [x] Parallel review fixes: scopes, runbook SQL/telemetry, `mcp:e2e` staging-only warnings, compose doc alignment, GitHub operator links, deduped user vs operator content.
+
+#### Verification Evidence
+
+- [x] Commands run:
+  - [x] `bun run lint --filter @durabull/docs`
+  - [x] `bun run typecheck --filter @durabull/docs`
+- [x] Docs-only PR; runtime tests unchanged.
+- [x] Runbook dry-run steps documented (curl PRM, `mcp:e2e`).
+
+#### Handoff To Next PR
+
+- Next PR: `PR-08`
+- Known risks: staging deploy smoke must be run by operator with live credentials (not automated in CI for this PR).
+- Notes for next agent: GA checklist, security review closure, E2E delegated + service-account flows, amend ADR deployable wording if still stale.
+
+---
+
 ## Live PR Tracker
 
 - [ ] PR-01 Security architecture baseline (folded into PR-04 completion work)
@@ -916,8 +954,8 @@ Finalize production quality and confirm spec/safety compliance.
 - [x] PR-03 OAuth discovery + token validation (merged — PR #89)
 - [x] PR-04 Principals + policy engine (merged — PR #94)
 - [x] PR-05 Read-only diagnostic tools (merged — PR #97)
-- [ ] PR-06 Safety hardening (in progress on `feat/no-linear-mcp-pr06-safety-hardening`)
-- [ ] PR-07 Deployment + operations
+- [x] PR-06 Safety hardening (merged — PR #98)
+- [ ] PR-07 Deployment + operations (in progress on `feat/no-linear-mcp-pr07-cloud-selfhost-ops`)
 - [ ] PR-08 GA readiness + security closure
 
 ---

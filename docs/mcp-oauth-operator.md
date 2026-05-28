@@ -32,7 +32,7 @@ Better Auth serves OAuth metadata under `/api/auth/.well-known/*`. Durabull also
 Protected resource metadata advertises:
 
 - `resource`: `{APP_BASE_URL}/mcp`
-- `authorization_servers`: app origin (e.g. `https://app.durabull.io`); use `authorization_endpoint` from AS metadata (`/api/auth/mcp/authorize`) for the OAuth server base path
+- `authorization_servers`: Better Auth base URL (e.g. `https://app.durabull.io/api/auth`); use `authorization_endpoint` from AS metadata for `/api/auth/mcp/authorize`
 - `scopes_supported`: phase-1 MCP read scopes (`mcp:discover`, `mcp:jobs:read`, …) — prefer PRM over AS metadata for MCP scope discovery
 
 ## Client configuration checklist
@@ -41,7 +41,9 @@ Protected resource metadata advertises:
 2. Complete authorization code + PKCE against `/api/auth/mcp/authorize`.
 3. Exchange the code at `/api/auth/mcp/token` with `resource={APP_BASE_URL}/mcp`.
 4. Call MCP transport at `POST/GET/DELETE {APP_BASE_URL}/mcp` with `Authorization: Bearer <access_token>`.
-5. Request at least the `mcp:discover` scope for transport smoke tools (`ping`). Diagnostic tools in later PRs require additional `mcp:*:read` scopes.
+5. Request at least the `mcp:discover` scope for transport smoke (`ping`). Diagnostic tools require additional scopes (`mcp:jobs:read`, `mcp:logs:read`, `mcp:failures:read`, `mcp:diagnostics:read`) — see [MCP Server docs](https://github.com/durabullhq/durabull/blob/main/apps/docs/content/documentation/integrations/mcp-server.mdx).
+
+Dynamic client registration (`POST /api/auth/mcp/register`) is rate-limited (**20 registrations/minute** per bearer or `cf-connecting-ip` / `x-real-ip`) but unauthenticated. Configure your edge to set one of those headers if you rely on per-IP limits behind a proxy. Monitor registration volume on public deployments and block at the edge if abused.
 
 ## HTTP semantics
 
@@ -54,6 +56,12 @@ Protected resource metadata advertises:
 
 ## Authless development
 
-When `DURABULL_AUTHLESS=true`, use bearer token from `MCP_AUTHLESS_BEARER_TOKEN` (or the dev default `durabull-authless-mcp` when unset in non-production). Never enable authless mode on Durabull Cloud (`DURABULL_CLOUD=true` refuses startup with authless enabled). Self-hosted production images may use authless only on private networks; `MCP_AUTHLESS_BEARER_TOKEN` is required when `NODE_ENV=production` (docker smoke sets one explicitly).
+When `DURABULL_AUTHLESS=true`, use bearer token from `MCP_AUTHLESS_BEARER_TOKEN`. A built-in default exists only for **local non-production** dev (`durabull-authless-mcp`) — treat it as public knowledge and never expose authless on a reachable network without a strong rotated secret.
+
+Never enable authless mode on Durabull Cloud (`DURABULL_CLOUD=true` refuses startup with authless enabled). **Internet-facing production must use OAuth** (`DURABULL_AUTHLESS=false`). Authless with `MCP_AUTHLESS_BEARER_TOKEN` is only for isolated lab networks, not DMZ or VPN-wide production substitutes.
 
 Access tokens must include the RFC 8707 `resource` indicator matching `{APP_BASE_URL}/mcp` (Better Auth sets this on issuance; Durabull rejects tokens without it).
+
+## Operations
+
+MCP is enabled by default on every Durabull deployment. For post-deploy validation, telemetry signals, rate-limit behavior, and incident triage, see [mcp-operations-runbook.md](./mcp-operations-runbook.md).

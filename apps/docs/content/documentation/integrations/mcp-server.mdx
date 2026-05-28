@@ -30,7 +30,7 @@ Phase 1 ships diagnostic tools only — no queue mutations, retries, pauses, or 
 | `get_failure_events` | `mcp:failures:read` | Alert/failure events |
 | `get_queue_metrics` | `mcp:diagnostics:read` | Queue metrics window |
 | `get_workers` | `mcp:jobs:read` | Worker snapshots |
-| `explain_job_failure` | `mcp:failures:read` + `mcp:logs:read` + `mcp:diagnostics:read` | Deterministic failure summary |
+| `explain_job_failure` | `mcp:diagnostics:read` + `mcp:jobs:read` + `mcp:logs:read` + `mcp:failures:read` | Deterministic failure summary |
 
 ## Authentication
 
@@ -50,7 +50,7 @@ Canonical resource URI:
 
 `APP_BASE_URL` must match the public origin clients use to reach `/mcp` (including port in local dev).
 
-See the operator guide in the repo at `docs/mcp-oauth-operator.md` for HTTP status semantics and discovery endpoints.
+See the [MCP OAuth operator guide](https://github.com/durabullhq/durabull/blob/main/docs/mcp-oauth-operator.md) for HTTP status semantics and discovery endpoints.
 
 ## Scopes
 
@@ -64,50 +64,21 @@ See the operator guide in the repo at `docs/mcp-oauth-operator.md` for HTTP stat
 
 Delegated users receive scopes from OAuth consent. Service accounts require explicit policy bindings per tool/scope.
 
-## Safety controls (PR-06)
+## Safety controls
 
-Durabull hardens MCP reads even for authenticated callers:
+Authenticated callers still receive:
 
-### Output redaction
+- **Output redaction** — sensitive keys and inline secrets stripped; `_mcpSafety.redactionCount` when redactions occur
+- **Rate limits** (when `NODE_ENV=production`) — 120 HTTP requests/min on `/mcp` ingress (initialize, session, and tool RPCs); **60 calls/min per tool** per bearer (30/min for `get_job_logs`, `get_job_stacktraces`, `get_failure_events`, `get_queue_metrics`, `explain_job_failure`)
+- **Audit** — each `tools/call` records principal, tool, input hash, and outcome in `mcp_audit_event`
 
-All read-tool responses pass through a central sanitizer that:
-
-- strips sensitive object keys (for example `apiKey`, `redisUrl`, `password`)
-- redacts inline Redis URLs and bearer tokens in text fields
-- truncates oversized strings
-- adds `_mcpSafety.redactionCount` when redactions occur
-
-### Rate limits
-
-| Layer | Default limit | Key |
-| --- | --- | --- |
-| `/mcp` ingress | 120 requests/minute | Bearer token hash (or client IP) |
-| Per tool | 60 calls/minute (30 for log/stacktrace/metrics-heavy tools) | Bearer token hash + tool name |
-
-Responses include `X-RateLimit-*` headers. Exceeded limits return HTTP `429`.
-
-Set `DISABLE_RATE_LIMIT=true` to bypass all rate limiting (not recommended in production).
-
-### Audit trail
-
-Every `tools/call` writes an `mcp_audit_event` row with:
-
-- principal id/type and org context
-- tool name and required scopes
-- SHA-256 hash of tool arguments (not raw args)
-- allow/deny decision and `response_class` (`success`, `tool_error`, `policy_denied`, `rate_limited`)
-
-Audit writes are non-blocking with bounded in-memory backpressure.
-
-### Observability
-
-Structured JSON logs emit `mcp_telemetry` signals for auth denials, policy denies, ingress/tool rate limits, tool success/error, and redaction events. Wire these into your log aggregator or metrics pipeline.
+Operators: telemetry signals, SQL examples, and incident playbooks are in the [MCP operations runbook](https://github.com/durabullhq/durabull/blob/main/docs/mcp-operations-runbook.md).
 
 ## Local development
 
-Authless mode (`DURABULL_AUTHLESS=true`) accepts the dev bearer token for `/mcp` only on private/local setups. Never enable authless mode on Durabull Cloud.
+Authless mode (`DURABULL_AUTHLESS=true`) is for **local/private** setups only. Never enable authless mode on Durabull Cloud. If authless is reachable from a network, set a strong `MCP_AUTHLESS_BEARER_TOKEN` — the non-production default token is for localhost dev only.
 
-Smoke scripts:
+Use the **API port** for `APP_BASE_URL` (`3001` in monorepo dev, `3000` in Docker).
 
 ```bash
 bun run --filter @durabull/mcp test
@@ -117,8 +88,21 @@ cd tooling/scripts
 APP_BASE_URL=http://localhost:3001 bun run mcp:e2e
 ```
 
+Run `mcp:e2e` only against local or staging databases (see runbook).
+
+## Deployment and operations
+
+MCP is always on when the Durabull API runs. Platform-specific deploy notes:
+
+- [Docker deployment](/documentation/deployment/docker)
+- [Cloud vs self-hosted](/documentation/deployment/cloud-vs-self-hosted)
+- [Render and demo](/documentation/deployment/render-and-demo)
+
+Post-deploy smoke and operations: [MCP operations runbook](https://github.com/durabullhq/durabull/blob/main/docs/mcp-operations-runbook.md).
+
 ## Related docs
 
 - [Security and Hardening](/documentation/operations/security-and-hardening)
+- [Troubleshooting](/documentation/operations/troubleshooting)
 - [Environment Variables](/documentation/getting-started/environment-variables)
 - [HTTP API Reference](/documentation/reference/http-api)

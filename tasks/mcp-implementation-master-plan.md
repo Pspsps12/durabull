@@ -87,8 +87,10 @@ Every incoming agent must complete this before writing code.
 - [x] Step 2 complete: OAuth discovery + token validation middleware (PR-03 merged).
 - [x] Step 3 complete: principal resolver + policy engine (PR-04 merged).
 - [x] Step 5 complete: read-only diagnostic tool catalog (PR-05 merged).
-- [x] Step 6 in progress: redaction, rate limits, audit expansion, telemetry (PR-06).
-- [ ] Steps 4, 7-8 pending (shared domain adapters expansion, deployment, GA closure).
+- [x] Step 6 complete: redaction, rate limits, audit expansion, telemetry (PR-06 merged).
+- [ ] Step 7 in progress: deployment docs, operator runbooks, smoke validation (PR-07).
+- [ ] Step 8 pending: GA closure and security signoff (PR-08).
+- [ ] Optional follow-up: shared domain service adapters (`packages/mcp-domain`) — tools currently use API handlers (see §2.2).
 
 ---
 
@@ -538,7 +540,7 @@ Return:
 - per principal
 - per tool
 - burst + sustained windows
-- shared backend (not in-memory only) for multi-replica deployments
+- shared backend for multi-replica deployments (**phase 2** — phase 1 uses in-memory per-process limits)
 
 ### 10.2 Timeouts and Backpressure
 
@@ -584,10 +586,9 @@ Audit event on every tool call:
 - Same single-container / single-process model as cloud (API entrypoint only).
 - MCP available at `{APP_BASE_URL}/mcp` on the published app port (default `3000`).
 - Do not publish a separate `MCP_PORT` in compose unless running a deprecated experimental layout.
-- Feature flags:
-  - enable/disable MCP surface via env (for example `DURABULL_MCP_ENABLED`, define in PR-07)
-  - default read-only mode on
-  - explicit operator opt-in for future write scopes
+- MCP is always available at `{APP_BASE_URL}/mcp` when the API process runs (no separate enable flag in phase 1).
+- default read-only mode on
+- explicit operator opt-in for future write scopes (phase 2)
 - Hardening guidance:
   - TLS at reverse proxy
   - private network placement for Redis/Postgres
