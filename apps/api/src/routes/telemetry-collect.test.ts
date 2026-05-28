@@ -172,6 +172,8 @@ describe('telemetry collect route', () => {
     expect(body.batch[0].event).toBe('queue_paused')
     expect(body.batch[0].timestamp).toBe('2026-04-28T12:00:01.000Z')
     expect(properties.success).toBe(true)
+    expect(properties.authless).toBe(false)
+    expect(properties.environment).toBe('production')
     expect(properties.$process_person_profile).toBe(false)
     expect(properties.$geoip_disable).toBe(true)
     expect(properties.distinct_id).toBe(
@@ -181,6 +183,88 @@ describe('telemetry collect route', () => {
     expect(properties.distinct_id).not.toContain(INSTANCE_ID)
     expect(properties.distinct_id).not.toContain(SESSION_ID)
     expect(properties.instance_key).not.toContain(INSTANCE_ID)
+  })
+
+  it('applies server runtime over client-spoofed collect properties', async () => {
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload({
+        authless: true,
+        environment: 'development',
+        persistence: 'pglite',
+        stateless: true,
+        success: true,
+      }),
+    })
+
+    expect(response.status).toBe(202)
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    const body = JSON.parse(String(init.body)) as {
+      batch: Array<{ properties: Record<string, unknown> }>
+    }
+    const properties = body.batch[0].properties
+
+    expect(properties.authless).toBe(false)
+    expect(properties.environment).toBe('production')
+  })
+
+  it('returns 502 when PostHog rejects the batch', async () => {
+    const fetchMock = mock(async () => new Response(null, { status: 400 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload(),
+    })
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ error: 'Telemetry upstream rejected batch' })
+  })
+
+  it('returns 502 when PostHog responds with a redirect', async () => {
+    const fetchMock = mock(
+      async () =>
+        new Response(null, {
+          status: 302,
+          headers: { Location: 'https://evil.example.com/batch/' },
+        })
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload(),
+    })
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ error: 'Telemetry upstream rejected batch' })
+  })
+
+  it('returns 503 when PostHog is unreachable', async () => {
+    const fetchMock = mock(async () => {
+      throw new Error('PostHog unavailable')
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload(),
+    })
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({ error: 'Telemetry upstream unavailable' })
   })
 
   it('returns not found when product telemetry is disabled', async () => {
@@ -279,6 +363,40 @@ describe('telemetry collect route', () => {
 
   it('fails closed when the configured PostHog batch host is invalid', async () => {
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = 'http://[::1'
+    bootstrapServerAnalytics()
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload(),
+    })
+
+    expect(response.status).toBe(503)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when the configured PostHog batch host is not HTTPS', async () => {
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = 'http://us.i.posthog.com'
+    bootstrapServerAnalytics()
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload(),
+    })
+
+    expect(response.status).toBe(503)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when the configured PostHog batch host is not allowlisted', async () => {
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = 'https://evil.example.com'
     bootstrapServerAnalytics()
     const fetchMock = mock(async () => new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch

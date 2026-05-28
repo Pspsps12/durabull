@@ -15,6 +15,7 @@ export {
   captureIdentifiedServerEvent,
   getTelemetryHmacSecret,
   ingestTelemetryCollectBatch,
+  isDurabullTelemetryCollectConfigured,
   resolveIdentifiedDistinctIds,
   shouldDedupeIdentifiedPosthogEvents,
   type IngestCollectBatchResult,
@@ -28,6 +29,7 @@ export {
 } from './identifiers'
 export { validateTelemetryPayload, type TelemetryValidationResult } from './validate'
 export {
+  isAllowedPosthogHostname,
   resolvePosthogBatchUrl,
   sendPosthogBatch,
   type PosthogBatchCapture,

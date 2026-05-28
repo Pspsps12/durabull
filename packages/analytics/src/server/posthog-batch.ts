@@ -17,6 +17,37 @@ export interface PosthogBatchClientConfig {
 
 export const DEFAULT_POSTHOG_BATCH_HOST = 'https://us.i.posthog.com'
 
+function isPrivateOrLinkLocalIpv4(hostname: string): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(hostname)
+  if (!match) return false
+
+  const octets = match.slice(1).map(Number)
+  if (octets[0] === 127) return true
+  if (octets[0] === 10) return true
+  if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true
+  if (octets[0] === 192 && octets[1] === 168) return true
+  if (octets[0] === 169 && octets[1] === 254) return true
+  return false
+}
+
+function isPrivateOrLinkLocalIpv6(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (normalized === '::1') return true
+  if (normalized.startsWith('fe80:')) return true
+  if (/^f[cd][0-9a-f]{2}:/i.test(normalized)) return true
+  return false
+}
+
+/** HTTPS-only PostHog hostnames (*.posthog.com); rejects private/link-local IPs. */
+export function isAllowedPosthogHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (isPrivateOrLinkLocalIpv4(normalized) || isPrivateOrLinkLocalIpv6(normalized)) {
+    return false
+  }
+
+  return normalized === 'posthog.com' || normalized.endsWith('.posthog.com')
+}
+
 export function resolvePosthogBatchUrl(rawHost: string | undefined): string | null {
   const hostWithProtocol = rawHost?.trim()
     ? /^https?:\/\//i.test(rawHost)
@@ -26,6 +57,9 @@ export function resolvePosthogBatchUrl(rawHost: string | undefined): string | nu
 
   try {
     const parsed = new URL(hostWithProtocol)
+    if (parsed.protocol !== 'https:') return null
+    if (!isAllowedPosthogHostname(parsed.hostname)) return null
+
     const basePath = parsed.pathname.replace(/\/$/, '')
     const batchPath = basePath.endsWith('/batch') ? basePath : `${basePath}/batch`
     return `${parsed.origin}${batchPath}/`
@@ -82,7 +116,10 @@ export async function sendPosthogBatch(
       api_key: config.posthogKey,
       batch,
     }),
+    redirect: 'manual',
   })
+
+  if (response.status >= 300 && response.status < 400) return false
 
   return response.ok
 }
