@@ -1,4 +1,5 @@
 import { isKnownDurabullTelemetryEvent, sanitizeTelemetryEvent } from '../sanitizer'
+import type { ServerAnalyticsRuntimeContext } from './config'
 
 export type TelemetryValidationResult =
   | {
@@ -11,16 +12,18 @@ export type TelemetryValidationResult =
 export function validateTelemetryPayload(
   eventName: string,
   properties: Record<string, unknown> = {},
-  runtimeContext: Record<string, unknown> = {}
+  runtimeContext?: ServerAnalyticsRuntimeContext
 ): TelemetryValidationResult {
   if (!isKnownDurabullTelemetryEvent(eventName)) {
     return { ok: false, error: 'unknown_event' }
   }
 
-  const sanitized = sanitizeTelemetryEvent(eventName, {
+  const mergedProperties: Record<string, unknown> = {
     ...properties,
-    ...runtimeContext,
-  })
+    ...(runtimeContext ?? {}),
+  }
+
+  const sanitized = sanitizeTelemetryEvent(eventName, mergedProperties)
 
   if (sanitized.droppedProperties.length > 0) {
     return { ok: false, error: 'invalid_properties' }
