@@ -26,7 +26,7 @@ Durabull serves a first-party consent screen at **`/consent`** (configured via B
 
 Typical delegated-user flow:
 
-1. MCP client opens `GET /api/auth/mcp/authorize` with **PKCE** and `prompt=consent` (required to show the consent UI).
+1. MCP client opens `GET /api/auth/mcp/authorize` with **PKCE** and `resource={APP_BASE_URL}/mcp`. Durabull rewrites authorize requests for the canonical MCP resource to include all phase-1 read scopes and `prompt=consent` when the client omits them (common for Linear and other hosted MCP clients).
 2. Unauthenticated users sign in at `/login` (Durabull preserves the authorize request).
 3. Authenticated users review scopes at `/consent` and choose **Allow** or **Deny**.
 4. Durabull redirects to the client `redirect_uri` with an authorization `code`.
@@ -56,10 +56,12 @@ Protected resource metadata advertises:
 ## Client configuration checklist
 
 1. Register an OAuth client via `POST /api/auth/mcp/register`.
-2. Complete authorization code + PKCE against `/api/auth/mcp/authorize` with `prompt=consent` and `resource={APP_BASE_URL}/mcp`.
+2. Complete authorization code + PKCE against `/api/auth/mcp/authorize` with `resource={APP_BASE_URL}/mcp` (Durabull injects phase-1 scopes and `prompt=consent` when missing).
 3. Exchange the code at `/api/auth/mcp/token` with `resource={APP_BASE_URL}/mcp`.
 4. Call MCP transport at `POST/GET/DELETE {APP_BASE_URL}/mcp` with `Authorization: Bearer <access_token>`.
-5. Request at least the `mcp:discover` scope for transport smoke (`ping`). Diagnostic tools require additional scopes (`mcp:jobs:read`, `mcp:logs:read`, `mcp:failures:read`, `mcp:diagnostics:read`) — see [MCP Server docs](https://github.com/durabullhq/durabull/blob/main/apps/docs/content/documentation/integrations/mcp-server.mdx).
+5. Request at least the `mcp:discover` scope for transport smoke (`ping`). Queue/job/log tools require the full phase-1 read bundle (`mcp:jobs:read`, `mcp:logs:read`, `mcp:failures:read`, `mcp:diagnostics:read`). Authorize requests without explicit `mcp:*` scopes are expanded server-side to that bundle.
+
+**Linear / re-authorize:** If a connection was approved before this behavior, disconnect the MCP integration in Linear and authorize again so a new token is issued with the full scope set.
 
 Dynamic client registration (`POST /api/auth/mcp/register`) is rate-limited (**20 registrations/minute** per bearer or `cf-connecting-ip` / `x-real-ip`) but unauthenticated. Configure your edge to set one of those headers if you rely on per-IP limits behind a proxy. Monitor registration volume on public deployments and block at the edge if abused.
 
