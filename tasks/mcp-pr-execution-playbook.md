@@ -952,8 +952,8 @@ Finalize production quality and confirm spec/safety compliance.
 - PR ID: `PR-08`
 - Branch: `feat/no-linear-mcp-pr08-ga-readiness`
 - Linear issue: `NO-LINEAR`
-- PR URL:
-- Status: `in progress`
+- PR URL: https://github.com/durabullhq/durabull/pull/100
+- Status: `in review`
 - Agent owner: `cursor`
 - Start date: `2026-05-28`
 - Merge date:
@@ -999,7 +999,7 @@ Finalize production quality and confirm spec/safety compliance.
 - [x] PR-05 Read-only diagnostic tools (merged — PR #97)
 - [x] PR-06 Safety hardening (merged — PR #98)
 - [x] PR-07 Deployment + operations (merged — PR #99)
-- [ ] PR-08 GA readiness + security closure (in progress on `feat/no-linear-mcp-pr08-ga-readiness`)
+- [ ] PR-08 GA readiness + security closure (in review — PR #100)
 
 ---
 
