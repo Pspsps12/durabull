@@ -112,7 +112,12 @@ const telemetryRoutes = new Hono()
       return c.json({ error: 'Telemetry collection is not configured' }, 503)
     }
 
-    const anonymousInstanceId = await options.resolveAnonymousInstanceId()
+    let anonymousInstanceId: string
+    try {
+      anonymousInstanceId = await options.resolveAnonymousInstanceId()
+    } catch {
+      return c.json({ error: 'Telemetry is temporarily unavailable' }, 503)
+    }
 
     void captureAnonymousServerEvent({
       anonymousInstanceId,

@@ -1,7 +1,6 @@
 export const TELEMETRY_DISCLOSURE_URL = 'https://durabull.io/privacy'
 export const DURABULL_CLOUD_API_HOST = 'app.durabull.io'
 export const DEFAULT_CLOUD_COLLECT_URL = `https://${DURABULL_CLOUD_API_HOST}/api/telemetry/collect`
-export const DEFAULT_POSTHOG_BATCH_HOST = 'https://us.i.posthog.com'
 
 export interface ServerAnalyticsRuntimeContext {
   authless: boolean

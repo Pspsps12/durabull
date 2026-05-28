@@ -212,6 +212,7 @@ export const AnalyticsProperties = {
   DENIAL_REASON_CATEGORY: 'denial_reason_category',
   MCP_AUTH_FAILURE: 'mcp_auth_failure',
   MCP_RATE_LIMIT_SCOPE: 'mcp_rate_limit_scope',
+  REDACTION_COUNT: 'redaction_count',
 } as const
 
 /**

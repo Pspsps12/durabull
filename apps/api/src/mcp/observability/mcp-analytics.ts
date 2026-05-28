@@ -8,11 +8,11 @@ import {
   tryGetServerAnalyticsOptions,
 } from '@durabull/analytics/server'
 
+import type { McpPrincipalType } from '@durabull/dal'
+
 import { APP_VERSION } from '../../lib/build-info'
 import { enqueueMcpAnalytics } from './mcp-analytics-queue'
 import type { McpTelemetrySignal } from './mcp-telemetry-signals'
-
-export type McpPrincipalType = 'delegated_user' | 'service_account'
 
 export interface McpAnalyticsIdentity {
   principalType: McpPrincipalType
@@ -38,9 +38,7 @@ function categorizeDenialReason(reason: string | null | undefined): string {
   return 'policy'
 }
 
-function buildBaseProperties(
-  properties: Record<string, unknown> = {}
-): Record<string, unknown> {
+function buildBaseProperties(properties: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     [AnalyticsProperties.SERVER_VERSION]: APP_VERSION,
     ...properties,
@@ -69,9 +67,7 @@ async function processMcpAnalytics(input: McpAnalyticsInput): Promise<void> {
     const secret = options.hmacSecret
     const sessionId =
       input.sessionKey ??
-      (identity && secret
-        ? hashMcpAnalyticsSessionId(identity.principalId, secret)
-        : 'mcp-server')
+      (identity && secret ? hashMcpAnalyticsSessionId(identity.principalId, secret) : 'mcp-server')
 
     tasks.push(
       captureAnonymousServerEvent({
@@ -89,7 +85,10 @@ async function processMcpAnalytics(input: McpAnalyticsInput): Promise<void> {
         event: input.event,
         properties,
         distinctId: identified.distinctId,
-        organizationId: identified.organizationGroup,
+        // Pass the raw org id; captureIdentifiedServerEvent hashes it once for
+        // the PostHog group. Passing identified.organizationGroup (already
+        // hashed) would double-hash and break org correlation.
+        organizationId: identity?.organizationId ?? null,
       })
     )
   }
@@ -132,7 +131,7 @@ export function recordMcpToolAnalytics(input: {
       [AnalyticsProperties.PRINCIPAL_TYPE]: input.principalType,
       [AnalyticsProperties.SUCCESS]: input.responseClass === 'success',
       ...(input.redactionCount && input.redactionCount > 0
-        ? { redaction_count: input.redactionCount }
+        ? { [AnalyticsProperties.REDACTION_COUNT]: input.redactionCount }
         : {}),
     },
     identity: input.identity,

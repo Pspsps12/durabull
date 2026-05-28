@@ -148,3 +148,28 @@
 - [ ] Use `tasks/mcp-implementation-master-plan.md` as the technical source of truth for implementation details.
 - [ ] Ensure each PR links to a Linear issue and includes complete verification evidence before merge.
 - [ ] Keep the running history ledger in `tasks/mcp-pr-execution-playbook.md` updated as each agent completes handoff.
+
+## Current Task
+
+Post-#108 telemetry/analytics follow-ups (see `tasks/handoff-analytics-mcp-telemetry.md`). PR #108 landed all P0 hardening; a four-lens parallel review of merged `main` surfaced one real correctness bug plus robustness/hygiene gaps.
+
+- [x] Fix MCP identified-event organization `$groups` double-hash (pass raw org id; capture hashes once).
+- [x] Add 5s fetch timeout to PostHog batch + cloud forward; `redirect: 'manual'` on cloud forward (SSRF parity).
+- [x] Single-flight + eager-bootstrap anonymous instance id; drop redundant cold-start SELECT.
+- [x] Clamp client-supplied `/collect` timestamps to server time ±24h (anti-pollution).
+- [x] `try/catch` `resolveAnonymousInstanceId` in `/events` → 503 instead of unhandled 500.
+- [x] Hygiene: drop dead `DEFAULT_POSTHOG_BATCH_HOST` in `config.ts`; remove deprecated `getTelemetryHmacSecret` export; add `AnalyticsProperties.REDACTION_COUNT`; unify `McpPrincipalType` from `@durabull/dal`.
+- [x] Tests: new `capture.test.ts` (single-hash `$groups`, timestamp clamp pass/clamp); updated mcp-analytics + collect tests.
+
+## Result
+
+- Verified suite green: 40 pass across the prescribed telemetry files (`validate`, `identifiers`, `posthog-batch`, `capture`, `telemetry`, `telemetry-collect`, `mcp-analytics`).
+- Telemetry/MCP source typechecks clean; Biome lint clean on changed files (formatting normalized to repo style).
+- Note: `apps/api/src/app.test.ts` "api app config" cases fail only in this sandbox shell (missing `MCP_AUTHLESS_BEARER_TOKEN`, `CI=true`) — unrelated to this diff (failures originate in MCP auth assertion / `enabled` env gate, not telemetry).
+
+### Deferred to dedicated follow-up PRs (documented, not hacked)
+
+- `/collect` authentication / signed batches — also resolves OSS→cloud forwarded-runtime re-stamping fidelity loss and unauthenticated abuse.
+- Rate-limit `X-Forwarded-For` trust (High security; cross-cutting `rate-limit.ts`, needs trusted-proxy config).
+- Require dedicated `DURABULL_TELEMETRY_HMAC_SECRET` in prod (remove `BETTER_AUTH_SECRET` fallback; env coordination).
+- Async `/collect` (202 + bounded worker) and single-batch PostHog coalesce; extract shared `createBoundedAsyncQueue`; queue-drop metric; root barrel migration to `/browser`.
