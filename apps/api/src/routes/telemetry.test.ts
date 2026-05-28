@@ -46,6 +46,18 @@ const originalFetch = globalThis.fetch
 
 let tempPgliteDir = ''
 
+async function waitForFetchMock(
+  fetchMock: ReturnType<typeof mock>,
+  expectedCalls = 1,
+  timeoutMs = 5000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (fetchMock.mock.calls.length >= expectedCalls) return
+    await new Promise<void>((resolve) => setTimeout(resolve, 25))
+  }
+}
+
 async function createTelemetryRouteApp() {
   const { default: telemetryRoutes } = await import('./telemetry')
   return new Hono().route('/', telemetryRoutes)
@@ -157,6 +169,7 @@ describe('telemetry routes', () => {
     })
 
     expect(response.status).toBe(202)
+    await waitForFetchMock(fetchMock)
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
@@ -215,6 +228,8 @@ describe('telemetry routes', () => {
     })
 
     expect(response.status).toBe(202)
+
+    await waitForFetchMock(fetchMock)
 
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     const body = JSON.parse(String(init.body)) as {
@@ -278,6 +293,7 @@ describe('telemetry routes', () => {
 
     expect(response.status).toBe(202)
     expect(await response.json()).toEqual({ accepted: true })
+    await waitForFetchMock(fetchMock)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

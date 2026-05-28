@@ -220,7 +220,7 @@ export const apiRateLimiter = rateLimiter({
         error: 'Too Many Requests',
         code: 'RATE_LIMITED',
         message: 'Rate limit exceeded. Please slow down.',
-        retryAfter: 10,
+        retryAfter: Math.ceil(GENERAL_API_RATE_LIMIT_WINDOW_MS / 1000),
       },
       429
     ),

@@ -155,17 +155,20 @@ const telemetryRoutes = new Hono()
       return c.json({ error: 'Telemetry collection is not configured' }, 503)
     }
 
-    const anonymousInstanceId = await options.resolveAnonymousInstanceId()
-
-    void captureAnonymousServerEvent({
-      anonymousInstanceId,
-      event: validated.event,
-      properties: validated.properties,
-      sessionId: body.sessionId,
-      timestamp: body.timestamp ?? new Date().toISOString(),
-    }).catch(() => {
-      // Telemetry must never affect the local product experience.
-    })
+    void (async () => {
+      try {
+        const anonymousInstanceId = await options.resolveAnonymousInstanceId()
+        await captureAnonymousServerEvent({
+          anonymousInstanceId,
+          event: validated.event,
+          properties: validated.properties,
+          sessionId: body.sessionId,
+          timestamp: body.timestamp ?? new Date().toISOString(),
+        })
+      } catch {
+        // Telemetry must never affect the local product experience.
+      }
+    })()
 
     return c.json({ accepted: true }, 202)
   })

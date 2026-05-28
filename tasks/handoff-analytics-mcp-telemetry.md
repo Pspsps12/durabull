@@ -1,7 +1,7 @@
 # Handoff: Analytics package split + MCP product telemetry
 
 **Branch:** `cursor/analytics-collect-auth`  
-**Last verified:** 2026-05-28 — **46 tests pass** in telemetry + rate-limit suite (see Verification)  
+**Last verified:** 2026-05-28 — **48 tests pass** after parallel review loop (2 review rounds, all Critical/High fixed)  
 **Timeline:** #107 (merged) → #108 P0 hardening (merged) → **#109 open** (this branch)
 
 ---
@@ -48,6 +48,20 @@
 - `resolveAnonymousInstanceId` deduplicates concurrent DB reads via in-flight promise.
 - Eager warm at `bootstrapServerAnalytics()` in production (non-blocking).
 
+### Parallel review loop (complete)
+
+Two `/parallel-code-review` rounds. Fixed Critical/High findings:
+
+| Finding | Fix |
+|---------|-----|
+| Single-flight promise poisoned on DB error | Clear `anonymousInstanceIdInflight` in catch |
+| XFF leftmost spoof when proxy trusted | CF-Connecting-IP → X-Real-IP → rightmost XFF |
+| `collectSigningSecret` blocked cloud `/events` ingest | Decouple from PostHog ingest config |
+| `/events` awaited instance ID (500 on DB blip) | Fire-and-forget async capture |
+| `apiRateLimiter` JSON `retryAfter: 10` vs 60s window | Use window seconds |
+
+**Accepted deferrals (Medium/Low):** per-process rate limit store, `BETTER_AUTH_SECRET` HMAC fallback (P2), shared collect secret, 5m signature replay window.
+
 ---
 
 ## Remaining work (one PR each recommended)
@@ -89,7 +103,7 @@ bun test \
   apps/api/src/middleware/rate-limit.test.ts
 ```
 
-**Expected:** 46 pass.
+**Expected:** 48 pass.
 
 **Gotcha:** `apps/api/src/app.test.ts` may fail locally with `CI=true` or missing `MCP_AUTHLESS_BEARER_TOKEN` — not a telemetry regression.
 
