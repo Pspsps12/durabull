@@ -17,6 +17,8 @@ MCP runs inside the unified Durabull API process. There is no separate MCP port 
 
 Phase 1 ships diagnostic tools only — no queue mutations, retries, pauses, or purges.
 
+**GA status:** Read-only MCP is implemented on the unified deployment. Before announcing production use, complete the [release checklist](https://github.com/durabullhq/durabull/blob/main/docs/mcp-ga-release-checklist.md) (staging smoke, config verification). Architecture and compliance: [ADR-0001](https://github.com/durabullhq/durabull/blob/main/docs/adr/0001-mcp-security-architecture.md), [compliance checklist](https://github.com/durabullhq/durabull/blob/main/docs/mcp-ga-compliance-checklist.md).
+
 | Tool | Scope | Purpose |
 | --- | --- | --- |
 | `ping` | `mcp:discover` | Transport smoke check |

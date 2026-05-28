@@ -914,11 +914,11 @@ Finalize production quality and confirm spec/safety compliance.
 - PR ID: `PR-07`
 - Branch: `feat/no-linear-mcp-pr07-cloud-selfhost-ops`
 - Linear issue: `NO-LINEAR`
-- PR URL:
-- Status: `in progress`
+- PR URL: https://github.com/durabullhq/durabull/pull/99
+- Status: `merged`
 - Agent owner: `cursor`
 - Start date: `2026-05-28`
-- Merge date:
+- Merge date: `2026-05-28`
 
 #### Scope Completed
 
@@ -947,25 +947,69 @@ Finalize production quality and confirm spec/safety compliance.
 
 ---
 
+### PR Record: PR-08
+
+- PR ID: `PR-08`
+- Branch: `feat/no-linear-mcp-pr08-ga-readiness`
+- Linear issue: `NO-LINEAR`
+- PR URL:
+- Status: `in progress`
+- Agent owner: `cursor`
+- Start date: `2026-05-28`
+- Merge date:
+
+#### Scope Completed
+
+- [x] ADR-0001: `docs/adr/0001-mcp-security-architecture.md` (threat model, scopes, unified `/mcp` placement).
+- [x] Spec compliance checklist: `docs/mcp-ga-compliance-checklist.md`.
+- [x] Security review closure: `docs/mcp-ga-security-closure.md`.
+- [x] Release + rollback checklist + initial SLO proposal: `docs/mcp-ga-release-checklist.md`.
+- [x] Validation evidence: `docs/mcp-ga-validation-evidence.md` (74 automated tests pass).
+- [x] Task docs updated: master plan §15, readiness review, playbook ledger.
+- [x] User docs: GA links on `integrations/mcp-server.mdx`.
+
+#### Verification Evidence
+
+- [x] Commands run:
+  - [x] `bun run --filter @durabull/mcp test` (41 pass)
+  - [x] `bun run --filter @durabull/api test src/mcp/` (33 pass)
+  - [x] `bun test packages/dal/src/repositories/mcp-policy.test.ts` (2 pass)
+  - [x] `bun run --filter @durabull/mcp typecheck`
+  - [x] `bun run lint --filter @durabull/docs`
+  - [x] `bun run typecheck --filter @durabull/docs`
+- [x] Security checks:
+  - [x] No destructive MCP tools.
+  - [x] Negative auth/authz coverage documented in compliance + security closure docs.
+- [ ] Staging `mcp:e2e` re-run (operator gate — documented in release checklist).
+
+#### Handoff To Next PR
+
+- Next PR: _none — phase 1 stack complete after merge_
+- Known risks: in-memory rate limits per replica; full API typecheck blocked by unrelated `alerts-global.test.ts`.
+- Follow-ups: `packages/mcp-domain` extraction (optional); Redis-backed rate limits (phase 2); staging E2E before prod announcement.
+
+---
+
 ## Live PR Tracker
 
-- [ ] PR-01 Security architecture baseline (folded into PR-04 completion work)
+- [ ] PR-01 Security architecture baseline (folded into PR-04 + ADR in PR-08)
 - [x] PR-02 API `/mcp` ingress + transport (`@durabull/mcp` package + thin API mount)
 - [x] PR-03 OAuth discovery + token validation (merged — PR #89)
 - [x] PR-04 Principals + policy engine (merged — PR #94)
 - [x] PR-05 Read-only diagnostic tools (merged — PR #97)
 - [x] PR-06 Safety hardening (merged — PR #98)
-- [ ] PR-07 Deployment + operations (in progress on `feat/no-linear-mcp-pr07-cloud-selfhost-ops`)
-- [ ] PR-08 GA readiness + security closure
+- [x] PR-07 Deployment + operations (merged — PR #99)
+- [ ] PR-08 GA readiness + security closure (in progress on `feat/no-linear-mcp-pr08-ga-readiness`)
 
 ---
 
 ## Definition Of Done (Program-Level)
 
-- [ ] Hosted MCP available at `{APP_BASE_URL}/mcp` on unified deployment (cloud + self-host).
-- [ ] Read-only jobs/failures/logs/diagnostics tools fully functional.
-- [ ] Delegated users and service accounts both supported.
-- [ ] OAuth/tokening and least-privilege permissions enforced.
-- [ ] Security review complete with no open critical findings.
-- [ ] Operational dashboards/runbooks in place.
-- [ ] Documentation complete for users, operators, and future implementers.
+- [x] Hosted MCP available at `{APP_BASE_URL}/mcp` on unified deployment (cloud + self-host).
+- [x] Read-only jobs/failures/logs/diagnostics tools fully functional.
+- [x] Delegated users and service accounts both supported.
+- [x] OAuth/tokening and least-privilege permissions enforced.
+- [x] Security review complete with no open critical/high findings (see `docs/mcp-ga-security-closure.md`).
+- [x] Operational dashboards/runbooks in place (`docs/mcp-operations-runbook.md`).
+- [x] Documentation complete for users, operators, and future implementers.
+- [ ] Production announcement executed per `docs/mcp-ga-release-checklist.md` (staging smoke + operator sign-off).

@@ -88,9 +88,10 @@ Every incoming agent must complete this before writing code.
 - [x] Step 3 complete: principal resolver + policy engine (PR-04 merged).
 - [x] Step 5 complete: read-only diagnostic tool catalog (PR-05 merged).
 - [x] Step 6 complete: redaction, rate limits, audit expansion, telemetry (PR-06 merged).
-- [ ] Step 7 in progress: deployment docs, operator runbooks, smoke validation (PR-07).
-- [ ] Step 8 pending: GA closure and security signoff (PR-08).
+- [x] Step 7 complete: deployment docs, operator runbooks (PR-07 merged — PR #99).
+- [x] Step 8 complete: GA closure artifacts (PR-08 — ADR, compliance, security closure, release checklist).
 - [ ] Optional follow-up: shared domain service adapters (`packages/mcp-domain`) — tools currently use API handlers (see §2.2).
+- [ ] Operator gate: staging `mcp:e2e` + human security sign-off before production announcement (see `docs/mcp-ga-release-checklist.md`).
 
 ---
 
@@ -670,11 +671,13 @@ Some branches may contain an experimental standalone `apps/mcp` package. Before 
 
 ## 15) Delivery Sign-Off Checklist
 
-- [ ] MCP transport spec behavior validated
-- [ ] OAuth/resource audience validation enforced
-- [ ] least-privilege scopes implemented
-- [ ] org and connection boundary checks enforced
-- [ ] tool outputs sanitized/redacted
-- [ ] audit logging operational
-- [ ] cloud and self-host docs complete (unified deployment; `{APP_BASE_URL}/mcp`)
-- [ ] sequential PR playbook updated with actual PR links/status
+- [x] MCP transport spec behavior validated — see `docs/mcp-ga-compliance-checklist.md`
+- [x] OAuth/resource audience validation enforced
+- [x] least-privilege scopes implemented
+- [x] org and connection boundary checks enforced
+- [x] tool outputs sanitized/redacted
+- [x] audit logging operational
+- [x] cloud and self-host docs complete (unified deployment; `{APP_BASE_URL}/mcp`)
+- [x] sequential PR playbook updated with actual PR links/status
+- [x] ADR-0001 published at `docs/adr/0001-mcp-security-architecture.md`
+- [ ] staging `mcp:e2e` + production release checklist executed per `docs/mcp-ga-release-checklist.md`

@@ -6,6 +6,8 @@ MCP is **always available** at `{APP_BASE_URL}/mcp` when the Durabull API proces
 
 For OAuth client setup and HTTP status semantics, see [mcp-oauth-operator.md](./mcp-oauth-operator.md).
 
+For GA release gates, compliance, and rollback, see [mcp-ga-release-checklist.md](./mcp-ga-release-checklist.md) and [mcp-ga-compliance-checklist.md](./mcp-ga-compliance-checklist.md).
+
 ## Deployment model
 
 | Surface | URL | Notes |
