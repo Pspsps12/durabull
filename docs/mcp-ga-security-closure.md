@@ -2,11 +2,12 @@
 
 **Review date:** 2026-05-28  
 **Scope:** Read-only hosted MCP (PR-02–PR-07 on `main`, PR-08 GA closure)  
-**ADR:** [0001-mcp-security-architecture.md](./adr/0001-mcp-security-architecture.md)
+**ADR:** [0001-mcp-security-architecture.md](./adr/0001-mcp-security-architecture.md)  
+**Status:** **Draft** — does not replace independent security review or human sign-off.
 
 ## Review summary
 
-Phase 1 MCP is approved for **read-only GA** subject to the operational gates in [mcp-ga-release-checklist.md](./mcp-ga-release-checklist.md). No **critical** or **high** open findings block rollout. Medium/low items are documented as accepted debt or operator prerequisites.
+Phase 1 MCP documentation and automated tests show **no critical or high** open code/doc mismatches. **Production announcement** remains gated on operator steps in [mcp-ga-release-checklist.md](./mcp-ga-release-checklist.md) and human security sign-off below.
 
 ## Findings and disposition
 
@@ -15,7 +16,7 @@ Phase 1 MCP is approved for **read-only GA** subject to the operational gates in
 | SEC-01 | — | Missing formal ADR / threat model file | **Closed** — ADR-0001 added in PR-08 |
 | SEC-02 | Low | In-memory rate limits are per-process | **Accepted** — documented; Redis-backed limits phase 2 |
 | SEC-03 | Low | `mcp:e2e` registers OAuth clients and writes DB tokens | **Accepted** — staging/local only; runbook warnings |
-| SEC-04 | Low | Dynamic OAuth client registration is unauthenticated (rate-limited) | **Accepted** — edge monitoring guidance in operator doc |
+| SEC-04 | Medium (accepted) | Dynamic OAuth client registration is unauthenticated (20/min rate limit) | **Accepted** — edge monitoring + alert on `POST /api/auth/mcp/register` required before public GA announcement |
 | SEC-05 | Info | Domain logic in API handlers vs `packages/mcp-domain` | **Accepted** — same tenancy checks as REST; extraction optional |
 | SEC-06 | — | No write/destructive MCP tools in phase 1 | **Verified** — tool registry is read-only |
 | SEC-07 | — | Cross-org `connectionId` denied for delegated users | **Verified** — `mount.test.ts` |
@@ -38,17 +39,15 @@ Phase 1 MCP is approved for **read-only GA** subject to the operational gates in
 | Invalid Host | 403 | `mount.test.ts`, `routes.test.ts` |
 | Per-tool rate limit | 429 JSON-RPC | `mcp-tool-rate-limit.test.ts` |
 
+OAuth/transport matrix for compliance: same table above; compliance checklist links here instead of duplicating rows.
+
 ## Manual / staging gates (before production announcement)
 
-1. Run [mcp-operations-runbook.md](./mcp-operations-runbook.md) post-deploy checks on **staging**.
-2. Run `mcp:e2e` against staging only (`APP_BASE_URL` = staging origin).
-3. Validate one **delegated-user** MCP client flow (real OAuth client + PKCE).
-4. Validate one **service-account** flow (bindings + least-privilege scopes).
-5. Confirm `DURABULL_AUTHLESS=false` and `APP_BASE_URL` match public ingress on production.
+Operator gates: [Release checklist — Pre-release](./mcp-ga-release-checklist.md#pre-release).
 
 ## Security sign-off
 
 | Reviewer | Role | Date | Approved |
 | --- | --- | --- | --- |
-| | Engineering | 2026-05-28 | Yes — automated controls + tests |
-| | Security / owner | | Pending human sign-off if required by release process |
+| | Engineering | | Pending — automated tests documented in validation evidence |
+| | Security / owner | | **Pending human sign-off** |

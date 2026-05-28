@@ -6,7 +6,7 @@ MCP is **always available** at `{APP_BASE_URL}/mcp` when the Durabull API proces
 
 For OAuth client setup and HTTP status semantics, see [mcp-oauth-operator.md](./mcp-oauth-operator.md).
 
-For GA release gates, compliance, and rollback, see [mcp-ga-release-checklist.md](./mcp-ga-release-checklist.md) and [mcp-ga-compliance-checklist.md](./mcp-ga-compliance-checklist.md).
+For GA documentation (release gates, compliance, security closure, validation evidence), see [mcp-ga-index.md](./mcp-ga-index.md).
 
 ## Deployment model
 
@@ -42,8 +42,8 @@ Optional MCP-related toggles:
 
 Service accounts are **org-scoped**. Tool calls still pass `connectionId` in arguments; policy enforces that the connection belongs to the principal's org.
 
-- Grant **least-privilege** `mcp_policy_binding` rows per tool and scope.
-- Avoid broad bindings with `organizationId: null` unless intentional for that service account.
+- Grant **least-privilege** `mcp_policy_binding` rows per **`toolName` + `scope`** (service accounts are always org-scoped).
+- Avoid `toolName: null` bindings — they grant the scope for **all** tools.
 - OAuth scopes alone do not replace bindings for service accounts — both are required.
 - Delegated users need org membership **and** connection access; cross-org `connectionId` values are denied.
 
@@ -119,17 +119,19 @@ Auth failures (`401` / `403`) are returned on the HTTP response; monitor access 
 
 Disable stdout telemetry only if your platform duplicates logs elsewhere: `MCP_TELEMETRY_LOG=false`.
 
-### Per-tool rate limits (30/min)
+### Per-tool rate limits (60/min default, 30/min heavy tools)
 
 Enforced when `NODE_ENV=production` (skipped in local `development` / `test` unless you run with production `NODE_ENV`).
 
-These tools use the lower cap: `get_job_logs`, `get_job_stacktraces`, `get_failure_events`, `get_queue_metrics`, `explain_job_failure`. All other tools default to **60/min per tool name** unless `DISABLE_RATE_LIMIT=true`.
+Heavy tools (**30/min**): `get_job_logs`, `get_job_stacktraces`, `get_failure_events`, `get_queue_metrics`, `explain_job_failure`. All other tools default to **60/min per tool name**.
+
+Draft SLO targets: [release checklist — Draft SLO candidates](./mcp-ga-release-checklist.md#draft-slo-candidates-not-validated).
 
 Ingress limit (**120/min**) applies to all `/mcp` HTTP methods (initialize, session traffic, and `tools/call`), not only tool calls.
 
 ### Audit table (`mcp_audit_event`)
 
-Every `tools/call` should produce a row with principal, tool name, SHA-256 input hash, `granted`, and `response_class` (`success`, `tool_error`, `policy_denied`, `rate_limited`).
+Successful `tools/call` paths **best-effort** write a row with principal, tool name, SHA-256 input hash, `granted`, and `response_class` (`success`, `tool_error`, `policy_denied`, `rate_limited`). Under backpressure, events may be dropped (`audit_dropped` in `mcp_telemetry`). Transport auth failures (`401`/`403` before tool execution) are not recorded here.
 
 Example triage query (Postgres):
 

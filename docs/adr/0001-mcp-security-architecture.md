@@ -65,7 +65,7 @@ Policy decisions are audited to `mcp_audit_event`.
 | `mcp:jobs:read` | Connections, queues, jobs, workers |
 | `mcp:logs:read` | Job logs and stacktraces |
 | `mcp:failures:read` | Failure/alert events |
-| `mcp:diagnostics:read` | Metrics and composed diagnostics |
+| `mcp:diagnostics:read` | Queue metrics (`get_queue_metrics`); also required for `explain_job_failure` together with `mcp:jobs:read`, `mcp:logs:read`, and `mcp:failures:read` |
 
 ### 7. Data safety
 
@@ -83,7 +83,7 @@ Policy decisions are audited to `mcp_audit_event`.
 
 | Threat | Mitigation |
 | --- | --- |
-| Token theft / replay | Short-lived OAuth tokens; expiry enforced; HTTPS required in production |
+| Token theft / replay | Short-lived OAuth tokens; expiry enforced; TLS required at ingress/platform (not enforced inside MCP handlers) |
 | Confused deputy (wrong audience) | RFC 8707 resource binding to `{APP_BASE_URL}/mcp` |
 | Scope escalation | Explicit per-tool scope map; 403 with `insufficient_scope` |
 | Cross-tenant data access | Org membership + connection checks; service-account bindings |
@@ -111,4 +111,7 @@ Policy decisions are audited to `mcp_audit_event`.
 - `tasks/mcp-implementation-master-plan.md`
 - `docs/mcp-oauth-operator.md`
 - `docs/mcp-operations-runbook.md`
+- `docs/mcp-ga-index.md`
 - `docs/mcp-ga-compliance-checklist.md`
+- `docs/mcp-ga-security-closure.md`
+- `docs/mcp-ga-release-checklist.md`

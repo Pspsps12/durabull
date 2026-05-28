@@ -37,7 +37,7 @@ bun run typecheck --filter @durabull/docs
 | Package | Result |
 | --- | --- |
 | `@durabull/mcp` | Pass |
-| `@durabull/api` | **Fail** — pre-existing `src/routes/alerts-global.test.ts` TS18046 (`body` unknown). Unrelated to MCP; noted in PR-04 ledger. |
+| `@durabull/api` | **Fail** — pre-existing `src/routes/alerts-global.test.ts` TS18046 (`body` unknown). Unrelated to MCP; see compliance known follow-ups. |
 | `@durabull/docs` | Pass (lint + typecheck) |
 
 ### Live E2E (`mcp:e2e`)

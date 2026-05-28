@@ -43,7 +43,7 @@ Derive from deployment config:
 
 ### ADR alignment note
 
-`docs/adr/0001-mcp-security-architecture.md` decision #1 originally referenced a dedicated `apps/mcp` deployable. **Phase 1 supersedes deployable placement only:** MCP remains a distinct **security/module boundary**, but ingress is the API app. Update the ADR in the same PR that lands API-mounted MCP if the ADR text still says separate service.
+Deployable placement is documented in **ADR-0001** (`docs/adr/0001-mcp-security-architecture.md`, Accepted): unified API `/mcp` ingress, not standalone `apps/mcp`.
 
 ---
 
@@ -86,11 +86,11 @@ Every incoming agent must complete this before writing code.
 - [x] Step 1 complete: MCP module + `/mcp` transport ingress on unified API app (PR-02 merged).
 - [x] Step 2 complete: OAuth discovery + token validation middleware (PR-03 merged).
 - [x] Step 3 complete: principal resolver + policy engine (PR-04 merged).
-- [x] Step 5 complete: read-only diagnostic tool catalog (PR-05 merged).
-- [x] Step 6 complete: redaction, rate limits, audit expansion, telemetry (PR-06 merged).
-- [x] Step 7 complete: deployment docs, operator runbooks (PR-07 merged — PR #99).
-- [x] Step 8 complete: GA closure artifacts (PR-08 — ADR, compliance, security closure, release checklist).
-- [ ] Optional follow-up: shared domain service adapters (`packages/mcp-domain`) — tools currently use API handlers (see §2.2).
+- [x] Step 4 complete: read-only diagnostic tool catalog (PR-05 merged).
+- [x] Step 5 complete: redaction, rate limits, audit expansion, telemetry (PR-06 merged).
+- [x] Step 6 complete: deployment docs, operator runbooks (PR-07 merged — PR #99).
+- [x] Step 7 complete: GA closure artifacts (PR-08 — ADR, compliance, security closure, release checklist).
+- [ ] §13 step 4 (optional): shared domain service adapters (`packages/mcp-domain`) — deferred; tools use API handlers (see §2.2).
 - [ ] Operator gate: staging `mcp:e2e` + human security sign-off before production announcement (see `docs/mcp-ga-release-checklist.md`).
 
 ---
@@ -624,6 +624,8 @@ Audit event on every tool call:
 
 ### 12.4 Performance Tests
 
+Deferred post-GA (not a phase-1 merge gate). Track via draft SLOs in `docs/mcp-ga-release-checklist.md` after staging soak:
+
 - log-heavy pagination
 - stacktrace retrieval
 - concurrent read tool traffic
@@ -648,15 +650,9 @@ Do not mark phase complete until:
 6. add redaction + rate limiting + audit
 7. deployment + runbooks + final compliance verification (single-service docs; remove any `apps/mcp` / dual-process leftovers)
 
-### 13.1 If legacy `apps/mcp` scaffold exists
+### 13.1 Historical: legacy `apps/mcp` scaffold (completed PR-02)
 
-Some branches may contain an experimental standalone `apps/mcp` package. Before continuing PR-03+:
-
-1. Move transport/tool code into `packages/mcp/` (keep `apps/api/src/mcp/` as thin mount only).
-2. Mount `/mcp` in `createApiApp()`.
-3. Port tests to `apps/api` (request `/mcp` on `createApiApp()`).
-4. Remove standalone `apps/mcp` entrypoint and dual-process Docker runner.
-5. Amend ADR deployable wording if still stale.
+Completed on `main`: transport in `packages/mcp/`, thin mount at `apps/api/src/mcp/`, no dual-process Docker MCP port. ADR-0001 reflects unified placement.
 
 ---
 

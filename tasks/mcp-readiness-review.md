@@ -1,7 +1,7 @@
 # MCP Readiness Review — Post PR-08 (2026-05-28)
 
 **Branch:** `feat/no-linear-mcp-pr08-ga-readiness`  
-**Plan position:** PR-02–PR-07 merged on `main`; PR-08 GA closure in review.
+**Plan position:** PR-02–PR-07 merged on `main`; PR-08 GA closure in review on branch (not merged until PR #100 lands).
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Dimension | Verdict |
 | --- | --- |
-| **Read-only diagnostic catalog** | **Complete** — all 11 tools + `ping` on `main` (PR #94, #97). |
+| **Read-only diagnostic catalog** | **Complete** on `main` — 11 tools + `ping` (policy PR #94; remaining tools PR #97). |
 | **Authorization** | **Complete** — principals, policy engine, org/connection boundaries (PR #94). |
 | **Safety hardening (PR-06)** | **Complete** — merged PR #98. |
 | **Deployment / ops (PR-07)** | **Complete** — merged PR #99 (runbook + deployment docs). |
@@ -36,7 +36,7 @@
 | --- | --- |
 | Staging `mcp:e2e` smoke | Operator |
 | Release checklist (`docs/mcp-ga-release-checklist.md`) | Operator |
-| Optional security reviewer sign-off table | Security / owner |
+| Human security sign-off (recommended before production announcement) | Security / owner |
 
 ---
 
@@ -51,13 +51,6 @@ cd tooling/scripts && APP_BASE_URL=http://localhost:3001 bun run mcp:e2e   # sta
 
 ## GA documentation index
 
-| Doc | Purpose |
-| --- | --- |
-| [ADR-0001](../docs/adr/0001-mcp-security-architecture.md) | Security architecture |
-| [Compliance checklist](../docs/mcp-ga-compliance-checklist.md) | Spec compliance |
-| [Security closure](../docs/mcp-ga-security-closure.md) | Review findings |
-| [Release checklist](../docs/mcp-ga-release-checklist.md) | Ship / rollback |
-| [Validation evidence](../docs/mcp-ga-validation-evidence.md) | Test run record |
-| [Operations runbook](../docs/mcp-operations-runbook.md) | Day-2 ops |
+Start at [mcp-ga-index.md](../docs/mcp-ga-index.md) for reading order and terminology.
 
 See also [MCP Server](/documentation/integrations/mcp-server) in the docs app.
