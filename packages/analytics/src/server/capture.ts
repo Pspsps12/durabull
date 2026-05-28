@@ -1,4 +1,9 @@
-import { tryGetServerAnalyticsOptions, type ServerAnalyticsOptions } from './config'
+import { tryGetServerAnalyticsOptions, type ServerAnalyticsOptions, type ServerAnalyticsRuntimeContext } from './config'
+import {
+  signTelemetryCollectBody,
+  TELEMETRY_COLLECT_SIGNATURE_HEADER,
+  TELEMETRY_COLLECT_TIMESTAMP_HEADER,
+} from './collect-auth'
 import {
   hashIdentifiedOrganizationDistinctId,
   hashIdentifiedUserDistinctId,
@@ -33,7 +38,7 @@ function resolveCollectTimestamp(clientTimestamp: string | undefined, nowMs: num
   return clientTimestamp
 }
 
-interface DurabullTelemetryCollectConfig extends PosthogBatchClientConfig {
+interface DurabullPosthogIngestConfig extends PosthogBatchClientConfig {
   hmacSecret: string
 }
 
@@ -42,12 +47,12 @@ function getOptions(): ServerAnalyticsOptions | null {
 }
 
 export function isDurabullTelemetryCollectConfigured(options: ServerAnalyticsOptions): boolean {
-  return getDurabullTelemetryCollectConfig(options) !== null
+  return getDurabullPosthogIngestConfig(options) !== null
 }
 
-function getDurabullTelemetryCollectConfig(
+function getDurabullPosthogIngestConfig(
   options: ServerAnalyticsOptions
-): DurabullTelemetryCollectConfig | null {
+): DurabullPosthogIngestConfig | null {
   const posthogKey = options.durabullTelemetryPosthogKey
   const hmacSecret = options.hmacSecret
   const posthogBatchUrl = resolvePosthogBatchUrl(options.durabullTelemetryPosthogHost ?? undefined)
@@ -99,31 +104,43 @@ function buildAnonymousCapture(input: {
 
 async function forwardAnonymousToCloudCollect(input: {
   cloudCollectUrl: string
+  collectSigningSecret: string
   anonymousInstanceId: string
   event: string
   properties: Record<string, string | number | boolean | null>
   sessionId: string
   timestamp: string
-  runtimeContext: ReturnType<ServerAnalyticsOptions['getRuntimeContext']>
+  runtimeContext: ServerAnalyticsRuntimeContext
 }): Promise<void> {
+  const sentAt = new Date().toISOString()
+  const rawBody = JSON.stringify({
+    sentAt,
+    instanceId: input.anonymousInstanceId,
+    runtime: input.runtimeContext,
+    events: [
+      {
+        event: input.event,
+        properties: input.properties,
+        sessionId: input.sessionId,
+        timestamp: input.timestamp,
+      },
+    ],
+  })
+  const signedAt = Math.floor(Date.now() / 1000)
+  const { signature, timestamp } = signTelemetryCollectBody(
+    input.collectSigningSecret,
+    signedAt,
+    rawBody
+  )
+
   const response = await fetch(input.cloudCollectUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sentAt: new Date().toISOString(),
-      instanceId: input.anonymousInstanceId,
-      events: [
-        {
-          event: input.event,
-          properties: {
-            ...input.properties,
-            ...input.runtimeContext,
-          },
-          sessionId: input.sessionId,
-          timestamp: input.timestamp,
-        },
-      ],
-    }),
+    headers: {
+      'Content-Type': 'application/json',
+      [TELEMETRY_COLLECT_TIMESTAMP_HEADER]: timestamp,
+      [TELEMETRY_COLLECT_SIGNATURE_HEADER]: signature,
+    },
+    body: rawBody,
     redirect: 'manual',
     signal: AbortSignal.timeout(POSTHOG_FETCH_TIMEOUT_MS),
   })
@@ -131,6 +148,8 @@ async function forwardAnonymousToCloudCollect(input: {
   if (!response.ok) {
     console.warn(`[analytics] cloud collect forward failed with status ${response.status}`)
   }
+
+  await response.body?.cancel()
 }
 
 export async function captureAnonymousServerEvent(input: {
@@ -150,7 +169,7 @@ export async function captureAnonymousServerEvent(input: {
   const timestamp = input.timestamp ?? new Date().toISOString()
 
   if (options.collectEnabled) {
-    const config = getDurabullTelemetryCollectConfig(options)
+    const config = getDurabullPosthogIngestConfig(options)
     if (!config) return
 
     await sendPosthogBatch(
@@ -170,8 +189,14 @@ export async function captureAnonymousServerEvent(input: {
     return
   }
 
+  if (!options.collectSigningSecret) {
+    console.warn('[analytics] cloud collect forward skipped: missing collect signing secret')
+    return
+  }
+
   await forwardAnonymousToCloudCollect({
     cloudCollectUrl: options.cloudCollectUrl,
+    collectSigningSecret: options.collectSigningSecret,
     anonymousInstanceId: input.anonymousInstanceId,
     event: validated.event,
     properties: validated.properties,
@@ -244,18 +269,19 @@ export async function ingestTelemetryCollectBatch(input: {
   instanceId: string
   sentAt?: string
   events: TelemetryCollectEventInput[]
+  clientRuntime?: ServerAnalyticsRuntimeContext
 }): Promise<IngestCollectBatchResult> {
   const options = getOptions()
   if (!options?.enabled) {
     return { ok: false, error: 'disabled' }
   }
 
-  const config = getDurabullTelemetryCollectConfig(options)
+  const config = getDurabullPosthogIngestConfig(options)
   if (!config) {
     return { ok: false, error: 'not_configured' }
   }
 
-  const runtimeContext = options.getRuntimeContext()
+  const runtimeContext = input.clientRuntime ?? options.getRuntimeContext()
   const nowMs = Date.now()
   const batch: PosthogBatchCapture[] = []
 
@@ -317,4 +343,9 @@ export function resolveIdentifiedDistinctIds(input: {
   }
 
   return { distinctId: null, organizationGroup: null }
+}
+
+/** @deprecated Use getServerAnalyticsOptions().hmacSecret */
+export function getTelemetryHmacSecret(): string | null {
+  return getOptions()?.hmacSecret ?? null
 }

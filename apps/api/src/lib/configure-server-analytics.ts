@@ -69,6 +69,7 @@ export function bootstrapServerAnalytics(): void {
       isDurabullManagedPosthogProject() &&
       durabullTelemetryPosthogKey === appPosthogKey,
     disclosureUrl: TELEMETRY_DISCLOSURE_URL,
+    collectSigningSecret: env.DURABULL_TELEMETRY_COLLECT_SECRET?.trim() || null,
     hmacSecret:
       env.DURABULL_TELEMETRY_HMAC_SECRET?.trim() || env.BETTER_AUTH_SECRET?.trim() || null,
     durabullTelemetryPosthogKey,

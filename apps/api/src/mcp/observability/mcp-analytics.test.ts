@@ -65,6 +65,7 @@ describe('mcp analytics', () => {
       collectEnabled: true,
       dedupeIdentifiedPosthogEvents: false,
       disclosureUrl: 'https://durabull.io/privacy',
+      collectSigningSecret: 'test-collect-secret',
       hmacSecret: 'test-secret',
       durabullTelemetryPosthogKey: 'phc_test',
       durabullTelemetryPosthogHost: 'https://us.i.posthog.com',

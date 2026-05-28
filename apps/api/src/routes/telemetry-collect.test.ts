@@ -2,8 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { env } from '@durabull/env'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
-import { hashTelemetryIdentifier } from '@durabull/analytics/server'
-import { resetServerAnalyticsForTests } from '@durabull/analytics/server'
+import {
+  hashTelemetryIdentifier,
+  resetServerAnalyticsForTests,
+  signTelemetryCollectBody,
+  TELEMETRY_COLLECT_SIGNATURE_HEADER,
+  TELEMETRY_COLLECT_TIMESTAMP_HEADER,
+} from '@durabull/analytics/server'
 import {
   bootstrapServerAnalytics,
   resetCachedAnonymousInstanceIdForTests,
@@ -13,16 +18,26 @@ import telemetryRoutes from './telemetry'
 const INSTANCE_ID = '41111111-1111-4111-8111-111111111111'
 const SESSION_ID = 'ephemeral-session'
 const HMAC_SECRET = 'test-telemetry-collect-hmac-secret'
+const COLLECT_SECRET = 'test-telemetry-collect-signing-secret'
 const POSTHOG_KEY = 'phc_test_project_key'
 // Within the collect timestamp skew window so the value is forwarded unchanged.
 const RECENT_EVENT_TIMESTAMP = new Date(Date.now() - 60_000).toISOString()
 const RECENT_SENT_AT = new Date(Date.now() - 30_000).toISOString()
+
+const DEFAULT_RUNTIME = {
+  authless: false,
+  env_connections: false,
+  environment: 'production',
+  persistence: 'postgres',
+  stateless: false,
+} as const
 
 const mutableEnv = env as {
   APP_BASE_URL?: string
   BETTER_AUTH_SECRET?: string
   CI?: boolean
   DURABULL_CLOUD?: boolean
+  DURABULL_TELEMETRY_COLLECT_SECRET?: string
   DURABULL_TELEMETRY_HMAC_SECRET?: string
   DURABULL_TELEMETRY_POSTHOG_HOST?: string
   DURABULL_TELEMETRY_POSTHOG_KEY?: string
@@ -33,6 +48,7 @@ const mutableEnv = env as {
 const originalAppBaseUrl = mutableEnv.APP_BASE_URL
 const originalBetterAuthSecret = mutableEnv.BETTER_AUTH_SECRET
 const originalCi = mutableEnv.CI
+const originalCollectSecret = mutableEnv.DURABULL_TELEMETRY_COLLECT_SECRET
 const originalDurabullCloud = mutableEnv.DURABULL_CLOUD
 const originalHmacSecret = mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET
 const originalNodeEnv = mutableEnv.NODE_ENV
@@ -58,10 +74,14 @@ function createTelemetryRouteApp(options: { bodyLimit?: boolean } = {}) {
   return app.route('/', telemetryRoutes)
 }
 
-function collectPayload(properties: Record<string, unknown> = { success: true }) {
+function collectPayload(
+  properties: Record<string, unknown> = { success: true },
+  runtime: Record<string, unknown> = DEFAULT_RUNTIME
+) {
   return JSON.stringify({
     instanceId: INSTANCE_ID,
     sentAt: RECENT_SENT_AT,
+    runtime,
     events: [
       {
         event: 'queue_paused',
@@ -70,6 +90,35 @@ function collectPayload(properties: Record<string, unknown> = { success: true })
         timestamp: RECENT_EVENT_TIMESTAMP,
       },
     ],
+  })
+}
+
+function signedCollectRequest(
+  body: string,
+  secret: string = COLLECT_SECRET,
+  timestampSec: number = Math.floor(Date.now() / 1000)
+) {
+  const { signature, timestamp } = signTelemetryCollectBody(secret, timestampSec, body)
+  return {
+    method: 'POST' as const,
+    headers: {
+      'Content-Type': 'application/json',
+      [TELEMETRY_COLLECT_TIMESTAMP_HEADER]: timestamp,
+      [TELEMETRY_COLLECT_SIGNATURE_HEADER]: signature,
+    },
+    body,
+  }
+}
+
+async function postCollect(
+  app: ReturnType<typeof createTelemetryRouteApp>,
+  body: string,
+  extraHeaders: Record<string, string> = {}
+) {
+  const signed = signedCollectRequest(body)
+  return app.request('/collect', {
+    ...signed,
+    headers: { ...signed.headers, ...extraHeaders },
   })
 }
 
@@ -82,6 +131,7 @@ describe('telemetry collect route', () => {
     mutableEnv.NODE_ENV = 'production'
     mutableEnv.POSTHOG_KEY = undefined
     mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = HMAC_SECRET
+    mutableEnv.DURABULL_TELEMETRY_COLLECT_SECRET = COLLECT_SECRET
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = 'https://us.i.posthog.com'
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = POSTHOG_KEY
     bootstrapServerAnalytics()
@@ -97,6 +147,7 @@ describe('telemetry collect route', () => {
     mutableEnv.NODE_ENV = originalNodeEnv
     mutableEnv.POSTHOG_KEY = originalPublicPosthogKey
     mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = originalHmacSecret
+    mutableEnv.DURABULL_TELEMETRY_COLLECT_SECRET = originalCollectSecret
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = originalPosthogHost
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = originalPosthogKey
     globalThis.fetch = originalFetch
@@ -112,11 +163,7 @@ describe('telemetry collect route', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
-    const response = await app.request('/collect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: collectPayload(),
-    })
+    const response = await postCollect(app, collectPayload())
 
     expect(response.status).toBe(202)
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
@@ -136,23 +183,22 @@ describe('telemetry collect route', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
-    const response = await app.request('/collect', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer should-not-forward',
-        Cookie: 'session=should-not-forward',
-        'X-Forwarded-For': '203.0.113.10',
-        'User-Agent': 'should-not-forward',
-      },
-      body: collectPayload({
+    const response = await postCollect(
+      app,
+      collectPayload({
         authless: true,
         environment: 'production',
         persistence: 'pglite',
         stateless: true,
         success: true,
       }),
-    })
+      {
+        Authorization: 'Bearer should-not-forward',
+        Cookie: 'session=should-not-forward',
+        'X-Forwarded-For': '203.0.113.10',
+        'User-Agent': 'should-not-forward',
+      }
+    )
 
     expect(response.status).toBe(202)
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -188,22 +234,30 @@ describe('telemetry collect route', () => {
     expect(properties.instance_key).not.toContain(INSTANCE_ID)
   })
 
-  it('applies server runtime over client-spoofed collect properties', async () => {
+  it('uses authenticated client runtime instead of cloud server runtime', async () => {
     const fetchMock = mock(async () => new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
-    const response = await app.request('/collect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: collectPayload({
-        authless: true,
-        environment: 'development',
-        persistence: 'pglite',
-        stateless: true,
-        success: true,
-      }),
-    })
+    const response = await postCollect(
+      app,
+      collectPayload(
+        {
+          authless: false,
+          environment: 'development',
+          persistence: 'postgres',
+          stateless: false,
+          success: true,
+        },
+        {
+          authless: true,
+          env_connections: false,
+          environment: 'production',
+          persistence: 'pglite',
+          stateless: true,
+        }
+      )
+    )
 
     expect(response.status).toBe(202)
 
@@ -213,12 +267,14 @@ describe('telemetry collect route', () => {
     }
     const properties = body.batch[0].properties
 
-    expect(properties.authless).toBe(false)
+    expect(properties.authless).toBe(true)
     expect(properties.environment).toBe('production')
+    expect(properties.persistence).toBe('pglite')
+    expect(properties.stateless).toBe(true)
   })
 
-  it('returns 502 when PostHog rejects the batch', async () => {
-    const fetchMock = mock(async () => new Response(null, { status: 400 }))
+  it('rejects unsigned collect requests', async () => {
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
@@ -227,6 +283,31 @@ describe('telemetry collect route', () => {
       headers: { 'Content-Type': 'application/json' },
       body: collectPayload(),
     })
+
+    expect(response.status).toBe(401)
+    expect(await response.json()).toEqual({ error: 'Unauthorized telemetry collect request' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects collect requests with invalid signatures', async () => {
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+    const body = collectPayload()
+    const signed = signedCollectRequest(body, 'wrong-secret')
+
+    const response = await app.request('/collect', signed)
+
+    expect(response.status).toBe(401)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('returns 502 when PostHog rejects the batch', async () => {
+    const fetchMock = mock(async () => new Response(null, { status: 400 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await postCollect(app, collectPayload())
 
     expect(response.status).toBe(502)
     expect(await response.json()).toEqual({ error: 'Telemetry upstream rejected batch' })
@@ -243,11 +324,7 @@ describe('telemetry collect route', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
-    const response = await app.request('/collect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: collectPayload(),
-    })
+    const response = await postCollect(app, collectPayload())
 
     expect(response.status).toBe(502)
     expect(await response.json()).toEqual({ error: 'Telemetry upstream rejected batch' })
@@ -260,11 +337,7 @@ describe('telemetry collect route', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
-    const response = await app.request('/collect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: collectPayload(),
-    })
+    const response = await postCollect(app, collectPayload())
 
     expect(response.status).toBe(503)
     expect(await response.json()).toEqual({ error: 'Telemetry upstream unavailable' })
@@ -277,11 +350,7 @@ describe('telemetry collect route', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
-    const response = await app.request('/collect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: collectPayload(),
-    })
+    const response = await postCollect(app, collectPayload())
 
     expect(response.status).toBe(404)
     expect(fetchMock).not.toHaveBeenCalled()
@@ -295,11 +364,7 @@ describe('telemetry collect route', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
-    const response = await app.request('/collect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: collectPayload(),
-    })
+    const response = await postCollect(app, collectPayload())
 
     expect(response.status).toBe(404)
     expect(fetchMock).not.toHaveBeenCalled()
@@ -310,11 +375,10 @@ describe('telemetry collect route', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
-    const response = await app.request('/collect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: collectPayload({ queue_name: 'billing-production', success: true }),
-    })
+    const response = await postCollect(
+      app,
+      collectPayload({ queue_name: 'billing-production', success: true })
+    )
 
     expect(response.status).toBe(400)
     expect(fetchMock).not.toHaveBeenCalled()
@@ -325,20 +389,19 @@ describe('telemetry collect route', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
-    const response = await app.request('/collect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        instanceId: INSTANCE_ID,
-        events: [
-          {
-            event: 'oss_queue_paused',
-            properties: {},
-            sessionId: SESSION_ID,
-          },
-        ],
-      }),
+    const body = JSON.stringify({
+      instanceId: INSTANCE_ID,
+      runtime: DEFAULT_RUNTIME,
+      events: [
+        {
+          event: 'oss_queue_paused',
+          properties: {},
+          sessionId: SESSION_ID,
+        },
+      ],
     })
+
+    const response = await postCollect(app, body)
 
     expect(response.status).toBe(400)
     expect(fetchMock).not.toHaveBeenCalled()
@@ -348,17 +411,14 @@ describe('telemetry collect route', () => {
     mutableEnv.BETTER_AUTH_SECRET = undefined
     mutableEnv.POSTHOG_KEY = undefined
     mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = undefined
+    mutableEnv.DURABULL_TELEMETRY_COLLECT_SECRET = undefined
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = undefined
     bootstrapServerAnalytics()
     const fetchMock = mock(async () => new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
-    const response = await app.request('/collect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: collectPayload(),
-    })
+    const response = await postCollect(app, collectPayload())
 
     expect(response.status).toBe(503)
     expect(fetchMock).not.toHaveBeenCalled()
@@ -371,11 +431,7 @@ describe('telemetry collect route', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
-    const response = await app.request('/collect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: collectPayload(),
-    })
+    const response = await postCollect(app, collectPayload())
 
     expect(response.status).toBe(503)
     expect(fetchMock).not.toHaveBeenCalled()
@@ -388,11 +444,7 @@ describe('telemetry collect route', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
-    const response = await app.request('/collect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: collectPayload(),
-    })
+    const response = await postCollect(app, collectPayload())
 
     expect(response.status).toBe(503)
     expect(fetchMock).not.toHaveBeenCalled()
@@ -405,11 +457,7 @@ describe('telemetry collect route', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
 
-    const response = await app.request('/collect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: collectPayload(),
-    })
+    const response = await postCollect(app, collectPayload())
 
     expect(response.status).toBe(503)
     expect(fetchMock).not.toHaveBeenCalled()

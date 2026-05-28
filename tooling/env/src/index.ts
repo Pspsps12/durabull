@@ -78,6 +78,8 @@ const envSchema = z.object({
   GITHUB_OAUTH_CLIENT_ID: optionalString,
   GITHUB_OAUTH_CLIENT_SECRET: optionalString,
   DISABLE_RATE_LIMIT: optionalBoolean,
+  /** When true, honor X-Forwarded-For / X-Real-IP / CF-Connecting-IP for rate limiting. Auto-enabled on Durabull Cloud. */
+  TRUST_PROXY: optionalBoolean,
   CI: optionalBoolean,
   ASSET_PRELOAD_MAX_SIZE: optionalNonNegativeInt,
   ASSET_PRELOAD_VERBOSE_LOGGING: optionalBoolean,
@@ -85,6 +87,7 @@ const envSchema = z.object({
   POSTHOG_KEY: optionalString,
   POSTHOG_HOST: optionalString,
   DURABULL_TELEMETRY_HMAC_SECRET: optionalString,
+  DURABULL_TELEMETRY_COLLECT_SECRET: optionalString,
   DURABULL_TELEMETRY_POSTHOG_HOST: optionalString,
   DURABULL_TELEMETRY_POSTHOG_KEY: optionalString,
   DURABULL_CLOUD: optionalBoolean,

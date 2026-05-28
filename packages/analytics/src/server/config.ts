@@ -18,6 +18,8 @@ export interface ServerAnalyticsOptions {
   /** When app + Durabull telemetry share one PostHog project, skip duplicate anonymous events. */
   dedupeIdentifiedPosthogEvents: boolean
   disclosureUrl: string
+  /** Shared secret for HMAC-signed `/collect` batches (OSS forward + cloud ingest). */
+  collectSigningSecret: string | null
   hmacSecret: string | null
   durabullTelemetryPosthogKey: string | null
   durabullTelemetryPosthogHost: string | null
