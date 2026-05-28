@@ -320,7 +320,7 @@ Mount MCP Streamable HTTP transport at `/mcp` on the existing `apps/api` Hono ap
 - [ ] `apps/api/package.json` (MCP SDK deps)
 - [ ] `apps/api/src/mcp/*.test.ts` or `apps/api/src/app.mcp.test.ts`
 - [ ] `tooling/docker/Dockerfile` (single API entrypoint; no MCP second port)
-- [ ] `docs/adr/0001-mcp-security-architecture.md` (amend deployable wording if still saying `apps/mcp`)
+- [x] `docs/adr/0001-mcp-security-architecture.md` (landed in PR-08; unified `/mcp` placement)
 
 ### Out of scope (explicit)
 
