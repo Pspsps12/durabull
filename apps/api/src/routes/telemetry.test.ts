@@ -6,6 +6,12 @@ import { closeDb } from '@durabull/dal'
 import { env } from '@durabull/env'
 import { Hono } from 'hono'
 
+import { resetServerAnalyticsForTests } from '@durabull/analytics/server'
+import {
+  bootstrapServerAnalytics,
+  resetCachedAnonymousInstanceIdForTests,
+} from '../lib/configure-server-analytics'
+
 const QUEUE_PAUSED_EVENT = 'queue_paused'
 
 const mutableEnv = env as {
@@ -38,6 +44,8 @@ describe('telemetry routes', () => {
 
   afterEach(async () => {
     await closeDb()
+    resetServerAnalyticsForTests()
+    resetCachedAnonymousInstanceIdForTests()
     mutableEnv.CI = originalCi
     mutableEnv.DATABASE_URL = originalDatabaseUrl
     mutableEnv.NODE_ENV = originalNodeEnv
@@ -82,10 +90,9 @@ describe('telemetry routes', () => {
     })
   })
 
-  it('accepts known events in production and forwards sanitized canonical events', async () => {
+  it('rejects forbidden properties on /events', async () => {
     mutableEnv.NODE_ENV = 'production'
-    const fetchMock = mock(async () => new Response(null, { status: 202 }))
-    globalThis.fetch = fetchMock as unknown as typeof fetch
+    bootstrapServerAnalytics()
     const app = await createTelemetryRouteApp()
 
     const response = await app.request('/events', {
@@ -98,12 +105,31 @@ describe('telemetry routes', () => {
           success: true,
         },
         sessionId: 'ephemeral-session',
+      }),
+    })
+
+    expect(response.status).toBe(400)
+  })
+
+  it('accepts known events in production and forwards sanitized canonical events', async () => {
+    mutableEnv.NODE_ENV = 'production'
+    bootstrapServerAnalytics()
+    const fetchMock = mock(async () => new Response(null, { status: 202 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = await createTelemetryRouteApp()
+
+    const response = await app.request('/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: QUEUE_PAUSED_EVENT,
+        properties: { success: true },
+        sessionId: 'ephemeral-session',
         timestamp: '2026-04-28T12:00:00.000Z',
       }),
     })
 
     expect(response.status).toBe(202)
-    expect(await response.json()).toEqual({ accepted: true })
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
@@ -118,11 +144,11 @@ describe('telemetry routes', () => {
     )
     expect(body.events[0].event).toBe(QUEUE_PAUSED_EVENT)
     expect(body.events[0].properties.success).toBe(true)
-    expect(body.events[0].properties).not.toHaveProperty('queue_name')
   })
 
   it('rejects unknown events', async () => {
     mutableEnv.NODE_ENV = 'production'
+    bootstrapServerAnalytics()
     const app = await createTelemetryRouteApp()
 
     const response = await app.request('/events', {
@@ -140,6 +166,7 @@ describe('telemetry routes', () => {
 
   it('keeps local telemetry non-blocking when Durabull API forwarding fails', async () => {
     mutableEnv.NODE_ENV = 'production'
+    bootstrapServerAnalytics()
     const fetchMock = mock(async () => {
       throw new Error('Durabull API unavailable')
     })

@@ -56,3 +56,9 @@ export function isMcpToolsCallMethod(body: unknown): boolean {
     (body as { method?: string }).method === 'tools/call'
   )
 }
+
+export function parseMcpJsonRpcMethod(body: unknown): string | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null
+  const method = (body as { method?: unknown }).method
+  return typeof method === 'string' && method.trim().length > 0 ? method.trim() : null
+}

@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { env } from '@durabull/env'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
-import telemetryRoutes, { hashTelemetryIdentifier } from './telemetry'
+import { hashTelemetryIdentifier } from '@durabull/analytics/server'
+import { resetServerAnalyticsForTests } from '@durabull/analytics/server'
+import {
+  bootstrapServerAnalytics,
+  resetCachedAnonymousInstanceIdForTests,
+} from '../lib/configure-server-analytics'
+import telemetryRoutes from './telemetry'
 
 const INSTANCE_ID = '41111111-1111-4111-8111-111111111111'
 const SESSION_ID = 'ephemeral-session'
@@ -75,9 +81,12 @@ describe('telemetry collect route', () => {
     mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = HMAC_SECRET
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = 'https://us.i.posthog.com'
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = POSTHOG_KEY
+    bootstrapServerAnalytics()
   })
 
   afterEach(() => {
+    resetServerAnalyticsForTests()
+    resetCachedAnonymousInstanceIdForTests()
     mutableEnv.APP_BASE_URL = originalAppBaseUrl
     mutableEnv.BETTER_AUTH_SECRET = originalBetterAuthSecret
     mutableEnv.CI = originalCi
@@ -95,6 +104,7 @@ describe('telemetry collect route', () => {
     mutableEnv.POSTHOG_KEY = POSTHOG_KEY
     mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = undefined
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = undefined
+    bootstrapServerAnalytics()
     const fetchMock = mock(async () => new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
@@ -173,9 +183,27 @@ describe('telemetry collect route', () => {
     expect(properties.instance_key).not.toContain(INSTANCE_ID)
   })
 
+  it('returns not found when product telemetry is disabled', async () => {
+    mutableEnv.NODE_ENV = 'development'
+    bootstrapServerAnalytics()
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await app.request('/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: collectPayload(),
+    })
+
+    expect(response.status).toBe(404)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('rejects collect requests on non-Durabull API deployments', async () => {
     mutableEnv.APP_BASE_URL = 'https://self-hosted.example.com'
     mutableEnv.DURABULL_CLOUD = false
+    bootstrapServerAnalytics()
     const fetchMock = mock(async () => new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
@@ -234,6 +262,7 @@ describe('telemetry collect route', () => {
     mutableEnv.POSTHOG_KEY = undefined
     mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = undefined
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = undefined
+    bootstrapServerAnalytics()
     const fetchMock = mock(async () => new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()
@@ -250,6 +279,7 @@ describe('telemetry collect route', () => {
 
   it('fails closed when the configured PostHog batch host is invalid', async () => {
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = 'http://[::1'
+    bootstrapServerAnalytics()
     const fetchMock = mock(async () => new Response(null, { status: 200 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
     const app = createTelemetryRouteApp()

@@ -1,19 +1,18 @@
-export type McpTelemetrySignal =
-  | 'auth_unauthorized'
-  | 'auth_forbidden'
-  | 'policy_denied'
-  | 'rate_limited_ingress'
-  | 'rate_limited_tool'
-  | 'tool_success'
-  | 'tool_error'
-  | 'redaction_applied'
-  | 'audit_dropped'
-  | 'audit_write_failed'
+import type { McpPrincipalType } from './mcp-analytics'
+import { recordMcpTelemetryAnalytics } from './mcp-analytics'
+import type { McpTelemetrySignal } from './mcp-telemetry-signals'
+
+export type { McpTelemetrySignal } from './mcp-telemetry-signals'
 
 export interface McpTelemetryEvent {
   signal: McpTelemetrySignal
   toolName?: string
   principalId?: string
+  principalType?: McpPrincipalType
+  userId?: string | null
+  organizationId?: string | null
+  denialReason?: string | null
+  redactionCount?: number
   correlationId?: string
   count?: number
 }
@@ -24,6 +23,16 @@ let telemetryLoggingEnabled = process.env.MCP_TELEMETRY_LOG !== 'false'
 export function recordMcpTelemetry(event: McpTelemetryEvent): void {
   const increment = Math.max(1, event.count ?? 1)
   signalTotals.set(event.signal, (signalTotals.get(event.signal) ?? 0) + increment)
+
+  recordMcpTelemetryAnalytics(event.signal, {
+    toolName: event.toolName,
+    principalId: event.principalId,
+    principalType: event.principalType,
+    userId: event.userId,
+    organizationId: event.organizationId,
+    denialReason: event.denialReason,
+    redactionCount: event.redactionCount,
+  })
 
   if (!telemetryLoggingEnabled) return
 

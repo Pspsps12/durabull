@@ -14,6 +14,7 @@ export interface McpAuditEventInput {
   correlationId: string
   principalType: 'delegated_user' | 'service_account'
   principalId: string
+  userId?: string | null
   organizationId?: string | null
   connectionId?: string | null
   toolName: string
@@ -64,6 +65,10 @@ export function writeMcpAuditEventNonBlocking(input: McpAuditEventInput): void {
       signal: 'policy_denied',
       toolName: input.toolName,
       principalId: input.principalId,
+      principalType: input.principalType,
+      userId: input.userId,
+      organizationId: input.organizationId,
+      denialReason: input.denialReason,
       correlationId: input.correlationId,
     })
   } else if (input.responseClass === 'rate_limited') {
@@ -71,6 +76,9 @@ export function writeMcpAuditEventNonBlocking(input: McpAuditEventInput): void {
       signal: 'rate_limited_tool',
       toolName: input.toolName,
       principalId: input.principalId,
+      principalType: input.principalType,
+      userId: input.userId,
+      organizationId: input.organizationId,
       correlationId: input.correlationId,
     })
   }
@@ -86,6 +94,9 @@ export function writeMcpAuditEventNonBlocking(input: McpAuditEventInput): void {
       signal: 'audit_dropped',
       toolName: input.toolName,
       principalId: input.principalId,
+      principalType: input.principalType,
+      userId: input.userId,
+      organizationId: input.organizationId,
       correlationId: input.correlationId,
     })
     if (droppedAuditEvents === 1 || droppedAuditEvents % AUDIT_DROP_LOG_INTERVAL === 0) {

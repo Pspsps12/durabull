@@ -467,6 +467,7 @@ function finalizeReadToolSuccess(
     arguments: args,
     connectionId: typeof args.connectionId === 'string' ? args.connectionId : null,
     responseClass: 'success' as const,
+    redactionCount: redactionCount > 0 ? redactionCount : undefined,
   }
   getMcpRequestContext()?.onToolInvocationComplete?.(auditInput)
 
