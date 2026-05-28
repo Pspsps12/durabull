@@ -22,8 +22,7 @@ import {
 } from './posthog-batch'
 import { validateTelemetryPayload } from './validate'
 
-interface DurabullTelemetryCollectConfig extends PosthogBatchClientConfig {
-  collectSigningSecret: string
+interface DurabullPosthogIngestConfig extends PosthogBatchClientConfig {
   hmacSecret: string
 }
 
@@ -34,20 +33,19 @@ function getOptions(): ServerAnalyticsOptions | null {
 export function isDurabullTelemetryCollectConfigured(
   options: ServerAnalyticsOptions
 ): boolean {
-  return getDurabullTelemetryCollectConfig(options) !== null
+  return getDurabullPosthogIngestConfig(options) !== null
 }
 
-function getDurabullTelemetryCollectConfig(
+function getDurabullPosthogIngestConfig(
   options: ServerAnalyticsOptions
-): DurabullTelemetryCollectConfig | null {
+): DurabullPosthogIngestConfig | null {
   const posthogKey = options.durabullTelemetryPosthogKey
   const hmacSecret = options.hmacSecret
-  const collectSigningSecret = options.collectSigningSecret
   const posthogBatchUrl = resolvePosthogBatchUrl(options.durabullTelemetryPosthogHost ?? undefined)
 
-  if (!posthogKey || !hmacSecret || !collectSigningSecret || !posthogBatchUrl) return null
+  if (!posthogKey || !hmacSecret || !posthogBatchUrl) return null
 
-  return { collectSigningSecret, hmacSecret, posthogBatchUrl, posthogKey }
+  return { hmacSecret, posthogBatchUrl, posthogKey }
 }
 
 function getIdentifiedPosthogConfig(options: ServerAnalyticsOptions): PosthogBatchClientConfig | null {
@@ -133,6 +131,8 @@ async function forwardAnonymousToCloudCollect(input: {
   if (!response.ok) {
     console.warn(`[analytics] cloud collect forward failed with status ${response.status}`)
   }
+
+  await response.body?.cancel()
 }
 
 export async function captureAnonymousServerEvent(input: {
@@ -152,7 +152,7 @@ export async function captureAnonymousServerEvent(input: {
   const timestamp = input.timestamp ?? new Date().toISOString()
 
   if (options.collectEnabled) {
-    const config = getDurabullTelemetryCollectConfig(options)
+    const config = getDurabullPosthogIngestConfig(options)
     if (!config) return
 
     await sendPosthogBatch(
@@ -259,7 +259,7 @@ export async function ingestTelemetryCollectBatch(input: {
     return { ok: false, error: 'disabled' }
   }
 
-  const config = getDurabullTelemetryCollectConfig(options)
+  const config = getDurabullPosthogIngestConfig(options)
   if (!config) {
     return { ok: false, error: 'not_configured' }
   }

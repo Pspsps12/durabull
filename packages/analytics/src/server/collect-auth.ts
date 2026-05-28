@@ -32,8 +32,8 @@ export function verifyTelemetryCollectSignature(input: {
     return { ok: false, error: 'missing' }
   }
 
-  const timestampSec = Number.parseInt(timestampHeader, 10)
-  if (!Number.isFinite(timestampSec)) {
+  const timestampSec = Number(timestampHeader.trim())
+  if (!Number.isFinite(timestampSec) || !/^\d+$/.test(timestampHeader.trim())) {
     return { ok: false, error: 'invalid' }
   }
 

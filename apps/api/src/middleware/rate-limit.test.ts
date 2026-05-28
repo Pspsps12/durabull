@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { env } from '@durabull/env'
 import { Hono } from 'hono'
-import { apiRateLimiter } from './rate-limit'
+import { apiRateLimiter, resetRateLimitStoreForTests } from './rate-limit'
 
 const mutableEnv = env as {
   CI?: boolean
@@ -26,6 +26,7 @@ function createPingApp() {
 
 describe('apiRateLimiter', () => {
   beforeEach(() => {
+    resetRateLimitStoreForTests()
     mutableEnv.CI = false
     mutableEnv.DISABLE_RATE_LIMIT = false
     mutableEnv.DURABULL_CLOUD = false
@@ -70,6 +71,24 @@ describe('apiRateLimiter', () => {
 
     expect(responses.some((response) => response.status === 429)).toBe(true)
     expect(responses.filter((response) => response.status === 429).length).toBeGreaterThan(0)
+  })
+
+  it('does not treat spoofed x-forwarded-for leftmost hops as separate clients when proxy is trusted', async () => {
+    mutableEnv.TRUST_PROXY = true
+    const app = createPingApp()
+
+    const responses = await Promise.all(
+      Array.from({ length: 601 }, (_, index) =>
+        app.request('/api/ping', {
+          headers: {
+            'cf-connecting-ip': '198.51.100.42',
+            'x-forwarded-for': `${index}.0.0.1, 198.51.100.42`,
+          },
+        })
+      )
+    )
+
+    expect(responses.some((response) => response.status === 429)).toBe(true)
   })
 
   it('honors x-forwarded-for when TRUST_PROXY is enabled', async () => {

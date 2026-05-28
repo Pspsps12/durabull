@@ -19,6 +19,11 @@ interface RateLimitEntry {
 // In-memory store for rate limiting
 const rateLimitStore = new Map<string, RateLimitEntry>()
 
+/** Test-only: clear in-memory counters between cases. */
+export function resetRateLimitStoreForTests(): void {
+  rateLimitStore.clear()
+}
+
 const GENERAL_API_RATE_LIMIT_WINDOW_MS = 60 * 1000
 const GENERAL_API_RATE_LIMIT_MAX_REQUESTS = 600
 
@@ -63,16 +68,21 @@ function isTrustedProxyEnvironment(): boolean {
 function getTrustedClientIp(c: Parameters<ReturnType<typeof createMiddleware>>[0]): string | null {
   if (!isTrustedProxyEnvironment()) return null
 
-  const forwarded = c.req.header('x-forwarded-for')
-  if (forwarded) {
-    return forwarded.split(',')[0]?.trim() || null
-  }
-
   const cfIp = c.req.header('cf-connecting-ip')?.trim()
   if (cfIp) return cfIp
 
   const realIp = c.req.header('x-real-ip')?.trim()
   if (realIp) return realIp
+
+  const forwarded = c.req.header('x-forwarded-for')
+  if (forwarded) {
+    const ips = forwarded
+      .split(',')
+      .map((ip) => ip.trim())
+      .filter(Boolean)
+    // Use the rightmost hop (appended by the trusted proxy), not the client-spoofable leftmost entry.
+    return ips.at(-1) ?? null
+  }
 
   return null
 }

@@ -32,10 +32,15 @@ async function resolveAnonymousInstanceIdSingleFlight(): Promise<string> {
   }
 
   anonymousInstanceIdInflight ??= (async () => {
-    const existing = await telemetryInstallationRepository.readAnonymousInstanceId()
-    const id = existing ?? (await telemetryInstallationRepository.getOrCreateAnonymousInstanceId())
-    cachedAnonymousInstanceId = id
-    return id
+    try {
+      const existing = await telemetryInstallationRepository.readAnonymousInstanceId()
+      const id = existing ?? (await telemetryInstallationRepository.getOrCreateAnonymousInstanceId())
+      cachedAnonymousInstanceId = id
+      return id
+    } catch (error) {
+      anonymousInstanceIdInflight = null
+      throw error
+    }
   })()
 
   return anonymousInstanceIdInflight
