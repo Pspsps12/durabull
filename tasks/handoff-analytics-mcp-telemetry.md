@@ -1,8 +1,18 @@
 # Handoff: Analytics package split + MCP product telemetry
 
-**Branch:** `main` (uncommitted local changes only — not pushed)  
-**Last verified:** 2026-05-28 — **23 tests pass** (see Verification)  
-**Original goal:** Track MCP usage in PostHog (anonymous + identified), consolidate server analytics into `packages/analytics`, fix review findings until no Critical/High correctness issues remain.
+**Last verified:** 2026-05-28 — **40 tests pass** in the core suite (see §5 Verification)
+**Goal:** Track MCP usage in PostHog (anonymous + identified), consolidate server analytics into `packages/analytics`, and keep telemetry bullet-proof across client + server until no Critical/High correctness or High-security findings remain in changed scope.
+
+## Status timeline (read this first)
+
+| Stage | What shipped | State |
+|-------|--------------|-------|
+| **PR #107** | Initial server capture package + MCP PostHog telemetry | Merged |
+| **PR #108** (`fix(analytics): harden telemetry collect/events preflight and PostHog host trust`) | **All P0**: server runtime on `/collect` ingest, fail-closed `/events` preflight incl. invalid PostHog host, forward merge order, HTTPS-only PostHog host allowlist + private-IP rejection + `redirect: 'manual'` | Merged into `main` |
+| **PR #109** (`fix(analytics): correct MCP org grouping and harden telemetry robustness`) | Found via 4-lens parallel review of merged `main`. Fixes **MCP org `$groups` double-hash** (real bug), fetch timeouts + forward `redirect: 'manual'`, single-flight/eager instance id, `/collect` timestamp clamp, `/events` 503 guard, hygiene cleanups | Branch `cursor/telemetry-bulletproof-followups`, **open** |
+
+**Current branch for in-flight work:** `cursor/telemetry-bulletproof-followups` (PR #109).
+**Next agent:** branch fresh from `origin/main` (after #109 merges) for the deferred items in §4.
 
 ---
 
@@ -89,87 +99,101 @@ policy/mount/auth → recordMcpTelemetry (ops) → recordMcpTelemetryAnalytics
 - Dead code removed: `principalToAnalyticsIdentity` in policy middleware; unused `telemetryInstallationRepository` import in `telemetry.ts`; route re-exports of `hashTelemetryIdentifier`.
 - `apps/web/src/routes/consent.tsx` imports `@durabull/analytics/events` + `@durabull/analytics/browser`.
 
+### Correctness/robustness fixes in PR #109 (open)
+
+- **MCP org `$groups` double-hash fixed.** `resolveIdentifiedDistinctIds()` returns an already-HMAC-hashed `organizationGroup`; `mcp-analytics.ts` previously passed it into `captureIdentifiedServerEvent({ organizationId })`, which hashed it **again** → `hash(hash(orgId))`. Now passes **raw** `identity.organizationId`; capture hashes once. New `packages/analytics/src/server/capture.test.ts` asserts `$groups.organization === hashIdentifiedOrganizationDistinctId(orgId, secret)` exactly once.
+- **Fetch timeouts** (`POSTHOG_FETCH_TIMEOUT_MS = 5_000`, `AbortSignal.timeout`) on `sendPosthogBatch` and `forwardAnonymousToCloudCollect`; **`redirect: 'manual'`** added to the cloud forward (SSRF parity).
+- **Single-flight + eager bootstrap** of anonymous instance id in `configure-server-analytics.ts` (no thundering herd; removed redundant cold-start `SELECT`; `/events` no longer blocks on cold DB).
+- **`/collect` timestamp clamp** to server time ±24h (`resolveCollectTimestamp` in `capture.ts`) — stops back/future-dated client events polluting time series.
+- **`/events` 503 guard** around `resolveAnonymousInstanceId` (was an unhandled 500 on DB failure).
+- **Hygiene:** removed dead `DEFAULT_POSTHOG_BATCH_HOST` (config.ts) and deprecated `getTelemetryHmacSecret` export; added `AnalyticsProperties.REDACTION_COUNT`; unified `McpPrincipalType` import from `@durabull/dal`.
+
 ### Review loop status
 
-- **Two** full parallel-code-review cycles run (4× explore subagents each).
-- **Critical/High correctness:** addressed; re-review reported **none** for sanitizer/validate/telemetry/MCP paths after fixes.
-- **Not done:** Security/perf hardening items below (intentionally deferred).
+- Three full parallel-code-review cycles run (4× explore subagents each); the third was over **merged `main`** post-#108.
+- **Critical:** none in telemetry scope. **High correctness:** the org double-hash — fixed in #109.
+- **Still open (deferred):** see §4 — `/collect` auth (subsumes OSS-forward fidelity), XFF trust, dedicated HMAC secret, async `/collect`, dedupe/coalesce, queue-drop metric, barrel migration.
 
 ---
 
-## 4. Remaining work (prioritized for “perfection”)
+## 4. Remaining work (for the next agent)
 
-Use `/parallel-code-review` after each batch; fix **Critical/High** before claiming done. User wanted loop until no serious issues — interpret **serious** as Critical + High **correctness** and **High security** in this diff’s scope.
+Everything in **P0 is merged (#108)**. The contained correctness/robustness/hygiene items are in **#109 (open)**. What remains below is genuinely larger-design or cross-cutting — each is worth its own PR. Use `/parallel-code-review` after each batch; fix **Critical/High** before claiming done.
 
-### P0 — Trust & honest HTTP semantics (correctness + security)
+### ✅ Already done (do NOT redo)
+
+| Item | Where |
+|------|-------|
+| Server runtime on `/collect` ingest; `/events` invalid-host preflight; forward merge order; PostHog HTTPS allowlist + private-IP reject + `redirect: 'manual'` | **#108** |
+| MCP org `$groups` double-hash; fetch timeouts + forward `redirect: 'manual'`; single-flight + eager instance id; `/collect` timestamp clamp; `/events` 503 guard | **#109** |
+| Browser `client.ts` runtime merge (server still authoritative via re-validate) | already in `client.ts` `sendDurabullTelemetry`/`withRuntimeContext` |
+| Hygiene: dead `DEFAULT_POSTHOG_BATCH_HOST`, deprecated `getTelemetryHmacSecret`, `AnalyticsProperties.REDACTION_COUNT`, unify `McpPrincipalType` | **#109** |
+
+### P0 (deferred) — Trust & honest semantics
 
 | # | Task | Files | Acceptance criteria |
 |---|------|-------|---------------------|
-| 1 | **Server runtime on `/collect` ingest** | `capture.ts` `ingestTelemetryCollectBatch` | Pass `options.getRuntimeContext()` into `validateTelemetryPayload` for each event (same merge as `/events`). Update `telemetry-collect.test.ts` if tests assumed client-only `authless`/`environment`. |
-| 2 | **Complete `/events` preflight** | `telemetry.ts`, optionally export helper from `capture.ts` | Return **503** when `collectEnabled` but `getDurabullTelemetryCollectConfig(options)` is null (includes **invalid PostHog host**). Today: key+HMAC checked but invalid URL → **202** + silent no-op in capture. Add test mirroring collect “invalid PostHog batch host”. |
-| 3 | **Fix self-hosted forward runtime merge** | `capture.ts` `forwardAnonymousToCloudCollect` ~95–98 | Use `...input.properties, ...input.runtimeContext` (match validate). Add unit or route test. |
-| 4 | **PostHog host allowlist** | `posthog-batch.ts`, align `app.ts` `getPosthogApiHost` | HTTPS only; allowlist `*.posthog.com` / `*.i.posthog.com`; reject private/link-local IPs. Test invalid host → 503 on collect and events. |
+| A | **`/collect` authentication / signed batches** | `telemetry.ts`, `capture.ts`, `configure-server-analytics.ts`, new verify util | Distinguish **trusted OSS forwards** from **untrusted public posts**. Signed/HMAC'd batch or install token. **This also fixes the OSS→cloud runtime re-stamp** (see Known issue below). AC: verified forwards keep their originating runtime; unverified posts still get server-runtime override (anti-spoof); unauthenticated/invalid signature → 401/403; tests for both paths. |
+| B | **Rate-limit `X-Forwarded-For` trust** | `apps/api/src/middleware/rate-limit.ts` | Only trust XFF behind a configured trusted proxy (use rightmost trusted hop or `cf-connecting-ip`/`x-real-ip`). MCP ingress already avoids XFF — mirror it. Cross-cutting: affects all `/api/*` limiters, so test broadly. **High security.** |
 
-### P1 — MCP hot path & cost (performance)
+**Known issue resolved-by-A:** cloud `/collect` re-stamps OSS-forwarded runtime with the cloud node's `getRuntimeContext()` because `validateTelemetryPayload` merges server runtime over event properties (intended anti-spoof for public posts). For legit OSS forwards this clobbers `authless`/`persistence`/`stateless`/`env_connections`, mis-attributing self-hosted deployments. Do **not** "fix" by trusting client runtime on `/collect` — that reopens the spoofing hole #108 closed. Fix via the signed/auth channel in A.
+
+### P1 — Performance
 
 | # | Task | Files | Notes |
 |---|------|-------|-------|
-| 5 | **Dedupe/coalesce PostHog** | `mcp-analytics.ts`, `capture.ts` | When same project/URL/key: one `sendPosthogBatch` per MCP event. Test: `dedupeIdentifiedPosthogEvents: true` → only identified capture called (`mcp-analytics.test.ts` currently mocks dedupe false). |
-| 6 | **Remove duplicate connection access DB query** | `policy-engine.ts`, `mcp-policy-middleware.ts`, `tools/shared.ts` | Policy already calls `canDelegatedUserAccessConnection`; middleware calls it again in `resolveConnectionForPrincipal`. Set `mcpResolvedConnection` once after grant. |
-| 7 | **Single-flight instance ID** | `configure-server-analytics.ts` | Prevent thundering herd on cold start; optional eager resolve in `app.ts` at bootstrap. |
-| 8 | **Async `/collect`** | `telemetry.ts`, `capture.ts` | Return 202 immediately; flush via bounded worker (pattern: `mcp-analytics-queue.ts`). |
+| 5 | **Dedupe/coalesce PostHog** | `mcp-analytics.ts`, `capture.ts` | When anonymous + identified share the same `{posthogBatchUrl, posthogKey}`, emit **one** `sendPosthogBatch` (two captures) instead of 2 HTTP calls. Add integration test with `dedupeIdentifiedPosthogEvents: true` (currently mocked false). |
+| 6 | **Remove duplicate connection-access DB query** (not telemetry, but on MCP hot path) | `policy-engine.ts`, `mcp-policy-middleware.ts`, `tools/shared.ts` | Policy already calls `canDelegatedUserAccessConnection`; middleware re-checks in `resolveConnectionForPrincipal`. Resolve once after grant. |
+| 8 | **Async `/collect`** | `telemetry.ts`, `capture.ts` | Return 202 immediately, flush via bounded worker (pattern: `mcp-analytics-queue.ts`). The #109 fetch timeout mitigates the worst hang. |
 
-### P2 — Security hardening (separate PR acceptable)
+### P2 — Security hardening
 
 | # | Task | Notes |
 |---|------|-------|
-| 9 | Require `DURABULL_TELEMETRY_HMAC_SECRET` in production collect mode | Remove `BETTER_AUTH_SECRET` fallback in `configure-server-analytics.ts` |
-| 10 | Rate limit: trust `X-Forwarded-For` only when proxy trusted | `apps/api/src/middleware/rate-limit.ts` |
-| 11 | `/collect` authentication | Signed batches or install token — larger design |
-| 12 | Browser `client.ts` runtime merge | `...(properties), ...runtimeContext` before `/events` |
-| 13 | Clamp or ignore client `timestamp` on collect | `telemetry.ts`, `capture.ts` |
+| 9 | Require dedicated `DURABULL_TELEMETRY_HMAC_SECRET` in prod collect mode | Remove `BETTER_AUTH_SECRET` fallback in `configure-server-analytics.ts:~bootstrap`; fail collect bootstrap (or 503) if missing. Coordinate env across cloud + self-host docs. |
 
-### P3 — Maintainability (readability review)
+### P3 — Maintainability
 
 | # | Task |
 |---|------|
-| 14 | Root `packages/analytics/src/index.ts`: stop re-exporting full browser SDK; migrate web to `/browser` |
-| 15 | Unify `McpPrincipalType` from `@durabull/dal` in MCP modules |
-| 16 | Extract shared `createBoundedAsyncQueue` (audit + analytics) |
-| 17 | Remove dead `DEFAULT_POSTHOG_BATCH_HOST` from `server/config.ts`; dedupe with `posthog-batch.ts` |
-| 18 | Add `AnalyticsProperties.REDACTION_COUNT`; use in `mcp-analytics.ts` |
-| 19 | Remove deprecated `getTelemetryHmacSecret` from public `server/index.ts` exports; update test mocks |
-| 20 | Document which `McpTelemetrySignal` values are counter/log-only vs PostHog |
+| 14 | Root `packages/analytics/src/index.ts`: stop re-exporting full browser SDK (barrel); migrate ~31 web call sites to `@durabull/analytics/browser` + `/events`. |
+| 16 | Extract shared `createBoundedAsyncQueue` (audit `mcp-audit.ts` + analytics `mcp-analytics-queue.ts`). |
+| 20 | Document which `McpTelemetrySignal` values are counter/log-only vs PostHog. |
+| 21 | Analytics queue drops silently at depth 512 — add a drop counter/structured log (audit queue already logs drops). Optional `scope_count` constant (consent.tsx uses a raw literal). |
 
-### P4 — Test gaps to close
+### P4 — Test gaps still worth closing
 
-- `/events` 503 when collect misconfigured (secrets) — **partially done**; extend for invalid host.
-- `/collect` 502 (`upstream_rejected`) and 503 (`upstream_unavailable`) — mock `fetch` failures.
-- MCP dedupe integration test (real `validateTelemetryPayload` path, not only mocks).
-- `capture.ts` / `posthog-batch.ts` unit tests (optional but valuable).
-- Forward path runtime merge test.
+- MCP dedupe integration test (real `shouldDedupeIdentifiedPosthogEvents: true` path, not mocked).
+- `/collect` `502` (`upstream_rejected`) + `503` (`upstream_unavailable`) already covered in `telemetry-collect.test.ts`; extend if A changes status mapping.
+- Concurrent `resolveAnonymousInstanceId` single-flight test (one create, same id).
+- `forwardAnonymousToCloudCollect` runtime-merge + new timeout behavior.
 
 ---
 
 ## 5. Verification commands
 
 ```bash
-# Core regression suite (fast)
+# Core regression suite (fast) — 40 pass as of #109
 bun test \
   packages/analytics/src/server/validate.test.ts \
   packages/analytics/src/server/identifiers.test.ts \
+  packages/analytics/src/server/posthog-batch.test.ts \
+  packages/analytics/src/server/capture.test.ts \
   apps/api/src/routes/telemetry.test.ts \
   apps/api/src/routes/telemetry-collect.test.ts \
   apps/api/src/mcp/observability/mcp-analytics.test.ts
 
-# Broader API if touching app bootstrap / middleware
-bun test apps/api/src/app.test.ts
+# Lint changed files with the repo-pinned Biome (NOT `bunx biome` — wrong version)
+./node_modules/.bin/biome lint <changed paths>
+./node_modules/.bin/biome format <changed paths>   # check; add --write to fix
 
-# Typecheck analytics package
-cd packages/analytics && bun run check  # or monorepo equivalent
+# Typecheck (test files error on `bun:test` import — PRE-EXISTING/environmental, ignore)
+cd apps/api && bun run typecheck
 ```
 
-**Expected:** 23 pass in the core suite (as of handoff date).
+**Expected:** 40 pass in the core suite (as of #109).
+
+**Sandbox gotcha:** `apps/api/src/app.test.ts` "api app config" cases fail in the agent sandbox shell — it has `CI=true` and no `MCP_AUTHLESS_BEARER_TOKEN`, so `createApiApp` throws in MCP auth assertion and the `enabled` env gate flips. These are **environmental, not caused by telemetry changes**. To run them: `MCP_AUTHLESS_BEARER_TOKEN=test-token CI= bun test apps/api/src/app.test.ts`.
 
 ---
 
@@ -210,12 +234,13 @@ cd packages/analytics && bun run check  # or monorepo equivalent
 
 ## 8. Suggested workflow for next agent
 
-1. Read this file + skim `packages/analytics/src/server/capture.ts` and `apps/api/src/mcp/observability/mcp-analytics.ts`.
-2. Implement **P0 items 1–4** in order; run verification commands after each.
-3. Run **`/parallel-code-review`** (four explore subagents) on full file list from `git diff --name-only` + untracked list in §9.
-4. Fix remaining **Critical/High**; repeat review until clean or only accepted architectural deferrals documented in PR.
-5. Implement **P1** if time; otherwise list in PR “Follow-up”.
-6. Update `tasks/todo.md` with checkboxes; add `tasks/lessons.md` entry if user corrects anything.
+1. Read this file (esp. §0 status timeline + §4) and skim `packages/analytics/src/server/capture.ts` and `apps/api/src/mcp/observability/mcp-analytics.ts`.
+2. After **#109 merges**, branch fresh from `origin/main` (workspace rule: follow-up PRs branch from latest primary).
+3. Pick **one** §4 item per PR. Recommended order: **P0-A (`/collect` auth — unlocks the OSS-forward fidelity fix)** → **P0-B (XFF trust)** → P1 dedupe/coalesce → P2 HMAC secret → P3 cleanups.
+4. Run **`/parallel-code-review`** (four explore subagents) on the changed file list; fix Critical/High before claiming done.
+5. Update `tasks/todo.md` checkboxes; add `tasks/lessons.md` if the user corrects anything; tie the PR to a Linear issue (workspace rule — needed for release-note automation).
+
+**Lesson captured this round:** never use `git stash`/`stash pop` to "peek" at clean state while you have uncommitted work — a failed pop silently strips your edits (it happened; recovered from `stash@{0}`). Use a throwaway `git worktree` or commit a WIP first instead.
 
 ### Parallel review file list (copy-paste)
 
@@ -243,6 +268,7 @@ packages/analytics/src/index.ts
 packages/analytics/src/react.ts
 packages/analytics/src/sanitizer.ts
 packages/analytics/src/server/capture.ts
+packages/analytics/src/server/capture.test.ts
 packages/analytics/src/server/config.ts
 packages/analytics/src/server/identifiers.ts
 packages/analytics/src/server/index.ts
@@ -277,7 +303,9 @@ packages/mcp/src/tools/register-read-tools.ts
 
 ## 10. Conversation context
 
-- Prior transcript: `.cursor/projects/Users-gregg-dev-durabull/agent-transcripts/d7d60e35-aacc-4edb-aaa8-52f8e3463c64/` (analytics consolidation + review-fix loop).
-- User attached skills: `loop` (monitored shell for recurring review), `parallel-code-review` (4× explore Task tool).
+- Analytics consolidation + first review-fix loop: PR #107.
+- P0 hardening: PR #108 (merged).
+- Post-#108 review + fixes: PR #109 (`cursor/telemetry-bulletproof-followups`, open) — found via a 4-lens `/parallel-code-review` over merged `main`.
+- Skills in play: `parallel-code-review` (4× explore Task tool), `loop` (monitored shell for recurring review).
 
-**Definition of done (perfection):** P0 complete + parallel review shows no Critical/High correctness or High security findings in changed files + all tests green + PR description documents accepted deferrals.
+**Definition of done (perfection):** P0 complete (#108 ✅) + no Critical/High correctness or High-security findings in changed scope (org double-hash fixed in #109 ✅; remaining High-security = XFF trust, deferred to P0-B) + all tests green + each PR documents accepted deferrals and links a Linear issue.
