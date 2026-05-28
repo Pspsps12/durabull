@@ -410,7 +410,7 @@ describe('api MCP ingress', () => {
 
     expect(response.status).toBe(403)
     const denialBody = await response.text()
-    expect(denialBody).toContain('missing_scopes')
+    expect(denialBody).toContain('insufficient_scope')
     expect(denialBody).toContain('mcp:jobs:read')
   })
 
@@ -528,7 +528,7 @@ describe('api MCP ingress', () => {
 
     expect(response.status).toBe(403)
     const denialBody = await response.text()
-    expect(denialBody).toContain('missing_scopes')
+    expect(denialBody).toContain('insufficient_scope')
     expect(denialBody).toContain('mcp:logs:read')
   })
 
@@ -644,7 +644,7 @@ describe('api MCP ingress', () => {
 
     expect(response.status).toBe(403)
     const denialBody = await response.text()
-    expect(denialBody).toContain('missing_scopes')
+    expect(denialBody).toContain('insufficient_scope')
     expect(denialBody).toContain('mcp:failures:read')
   })
 
@@ -761,7 +761,7 @@ describe('api MCP ingress', () => {
 
     expect(response.status).toBe(403)
     const denialBody = await response.text()
-    expect(denialBody).toContain('missing_scopes')
+    expect(denialBody).toContain('insufficient_scope')
     expect(denialBody).toContain('mcp:diagnostics:read')
   })
 
@@ -1162,7 +1162,7 @@ describe('api MCP ingress', () => {
 
     expect(callResponse.status).toBe(403)
     const denialBody = await callResponse.text()
-    expect(denialBody).toContain('service_account_policy_denied')
+    expect(denialBody).toContain('policy_denied')
   })
 
   it('denies delegated-user tool calls when connection is outside membership boundary', async () => {

@@ -1,100 +1,16 @@
-import { mcpPolicyRepository } from '@durabull/dal'
 import type { Context } from 'hono'
 import { createMiddleware } from 'hono/factory'
 
 import type { McpSession } from '../auth/mcp-session-middleware'
+import { hashMcpToolInput, writeMcpAuditEventNonBlocking } from '../audit/mcp-audit'
+import { parseMcpJsonRpcPayloadId, parseMcpToolCallBody, isMcpToolsCallMethod } from '../json-rpc-tool-call'
 import { resolveConnectionForPrincipal } from '../tools/shared'
 import { evaluateMcpToolPolicy } from './policy-engine'
 import { resolveMcpPrincipal } from './principal-resolver'
-import type { McpPolicyDecision, McpToolCallRequest, McpPrincipal } from './types'
-
-interface JsonRpcToolCallBody {
-  id?: string | number | null
-  method?: string
-  params?: {
-    name?: string
-    arguments?: Record<string, unknown>
-  }
-}
-
-interface McpAuditEventInput {
-  correlationId: string
-  principalType: 'delegated_user' | 'service_account'
-  principalId: string
-  organizationId?: string | null
-  connectionId?: string | null
-  toolName: string
-  requiredScopes: string[]
-  granted: boolean
-  denialReason?: string | null
-}
-
-const MAX_AUDIT_IN_FLIGHT = 16
-const MAX_AUDIT_QUEUE_DEPTH = 1024
-const AUDIT_DROP_LOG_INTERVAL = 100
-let auditInFlight = 0
-let droppedAuditEvents = 0
-const pendingAuditEvents: McpAuditEventInput[] = []
-
-function parseToolCallBody(body: unknown): McpToolCallRequest | null {
-  if (!body || typeof body !== 'object') return null
-  const payload = body as JsonRpcToolCallBody
-  if (payload.method !== 'tools/call') return null
-  const toolName = payload.params?.name
-  if (!toolName || typeof toolName !== 'string') return null
-  const args = payload.params?.arguments
-  const safeArgs: Record<string, unknown> = args && typeof args === 'object' ? args : {}
-  const connectionId =
-    typeof safeArgs.connectionId === 'string' && safeArgs.connectionId.trim().length > 0
-      ? safeArgs.connectionId.trim()
-      : null
-
-  return { toolName, arguments: safeArgs, connectionId }
-}
+import type { McpPolicyDecision, McpPrincipal } from './types'
 
 function buildCorrelationId(): string {
   return crypto.randomUUID()
-}
-
-function dispatchAuditEvent(input: McpAuditEventInput): void {
-  auditInFlight += 1
-  void mcpPolicyRepository
-    .createAuditEvent(input)
-    .catch((error) => {
-      console.error('[mcp-policy] failed to write audit event', error)
-    })
-    .finally(() => {
-      auditInFlight -= 1
-      flushPendingAuditEvents()
-    })
-}
-
-function flushPendingAuditEvents(): void {
-  while (auditInFlight < MAX_AUDIT_IN_FLIGHT && pendingAuditEvents.length > 0) {
-    const next = pendingAuditEvents.shift()
-    if (!next) break
-    dispatchAuditEvent(next)
-  }
-}
-
-function writeAuditEventNonBlocking(input: McpAuditEventInput): void {
-  if (auditInFlight < MAX_AUDIT_IN_FLIGHT && pendingAuditEvents.length === 0) {
-    dispatchAuditEvent(input)
-    return
-  }
-
-  if (pendingAuditEvents.length >= MAX_AUDIT_QUEUE_DEPTH) {
-    droppedAuditEvents += 1
-    if (droppedAuditEvents === 1 || droppedAuditEvents % AUDIT_DROP_LOG_INTERVAL === 0) {
-      console.warn(
-        `[mcp-policy] dropping audit events due to backpressure (dropped=${droppedAuditEvents}, inFlight=${auditInFlight}, queued=${pendingAuditEvents.length})`
-      )
-    }
-    return
-  }
-
-  pendingAuditEvents.push(input)
-  flushPendingAuditEvents()
 }
 
 function jsonRpcErrorResponse(
@@ -119,19 +35,34 @@ function jsonRpcErrorResponse(
   )
 }
 
+async function readMcpRequestBody(c: Context): Promise<unknown> {
+  const cached = c.get('mcpRequestJsonBody')
+  if (cached !== undefined) {
+    return cached
+  }
+
+  const body = await c.req.raw.clone().json().catch(() => null)
+  c.set('mcpRequestJsonBody', body)
+  return body
+}
+
+function policyDenialErrorData(decision: McpPolicyDecision): Record<string, unknown> {
+  if (decision.denialReason?.startsWith('missing_scopes')) {
+    return {
+      code: 'insufficient_scope',
+      requiredScopes: decision.requiredScopes,
+    }
+  }
+  return { code: 'policy_denied' }
+}
+
 export function createMcpPolicyMiddleware() {
   return createMiddleware(async (c, next) => {
     if (c.req.method !== 'POST') {
       return next()
     }
 
-    const body = await c.req.raw
-      .clone()
-      .json()
-      .catch(() => null)
-    if (body !== null) {
-      c.set('mcpRequestJsonBody', body)
-    }
+    const body = await readMcpRequestBody(c)
     if (Array.isArray(body)) {
       return jsonRpcErrorResponse(
         c,
@@ -141,24 +72,10 @@ export function createMcpPolicyMiddleware() {
         null
       )
     }
-    const payloadId =
-      body && typeof body === 'object' && 'id' in body
-        ? (() => {
-            const candidate = (body as { id?: unknown }).id
-            return typeof candidate === 'string' ||
-              typeof candidate === 'number' ||
-              candidate === null ||
-              candidate === undefined
-              ? (candidate ?? null)
-              : null
-          })()
-        : null
-    const isToolsCallMethod =
-      body && typeof body === 'object' && !Array.isArray(body)
-        ? (body as JsonRpcToolCallBody).method === 'tools/call'
-        : false
-    const toolCall = parseToolCallBody(body)
-    if (isToolsCallMethod && !toolCall) {
+
+    const payloadId = parseMcpJsonRpcPayloadId(body)
+    const toolCall = parseMcpToolCallBody(body)
+    if (isMcpToolsCallMethod(body) && !toolCall) {
       return jsonRpcErrorResponse(
         c,
         400,
@@ -174,9 +91,10 @@ export function createMcpPolicyMiddleware() {
     const session = c.get('mcpSession')
     const principal = await resolveMcpPrincipal(session)
     const correlationId = c.req.header('x-request-id') ?? buildCorrelationId()
+    const inputHash = hashMcpToolInput(toolCall.arguments)
 
     if (!principal) {
-      writeAuditEventNonBlocking({
+      writeMcpAuditEventNonBlocking({
         correlationId,
         principalType: 'service_account',
         principalId: session.clientId,
@@ -186,6 +104,8 @@ export function createMcpPolicyMiddleware() {
         requiredScopes: [],
         granted: false,
         denialReason: 'principal_resolution_failed',
+        inputHash,
+        responseClass: 'policy_denied',
       })
 
       return jsonRpcErrorResponse(
@@ -204,25 +124,28 @@ export function createMcpPolicyMiddleware() {
       call: toolCall,
     })
 
-    writeAuditEventNonBlocking({
-      correlationId: decision.correlationId,
-      principalType: decision.principalType,
-      principalId: decision.principalId,
-      organizationId: decision.organizationId,
-      connectionId: decision.connectionId,
-      toolName: decision.toolName,
-      requiredScopes: decision.requiredScopes,
-      granted: decision.granted,
-      denialReason: decision.denialReason,
-    })
-
     if (!decision.granted) {
+      writeMcpAuditEventNonBlocking({
+        correlationId: decision.correlationId,
+        principalType: decision.principalType,
+        principalId: decision.principalId,
+        organizationId: decision.organizationId,
+        connectionId: decision.connectionId,
+        toolName: decision.toolName,
+        requiredScopes: decision.requiredScopes,
+        granted: false,
+        denialReason: decision.denialReason,
+        inputHash,
+        responseClass: 'policy_denied',
+      })
+
       return jsonRpcErrorResponse(
         c,
         403,
         -32_003,
-        decision.denialReason ?? 'Forbidden: MCP policy denied this tool call.',
-        payloadId
+        'Forbidden: MCP policy denied this tool call.',
+        payloadId,
+        policyDenialErrorData(decision)
       )
     }
 
@@ -250,6 +173,7 @@ export function createMcpPolicyMiddleware() {
 
     c.set('mcpPrincipal', principal)
     c.set('mcpPolicyDecision', decision)
+    c.set('mcpToolInputHash', inputHash)
     c.set(
       'mcpGrantedScopes',
       session.scopes
@@ -269,5 +193,6 @@ declare module 'hono' {
     mcpSession: McpSession
     mcpResolvedConnection?: import('@durabull/mcp').McpResolvedConnection
     mcpGrantedScopes?: string[]
+    mcpToolInputHash?: string
   }
 }

@@ -20,6 +20,7 @@ export type {
   McpRequestContext,
   McpRequestPrincipal,
   McpResolvedConnection,
+  McpToolInvocationAuditInput,
 } from './request-context'
 export {
   getCanonicalMcpResourceUri,

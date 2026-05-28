@@ -15,6 +15,10 @@
     "./testing": {
       "types": "./src/testing/mcp-test-client.ts",
       "import": "./src/testing/mcp-test-client.ts"
+    },
+    "./safety/sanitize-output": {
+      "types": "./src/safety/sanitize-output.ts",
+      "import": "./src/safety/sanitize-output.ts"
     }
   },
   "scripts": {

@@ -4,6 +4,8 @@ import { extractBearerToken } from '@durabull/mcp/auth'
 import { env } from '@durabull/env'
 import { createMiddleware } from 'hono/factory'
 
+import { recordMcpTelemetry } from '../mcp/observability/mcp-telemetry'
+
 /**
  * Simple in-memory rate limiter.
  * For production with multiple instances, consider using Redis-backed rate limiting.
@@ -286,8 +288,9 @@ export const mcpRateLimiter = rateLimiter({
   limit: 120,
   keyPrefix: 'rl:mcp',
   keyGenerator: mcpIngressRateLimitKey,
-  onRateLimit: (c) =>
-    c.json(
+  onRateLimit: (c) => {
+    recordMcpTelemetry({ signal: 'rate_limited_ingress' })
+    return c.json(
       {
         error: 'Too Many Requests',
         code: 'RATE_LIMITED',
@@ -295,5 +298,6 @@ export const mcpRateLimiter = rateLimiter({
         retryAfter: 60,
       },
       429
-    ),
+    )
+  },
 })
