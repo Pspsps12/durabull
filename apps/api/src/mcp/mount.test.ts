@@ -155,6 +155,23 @@ describe('api MCP ingress', () => {
     expect(metadata.authorization_servers).toContain('http://localhost:3000/api/auth')
   })
 
+  it('exposes MCP scopes in app-origin authorization server metadata', async () => {
+    mutableEnv.DURABULL_AUTHLESS = false
+    await closeDb()
+    ;({ app } = await createApiApp({ enableLogging: false }))
+
+    const response = await app.request('/.well-known/oauth-authorization-server')
+    expect(response.status).toBe(200)
+
+    const metadata = (await response.json()) as {
+      scopes_supported?: string[]
+    }
+    expect(metadata.scopes_supported).toBeDefined()
+    expect(metadata.scopes_supported).toContain('mcp:discover')
+    expect(metadata.scopes_supported).toContain('mcp:jobs:read')
+    expect(metadata.scopes_supported).toContain('openid')
+  })
+
   it('supports initialize, tools/list, and ping on one app instance', async () => {
     const initResponse = await postMcp({
       jsonrpc: MCP_JSON_RPC_VERSION,
@@ -279,7 +296,7 @@ describe('api MCP ingress', () => {
     expect(response.headers.get('WWW-Authenticate')).toContain('invalid_token')
   })
 
-  it('returns 403 for OAuth tokens without mcp:discover', async () => {
+  it('returns 403 for manually seeded OAuth tokens without mcp:discover', async () => {
     mutableEnv.DURABULL_AUTHLESS = false
     await closeDb()
     ;({ app } = await createApiApp({ enableLogging: false }))
