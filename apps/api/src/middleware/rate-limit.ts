@@ -50,27 +50,38 @@ interface RateLimitOptions {
   ) => Response | Promise<Response>
 }
 
+function isTrustedProxyEnvironment(): boolean {
+  if (env.TRUST_PROXY === true) return true
+  if (env.DURABULL_CLOUD === true) return true
+  return false
+}
+
 /**
- * Get client identifier for rate limiting.
- * Uses X-Forwarded-For header (from reverse proxy) or falls back to a default.
+ * Resolve a client IP from forwarding headers when the deployment sits behind a trusted proxy.
+ * Ignores spoofable headers on direct or untrusted ingress so they cannot mint fresh rate-limit keys.
  */
-function getClientKey(c: Parameters<ReturnType<typeof createMiddleware>>[0]): string {
-  // In production behind a reverse proxy, use X-Forwarded-For
+function getTrustedClientIp(c: Parameters<ReturnType<typeof createMiddleware>>[0]): string | null {
+  if (!isTrustedProxyEnvironment()) return null
+
   const forwarded = c.req.header('x-forwarded-for')
   if (forwarded) {
-    // Take the first IP (original client)
-    return forwarded.split(',')[0].trim()
+    return forwarded.split(',')[0]?.trim() || null
   }
 
-  // Fall back to CF-Connecting-IP (Cloudflare) or X-Real-IP
-  const cfIp = c.req.header('cf-connecting-ip')
+  const cfIp = c.req.header('cf-connecting-ip')?.trim()
   if (cfIp) return cfIp
 
-  const realIp = c.req.header('x-real-ip')
+  const realIp = c.req.header('x-real-ip')?.trim()
   if (realIp) return realIp
 
-  // Last resort - this won't work well behind proxies
-  return 'unknown-client'
+  return null
+}
+
+/**
+ * Get client identifier for rate limiting.
+ */
+function getClientKey(c: Parameters<ReturnType<typeof createMiddleware>>[0]): string {
+  return getTrustedClientIp(c) ?? 'unknown-client'
 }
 
 /**
@@ -104,15 +115,6 @@ function shouldSkipRateLimiting(): boolean {
 }
 
 /**
- * Check if the client key indicates local/test traffic that shouldn't be rate limited.
- * This handles cases where environment variables aren't properly set.
- */
-function isLocalClient(clientKey: string): boolean {
-  // "unknown-client" means no forwarding headers - local development/testing
-  return clientKey === 'unknown-client'
-}
-
-/**
  * Creates a rate limiting middleware for Hono.
  */
 export function rateLimiter(options: RateLimitOptions) {
@@ -125,11 +127,6 @@ export function rateLimiter(options: RateLimitOptions) {
     }
 
     const clientKey = keyGenerator(c)
-
-    // Skip rate limiting for local clients (no forwarding headers = local dev/test)
-    if (isLocalClient(clientKey)) {
-      return next()
-    }
     const key = `${keyPrefix}:${clientKey}`
     const now = Date.now()
 
@@ -258,11 +255,7 @@ function mcpIngressRateLimitKey(c: Parameters<ReturnType<typeof createMiddleware
     return `bearer:${createHash('sha256').update(bearerToken).digest('hex').slice(0, 24)}`
   }
 
-  const cfIp = c.req.header('cf-connecting-ip')
-  if (cfIp) return cfIp
-  const realIp = c.req.header('x-real-ip')
-  if (realIp) return realIp
-  return 'mcp-anonymous'
+  return getTrustedClientIp(c) ?? 'mcp-anonymous'
 }
 
 /** Stricter limit for dynamic MCP OAuth client registration. */

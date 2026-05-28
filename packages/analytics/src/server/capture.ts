@@ -2,7 +2,13 @@ import {
   getServerAnalyticsOptions,
   tryGetServerAnalyticsOptions,
   type ServerAnalyticsOptions,
+  type ServerAnalyticsRuntimeContext,
 } from './config'
+import {
+  signTelemetryCollectBody,
+  TELEMETRY_COLLECT_SIGNATURE_HEADER,
+  TELEMETRY_COLLECT_TIMESTAMP_HEADER,
+} from './collect-auth'
 import {
   hashIdentifiedOrganizationDistinctId,
   hashIdentifiedUserDistinctId,
@@ -17,6 +23,7 @@ import {
 import { validateTelemetryPayload } from './validate'
 
 interface DurabullTelemetryCollectConfig extends PosthogBatchClientConfig {
+  collectSigningSecret: string
   hmacSecret: string
 }
 
@@ -35,11 +42,12 @@ function getDurabullTelemetryCollectConfig(
 ): DurabullTelemetryCollectConfig | null {
   const posthogKey = options.durabullTelemetryPosthogKey
   const hmacSecret = options.hmacSecret
+  const collectSigningSecret = options.collectSigningSecret
   const posthogBatchUrl = resolvePosthogBatchUrl(options.durabullTelemetryPosthogHost ?? undefined)
 
-  if (!posthogKey || !hmacSecret || !posthogBatchUrl) return null
+  if (!posthogKey || !hmacSecret || !collectSigningSecret || !posthogBatchUrl) return null
 
-  return { hmacSecret, posthogBatchUrl, posthogKey }
+  return { collectSigningSecret, hmacSecret, posthogBatchUrl, posthogKey }
 }
 
 function getIdentifiedPosthogConfig(options: ServerAnalyticsOptions): PosthogBatchClientConfig | null {
@@ -82,31 +90,44 @@ function buildAnonymousCapture(input: {
 
 async function forwardAnonymousToCloudCollect(input: {
   cloudCollectUrl: string
+  collectSigningSecret: string
   anonymousInstanceId: string
   event: string
   properties: Record<string, string | number | boolean | null>
   sessionId: string
   timestamp: string
-  runtimeContext: ReturnType<ServerAnalyticsOptions['getRuntimeContext']>
+  runtimeContext: ServerAnalyticsRuntimeContext
 }): Promise<void> {
+  const sentAt = new Date().toISOString()
+  const rawBody = JSON.stringify({
+    sentAt,
+    instanceId: input.anonymousInstanceId,
+    runtime: input.runtimeContext,
+    events: [
+      {
+        event: input.event,
+        properties: input.properties,
+        sessionId: input.sessionId,
+        timestamp: input.timestamp,
+      },
+    ],
+  })
+  const signedAt = Math.floor(Date.now() / 1000)
+  const { signature, timestamp } = signTelemetryCollectBody(
+    input.collectSigningSecret,
+    signedAt,
+    rawBody
+  )
+
   const response = await fetch(input.cloudCollectUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sentAt: new Date().toISOString(),
-      instanceId: input.anonymousInstanceId,
-      events: [
-        {
-          event: input.event,
-          properties: {
-            ...input.properties,
-            ...input.runtimeContext,
-          },
-          sessionId: input.sessionId,
-          timestamp: input.timestamp,
-        },
-      ],
-    }),
+    headers: {
+      'Content-Type': 'application/json',
+      [TELEMETRY_COLLECT_TIMESTAMP_HEADER]: timestamp,
+      [TELEMETRY_COLLECT_SIGNATURE_HEADER]: signature,
+    },
+    body: rawBody,
+    redirect: 'manual',
   })
 
   if (!response.ok) {
@@ -151,8 +172,14 @@ export async function captureAnonymousServerEvent(input: {
     return
   }
 
+  if (!options.collectSigningSecret) {
+    console.warn('[analytics] cloud collect forward skipped: missing collect signing secret')
+    return
+  }
+
   await forwardAnonymousToCloudCollect({
     cloudCollectUrl: options.cloudCollectUrl,
+    collectSigningSecret: options.collectSigningSecret,
     anonymousInstanceId: input.anonymousInstanceId,
     event: validated.event,
     properties: validated.properties,
@@ -225,6 +252,7 @@ export async function ingestTelemetryCollectBatch(input: {
   instanceId: string
   sentAt?: string
   events: TelemetryCollectEventInput[]
+  clientRuntime?: ServerAnalyticsRuntimeContext
 }): Promise<IngestCollectBatchResult> {
   const options = getOptions()
   if (!options?.enabled) {
@@ -236,7 +264,7 @@ export async function ingestTelemetryCollectBatch(input: {
     return { ok: false, error: 'not_configured' }
   }
 
-  const runtimeContext = options.getRuntimeContext()
+  const runtimeContext = input.clientRuntime ?? options.getRuntimeContext()
   const batch: PosthogBatchCapture[] = []
 
   for (const event of input.events) {

@@ -11,6 +11,13 @@ export {
   type ServerAnalyticsRuntimeContext,
 } from './config'
 export {
+  signTelemetryCollectBody,
+  TELEMETRY_COLLECT_SIGNATURE_HEADER,
+  TELEMETRY_COLLECT_SIGNATURE_TOLERANCE_SEC,
+  TELEMETRY_COLLECT_TIMESTAMP_HEADER,
+  verifyTelemetryCollectSignature,
+} from './collect-auth'
+export {
   captureAnonymousServerEvent,
   captureIdentifiedServerEvent,
   getTelemetryHmacSecret,

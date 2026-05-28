@@ -24,6 +24,22 @@ function getDurabullTelemetryPosthogKey(): string | null {
 }
 
 let cachedAnonymousInstanceId: string | null = null
+let anonymousInstanceIdInflight: Promise<string> | null = null
+
+async function resolveAnonymousInstanceIdSingleFlight(): Promise<string> {
+  if (cachedAnonymousInstanceId) {
+    return cachedAnonymousInstanceId
+  }
+
+  anonymousInstanceIdInflight ??= (async () => {
+    const existing = await telemetryInstallationRepository.readAnonymousInstanceId()
+    const id = existing ?? (await telemetryInstallationRepository.getOrCreateAnonymousInstanceId())
+    cachedAnonymousInstanceId = id
+    return id
+  })()
+
+  return anonymousInstanceIdInflight
+}
 
 export function bootstrapServerAnalytics(): void {
   const appPosthogKey = env.POSTHOG_KEY?.trim() || null
@@ -37,6 +53,7 @@ export function bootstrapServerAnalytics(): void {
       isDurabullManagedPosthogProject() &&
       durabullTelemetryPosthogKey === appPosthogKey,
     disclosureUrl: TELEMETRY_DISCLOSURE_URL,
+    collectSigningSecret: env.DURABULL_TELEMETRY_COLLECT_SECRET?.trim() || null,
     hmacSecret:
       env.DURABULL_TELEMETRY_HMAC_SECRET?.trim() || env.BETTER_AUTH_SECRET?.trim() || null,
     durabullTelemetryPosthogKey,
@@ -51,20 +68,18 @@ export function bootstrapServerAnalytics(): void {
       persistence: getDatabaseMode(),
       stateless: getDatabaseMode() === 'pglite',
     }),
-    resolveAnonymousInstanceId: async () => {
-      if (cachedAnonymousInstanceId) {
-        return cachedAnonymousInstanceId
-      }
-
-      const existing = await telemetryInstallationRepository.readAnonymousInstanceId()
-      cachedAnonymousInstanceId =
-        existing ?? (await telemetryInstallationRepository.getOrCreateAnonymousInstanceId())
-      return cachedAnonymousInstanceId
-    },
+    resolveAnonymousInstanceId: resolveAnonymousInstanceIdSingleFlight,
   })
+
+  if (env.NODE_ENV === 'production' && env.CI !== true) {
+    void resolveAnonymousInstanceIdSingleFlight().catch(() => {
+      // Warm cache at bootstrap; telemetry must never block API startup.
+    })
+  }
 }
 
 /** Test-only: clear cached installation id when re-bootstrapping. */
 export function resetCachedAnonymousInstanceIdForTests(): void {
   cachedAnonymousInstanceId = null
+  anonymousInstanceIdInflight = null
 }

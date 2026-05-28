@@ -20,6 +20,7 @@ const mutableEnv = env as {
   CI?: boolean
   DATABASE_URL?: string
   DURABULL_CLOUD?: boolean
+  DURABULL_TELEMETRY_COLLECT_SECRET?: string
   DURABULL_TELEMETRY_HMAC_SECRET?: string
   DURABULL_TELEMETRY_POSTHOG_HOST?: string
   DURABULL_TELEMETRY_POSTHOG_KEY?: string
@@ -27,11 +28,14 @@ const mutableEnv = env as {
   POSTHOG_KEY?: string
 }
 
+const COLLECT_SECRET = 'test-events-collect-secret'
+
 const originalAppBaseUrl = mutableEnv.APP_BASE_URL
 const originalBetterAuthSecret = mutableEnv.BETTER_AUTH_SECRET
 const originalCi = mutableEnv.CI
 const originalDatabaseUrl = mutableEnv.DATABASE_URL
 const originalDurabullCloud = mutableEnv.DURABULL_CLOUD
+const originalCollectSecret = mutableEnv.DURABULL_TELEMETRY_COLLECT_SECRET
 const originalHmacSecret = mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET
 const originalNodeEnv = mutableEnv.NODE_ENV
 const originalPosthogHost = mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST
@@ -64,6 +68,7 @@ describe('telemetry routes', () => {
     mutableEnv.BETTER_AUTH_SECRET = originalBetterAuthSecret
     mutableEnv.CI = originalCi
     mutableEnv.DURABULL_CLOUD = originalDurabullCloud
+    mutableEnv.DURABULL_TELEMETRY_COLLECT_SECRET = originalCollectSecret
     mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = originalHmacSecret
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = originalPosthogHost
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = originalPosthogKey
@@ -134,6 +139,7 @@ describe('telemetry routes', () => {
 
   it('accepts known events in production and forwards sanitized canonical events', async () => {
     mutableEnv.NODE_ENV = 'production'
+    mutableEnv.DURABULL_TELEMETRY_COLLECT_SECRET = COLLECT_SECRET
     bootstrapServerAnalytics()
     const fetchMock = mock(async () => new Response(null, { status: 202 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -157,9 +163,14 @@ describe('telemetry routes', () => {
     const body = JSON.parse(String(init.body)) as {
       events: Array<{ event: string; properties: Record<string, unknown> }>
       instanceId: string
+      runtime: Record<string, unknown>
     }
 
     expect(url).toBe('https://app.durabull.io/api/telemetry/collect')
+    expect(init.headers).toMatchObject({
+      'Content-Type': 'application/json',
+    })
+    expect((init.headers as Record<string, string>)['X-Durabull-Telemetry-Signature']).toBeDefined()
     expect(body.instanceId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     )
@@ -185,8 +196,9 @@ describe('telemetry routes', () => {
     expect(response.status).toBe(400)
   })
 
-  it('lets server runtime override client properties when forwarding to cloud collect', async () => {
+  it('forwards trusted OSS runtime to cloud collect', async () => {
     mutableEnv.NODE_ENV = 'production'
+    mutableEnv.DURABULL_TELEMETRY_COLLECT_SECRET = COLLECT_SECRET
     bootstrapServerAnalytics()
     const fetchMock = mock(async () => new Response(null, { status: 202 }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -207,16 +219,20 @@ describe('telemetry routes', () => {
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     const body = JSON.parse(String(init.body)) as {
       events: Array<{ properties: Record<string, unknown> }>
+      runtime: Record<string, unknown>
     }
 
+    expect(body.runtime.authless).toBe(false)
+    expect(body.runtime.environment).toBe('production')
     expect(body.events[0].properties.authless).toBe(false)
-    expect(body.events[0].properties.environment).toBe('production')
+    expect(body.events[0].properties.success).toBe(true)
   })
 
   it('returns 503 on /events when collect mode has an invalid PostHog batch host', async () => {
     mutableEnv.APP_BASE_URL = 'https://app.durabull.io'
     mutableEnv.BETTER_AUTH_SECRET = 'test-events-hmac-secret'
     mutableEnv.DURABULL_CLOUD = true
+    mutableEnv.DURABULL_TELEMETRY_COLLECT_SECRET = COLLECT_SECRET
     mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = 'test-events-hmac-secret'
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = 'https://evil.example.com'
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = 'phc_test_project_key'
@@ -242,6 +258,7 @@ describe('telemetry routes', () => {
 
   it('keeps local telemetry non-blocking when Durabull API forwarding fails', async () => {
     mutableEnv.NODE_ENV = 'production'
+    mutableEnv.DURABULL_TELEMETRY_COLLECT_SECRET = COLLECT_SECRET
     bootstrapServerAnalytics()
     const fetchMock = mock(async () => {
       throw new Error('Durabull API unavailable')
