@@ -38,11 +38,12 @@ Phase 1 ships diagnostic tools only — no queue mutations, retries, pauses, or 
 
 Remote MCP clients authenticate with **OAuth 2.1 bearer tokens** issued by Durabull (Better Auth MCP plugin).
 
-1. Discover protected resource metadata at `GET /.well-known/oauth-protected-resource`.
-2. Register an OAuth client (`POST /api/auth/mcp/register`) or use an existing client. On internet-facing deployments, registration is **unauthenticated** (rate-limited only) — monitor volume at the edge and prefer pre-provisioned clients where possible.
-3. Complete authorization code + PKCE.
-4. Request tokens with `resource={APP_BASE_URL}/mcp`.
-5. Call MCP with `Authorization: Bearer <access_token>`.
+1. Discover protected resource metadata at `GET /.well-known/oauth-protected-resource` (or `/api/auth/.well-known/oauth-protected-resource`).
+2. Register an OAuth client (`POST /api/auth/mcp/register`). On internet-facing deployments, registration is **unauthenticated** (rate-limited only) — monitor volume at the edge and prefer pre-provisioned clients where possible.
+3. Send the user through authorization code + PKCE at `/api/auth/mcp/authorize` with `prompt=consent` and `resource={APP_BASE_URL}/mcp`.
+4. The user signs in (if needed) and approves scopes on **`/consent`**.
+5. Exchange the authorization code at `/api/auth/mcp/token` with the same `resource` value.
+6. Call MCP with `Authorization: Bearer <access_token>`.
 
 Canonical resource URI:
 
@@ -80,7 +81,7 @@ Operators: telemetry signals, SQL examples, and incident playbooks are in the [M
 
 Authless mode (`DURABULL_AUTHLESS=true`) is for **local/private** setups only. Never enable authless mode on Durabull Cloud. If authless is reachable from a network, set a strong `MCP_AUTHLESS_BEARER_TOKEN` — the non-production default token is for localhost dev only.
 
-Use the **API port** for `APP_BASE_URL` (`3001` in monorepo dev, `3000` in Docker).
+For monorepo dev with the Vite app, set `APP_BASE_URL` to the web origin (`http://localhost:5173`) so `/mcp` and OAuth discovery share one origin (the dev server proxies to the API). For API-only smoke scripts, use the API port (`http://localhost:3001` or `http://localhost:3000` in Docker).
 
 For test commands and CI evidence, see [validation evidence](https://github.com/durabullhq/durabull/blob/main/docs/mcp-ga-validation-evidence.md). Run `mcp:e2e` only against local or staging databases (see runbook).
 

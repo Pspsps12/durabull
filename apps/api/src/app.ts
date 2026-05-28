@@ -27,6 +27,7 @@ import alertsRoutes from './routes/alerts'
 import alertsGlobalRoutes from './routes/alerts-global'
 import authRoutes from './routes/auth'
 import connectionsRoutes from './routes/connections'
+import mcpOAuthRoutes from './routes/mcp-oauth'
 import invitationsRoutes from './routes/invitations'
 import jobsRoutes from './routes/jobs'
 import metricsRoutes from './routes/metrics'
@@ -387,6 +388,7 @@ export async function createApiApp(options: CreateApiAppOptions = {}) {
   api.use('/connections/*', sessionMiddleware)
   api.use('/team/*', sessionMiddleware)
   api.use('/user-settings/*', sessionMiddleware)
+  api.use('/mcp/*', sessionMiddleware)
   api.use('/alerts/*', sessionMiddleware)
   // Connection middleware includes session handling - no need for both
   api.use('/c/:connectionId/*', connectionMiddleware)
@@ -406,6 +408,7 @@ export async function createApiApp(options: CreateApiAppOptions = {}) {
     .route('/connections', connectionsRoutes)
     .route('/team', teamRoutes)
     .route('/user-settings', userSettingsRoutes)
+    .route('/mcp', mcpOAuthRoutes)
     .route('/alerts', alertsGlobalRoutes)
     .route('/c/:connectionId/alerts', alertsRoutes)
     .route('/c/:connectionId/queues', queuesRoutes)

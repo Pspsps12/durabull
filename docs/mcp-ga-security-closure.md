@@ -23,6 +23,7 @@ Phase 1 MCP documentation and automated tests show **no critical or high** open 
 | SEC-08 | — | Service account requires policy binding + scopes | **Verified** — `mount.test.ts`, `mcp-policy.test.ts` |
 | SEC-09 | — | Output redaction for secrets/Redis URLs | **Verified** — `sanitize-output.test.ts` |
 | SEC-10 | — | RFC 8707 resource enforced on validation | **Verified** — `validate-token.test.ts`; issuance via Better Auth |
+| SEC-11 | — | Browser OAuth consent (`/consent`) for external MCP clients | **Verified** — `apps/web/e2e/mcp-oauth.spec.ts` (authorize + `prompt=consent` → token → `ping`) |
 
 ## Negative test coverage (automated)
 
@@ -49,5 +50,5 @@ Operator gates: [Release checklist — Pre-release](./mcp-ga-release-checklist.m
 
 | Reviewer | Role | Date | Approved |
 | --- | --- | --- | --- |
-| | Engineering | | Pending — automated tests documented in validation evidence |
+| Engineering (MCP OAuth UI) | Engineering | 2026-05-28 | Ready — consent UI + Playwright OAuth E2E; see [validation evidence](./mcp-ga-validation-evidence.md) |
 | | Security / owner | | **Pending human sign-off** |

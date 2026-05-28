@@ -81,7 +81,23 @@ export async function createMcpSessionMiddleware(appBaseUrl: string) {
     const cacheKey = bearerToken
     const cached = tokenCache.get(cacheKey)
     if (cached) {
-      c.set('mcpSession', sessionFromClaims(cached))
+      const cachedValidation = validateMcpAccessTokenClaims(cached, {
+        canonicalResourceUri,
+        requiredScopes: MCP_TRANSPORT_REQUIRED_SCOPES,
+        requireResourceIndicator,
+      })
+      if (!cachedValidation.ok) {
+        tokenCache.delete(cacheKey)
+        if (cachedValidation.status === 403) {
+          return buildMcpInsufficientScopeResponse(
+            resourceMetadataUrl,
+            cachedValidation.missingScopes ??
+              missingScopes(cached.scopes, MCP_TRANSPORT_REQUIRED_SCOPES)
+          )
+        }
+        return buildMcpUnauthorizedResponse(resourceMetadataUrl)
+      }
+      c.set('mcpSession', sessionFromClaims(cachedValidation.claims))
       return next()
     }
 
@@ -96,7 +112,8 @@ export async function createMcpSessionMiddleware(appBaseUrl: string) {
       userId: session.userId,
       scopes: parseScopeString(session.scopes),
       accessTokenExpiresAt: session.accessTokenExpiresAt,
-      resource: session.resource,
+      // Better Auth MCP token issuance may omit `resource` on insert; default to canonical URI.
+      resource: session.resource ?? canonicalResourceUri,
     }
 
     const validation = validateMcpAccessTokenClaims(claims, {

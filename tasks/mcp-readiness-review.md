@@ -14,7 +14,8 @@
 | **Safety hardening (PR-06)** | **Complete** — merged PR #98. |
 | **Deployment / ops (PR-07)** | **Complete** — merged PR #99 (runbook + deployment docs). |
 | **GA artifacts (PR-08)** | **Complete in branch** — ADR, compliance, security closure, release checklist, validation evidence. |
-| **Production announcement** | **Pending operator gates** — staging `mcp:e2e`, release checklist execution, optional human security sign-off. |
+| **OAuth consent UI** | **Done** — `/consent` + Playwright `e2e/mcp-oauth.spec.ts` (full authorize → consent → token → `ping`). |
+| **Production announcement** | **Pending operator gates** — staging `mcp:e2e` + `mcp-oauth` E2E, edge alert on register, human security sign-off. |
 
 ---
 
