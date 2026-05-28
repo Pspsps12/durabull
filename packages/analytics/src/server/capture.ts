@@ -24,6 +24,12 @@ function getOptions(): ServerAnalyticsOptions | null {
   return tryGetServerAnalyticsOptions()
 }
 
+export function isDurabullTelemetryCollectConfigured(
+  options: ServerAnalyticsOptions
+): boolean {
+  return getDurabullTelemetryCollectConfig(options) !== null
+}
+
 function getDurabullTelemetryCollectConfig(
   options: ServerAnalyticsOptions
 ): DurabullTelemetryCollectConfig | null {
@@ -93,8 +99,8 @@ async function forwardAnonymousToCloudCollect(input: {
         {
           event: input.event,
           properties: {
-            ...input.runtimeContext,
             ...input.properties,
+            ...input.runtimeContext,
           },
           sessionId: input.sessionId,
           timestamp: input.timestamp,
@@ -230,10 +236,11 @@ export async function ingestTelemetryCollectBatch(input: {
     return { ok: false, error: 'not_configured' }
   }
 
+  const runtimeContext = options.getRuntimeContext()
   const batch: PosthogBatchCapture[] = []
 
   for (const event of input.events) {
-    const validated = validateTelemetryPayload(event.event, event.properties)
+    const validated = validateTelemetryPayload(event.event, event.properties, runtimeContext)
     if (!validated.ok) {
       return { ok: false, error: validated.error }
     }

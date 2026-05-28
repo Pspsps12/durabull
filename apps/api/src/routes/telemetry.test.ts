@@ -15,14 +15,28 @@ import {
 const QUEUE_PAUSED_EVENT = 'queue_paused'
 
 const mutableEnv = env as {
+  APP_BASE_URL?: string
+  BETTER_AUTH_SECRET?: string
   CI?: boolean
   DATABASE_URL?: string
+  DURABULL_CLOUD?: boolean
+  DURABULL_TELEMETRY_HMAC_SECRET?: string
+  DURABULL_TELEMETRY_POSTHOG_HOST?: string
+  DURABULL_TELEMETRY_POSTHOG_KEY?: string
   NODE_ENV?: 'development' | 'test' | 'production'
+  POSTHOG_KEY?: string
 }
 
+const originalAppBaseUrl = mutableEnv.APP_BASE_URL
+const originalBetterAuthSecret = mutableEnv.BETTER_AUTH_SECRET
 const originalCi = mutableEnv.CI
 const originalDatabaseUrl = mutableEnv.DATABASE_URL
+const originalDurabullCloud = mutableEnv.DURABULL_CLOUD
+const originalHmacSecret = mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET
 const originalNodeEnv = mutableEnv.NODE_ENV
+const originalPosthogHost = mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST
+const originalPosthogKey = mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY
+const originalPublicPosthogKey = mutableEnv.POSTHOG_KEY
 const originalPgliteDir = process.env.DURABULL_PGLITE_DIR
 const originalFetch = globalThis.fetch
 
@@ -46,9 +60,16 @@ describe('telemetry routes', () => {
     await closeDb()
     resetServerAnalyticsForTests()
     resetCachedAnonymousInstanceIdForTests()
+    mutableEnv.APP_BASE_URL = originalAppBaseUrl
+    mutableEnv.BETTER_AUTH_SECRET = originalBetterAuthSecret
     mutableEnv.CI = originalCi
+    mutableEnv.DURABULL_CLOUD = originalDurabullCloud
+    mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = originalHmacSecret
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = originalPosthogHost
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = originalPosthogKey
     mutableEnv.DATABASE_URL = originalDatabaseUrl
     mutableEnv.NODE_ENV = originalNodeEnv
+    mutableEnv.POSTHOG_KEY = originalPublicPosthogKey
     globalThis.fetch = originalFetch
 
     if (originalPgliteDir) {
@@ -162,6 +183,61 @@ describe('telemetry routes', () => {
     })
 
     expect(response.status).toBe(400)
+  })
+
+  it('lets server runtime override client properties when forwarding to cloud collect', async () => {
+    mutableEnv.NODE_ENV = 'production'
+    bootstrapServerAnalytics()
+    const fetchMock = mock(async () => new Response(null, { status: 202 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = await createTelemetryRouteApp()
+
+    const response = await app.request('/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: QUEUE_PAUSED_EVENT,
+        properties: { authless: true, success: true },
+        sessionId: 'ephemeral-session',
+      }),
+    })
+
+    expect(response.status).toBe(202)
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    const body = JSON.parse(String(init.body)) as {
+      events: Array<{ properties: Record<string, unknown> }>
+    }
+
+    expect(body.events[0].properties.authless).toBe(false)
+    expect(body.events[0].properties.environment).toBe('production')
+  })
+
+  it('returns 503 on /events when collect mode has an invalid PostHog batch host', async () => {
+    mutableEnv.APP_BASE_URL = 'https://app.durabull.io'
+    mutableEnv.BETTER_AUTH_SECRET = 'test-events-hmac-secret'
+    mutableEnv.DURABULL_CLOUD = true
+    mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = 'test-events-hmac-secret'
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_HOST = 'https://evil.example.com'
+    mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = 'phc_test_project_key'
+    mutableEnv.NODE_ENV = 'production'
+    bootstrapServerAnalytics()
+    const fetchMock = mock(async () => new Response(null, { status: 202 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = await createTelemetryRouteApp()
+
+    const response = await app.request('/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: QUEUE_PAUSED_EVENT,
+        properties: { success: true },
+        sessionId: 'ephemeral-session',
+      }),
+    })
+
+    expect(response.status).toBe(503)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('keeps local telemetry non-blocking when Durabull API forwarding fails', async () => {

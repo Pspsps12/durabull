@@ -1,3 +1,4 @@
+import { isAllowedPosthogHostname } from '@durabull/analytics/server'
 import { getDatabaseMode, getDb, shouldUseEnvConnections, user } from '@durabull/dal'
 import { env } from '@durabull/env'
 import { eq } from 'drizzle-orm'
@@ -71,6 +72,13 @@ function getPosthogApiHost(): string {
     if (pointsToAppHost || pointsToProxyPath) {
       console.warn(
         `[PostHog] POSTHOG_HOST "${rawHost}" points to this app/proxy. Falling back to ${DEFAULT_POSTHOG_API_HOST}`
+      )
+      return DEFAULT_POSTHOG_API_HOST
+    }
+
+    if (parsedHost.protocol !== 'https:' || !isAllowedPosthogHostname(parsedHost.hostname)) {
+      console.warn(
+        `[PostHog] POSTHOG_HOST "${rawHost}" is not an allowed PostHog host. Falling back to ${DEFAULT_POSTHOG_API_HOST}`
       )
       return DEFAULT_POSTHOG_API_HOST
     }

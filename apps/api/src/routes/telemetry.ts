@@ -2,6 +2,7 @@ import {
   captureAnonymousServerEvent,
   getTelemetryStatusFromOptions,
   ingestTelemetryCollectBatch,
+  isDurabullTelemetryCollectConfigured,
   TELEMETRY_DISCLOSURE_URL,
   tryGetServerAnalyticsOptions,
   validateTelemetryPayload,
@@ -107,10 +108,7 @@ const telemetryRoutes = new Hono()
       return c.json({ error: 'Invalid telemetry properties' }, 400)
     }
 
-    if (
-      options.collectEnabled &&
-      (!options.durabullTelemetryPosthogKey?.trim() || !options.hmacSecret?.trim())
-    ) {
+    if (options.collectEnabled && !isDurabullTelemetryCollectConfigured(options)) {
       return c.json({ error: 'Telemetry collection is not configured' }, 503)
     }
 
