@@ -4,6 +4,8 @@ import {
   type ServerAnalyticsRuntimeContext,
   type TelemetryCollectEventInput,
 } from '@durabull/analytics/server'
+import { createBoundedAsyncQueue } from '../lib/bounded-async-queue'
+import { recordTelemetryQueueDrop } from '../lib/telemetry-queue-metrics'
 
 interface TelemetryCollectQueueItem {
   instanceId: string
@@ -15,9 +17,6 @@ interface TelemetryCollectQueueItem {
 const MAX_COLLECT_IN_FLIGHT = 4
 const MAX_COLLECT_QUEUE_DEPTH = 256
 
-let collectInFlight = 0
-const pendingCollectBatches: TelemetryCollectQueueItem[] = []
-
 type ProcessCollectBatch = (input: TelemetryCollectQueueItem) => Promise<IngestCollectBatchResult>
 
 function logCollectFailure(result: IngestCollectBatchResult): void {
@@ -25,47 +24,34 @@ function logCollectFailure(result: IngestCollectBatchResult): void {
   console.warn(`[analytics] async /collect batch failed: ${result.error}`)
 }
 
-function dispatchCollectBatch(input: TelemetryCollectQueueItem, process: ProcessCollectBatch): void {
-  collectInFlight += 1
-  void process(input)
-    .then(logCollectFailure)
-    .catch(() => {
-      console.warn('[analytics] async /collect batch threw unexpectedly')
+const collectQueue = createBoundedAsyncQueue<
+  TelemetryCollectQueueItem,
+  IngestCollectBatchResult
+>({
+  maxInFlight: MAX_COLLECT_IN_FLIGHT,
+  maxQueueDepth: MAX_COLLECT_QUEUE_DEPTH,
+  onDrop: (_input, state) => {
+    recordTelemetryQueueDrop({
+      dropped: state.dropped,
+      inFlight: state.inFlight,
+      queueName: 'telemetry_collect',
+      queued: state.queued,
     })
-    .finally(() => {
-      collectInFlight -= 1
-      flushPendingCollectBatches(process)
-    })
-}
-
-function flushPendingCollectBatches(process: ProcessCollectBatch): void {
-  while (collectInFlight < MAX_COLLECT_IN_FLIGHT && pendingCollectBatches.length > 0) {
-    const next = pendingCollectBatches.shift()
-    if (!next) break
-    dispatchCollectBatch(next, process)
-  }
-}
+  },
+  onError: () => {
+    console.warn('[analytics] async /collect batch threw unexpectedly')
+  },
+  onResult: logCollectFailure,
+})
 
 export function enqueueTelemetryCollectBatch(
   input: TelemetryCollectQueueItem,
   process: ProcessCollectBatch = ingestTelemetryCollectBatch
 ): boolean {
-  if (collectInFlight < MAX_COLLECT_IN_FLIGHT && pendingCollectBatches.length === 0) {
-    dispatchCollectBatch(input, process)
-    return true
-  }
-
-  if (pendingCollectBatches.length >= MAX_COLLECT_QUEUE_DEPTH) {
-    return false
-  }
-
-  pendingCollectBatches.push(input)
-  flushPendingCollectBatches(process)
-  return true
+  return collectQueue.enqueue(input, process)
 }
 
 /** Test-only */
 export function resetTelemetryCollectQueueForTests(): void {
-  collectInFlight = 0
-  pendingCollectBatches.length = 0
+  collectQueue.resetForTests()
 }

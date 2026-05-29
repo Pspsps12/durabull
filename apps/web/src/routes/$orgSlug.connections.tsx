@@ -12,7 +12,8 @@ interface RedisConnection {
   prefix: string
 }
 
-import { AnalyticsEvents, trackEvent } from '@durabull/analytics'
+import { trackEvent } from '@durabull/analytics/browser'
+import { AnalyticsEvents } from '@durabull/analytics/events'
 import {
   AlertCircle,
   Check,

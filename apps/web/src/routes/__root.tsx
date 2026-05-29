@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { configureDurabullTelemetry } from '@durabull/analytics'
+import { configureDurabullTelemetry } from '@durabull/analytics/browser'
 import type { QueryClient } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import {

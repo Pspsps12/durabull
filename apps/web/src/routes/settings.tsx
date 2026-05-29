@@ -1,4 +1,5 @@
-import { AnalyticsEvents, DialogType, trackEvent } from '@durabull/analytics'
+import { trackEvent } from '@durabull/analytics/browser'
+import { AnalyticsEvents, AnalyticsProperties, DialogType } from '@durabull/analytics/events'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   AlertCircle,
@@ -485,11 +486,11 @@ function SettingsPage() {
         onOpenChange={(open) => {
           if (open) {
             trackEvent(AnalyticsEvents.DIALOG_OPENED, {
-              dialog_type: DialogType.UNLINK_ACCOUNT,
+              [AnalyticsProperties.DIALOG_TYPE]: DialogType.UNLINK_ACCOUNT,
             })
           } else {
             trackEvent(AnalyticsEvents.DIALOG_CLOSED, {
-              dialog_type: DialogType.UNLINK_ACCOUNT,
+              [AnalyticsProperties.DIALOG_TYPE]: DialogType.UNLINK_ACCOUNT,
             })
             setUnlinkingAccount(null)
           }

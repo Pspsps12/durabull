@@ -174,4 +174,23 @@ Post-#108 telemetry/analytics follow-ups (see `tasks/handoff-analytics-mcp-telem
 - [x] Async `/collect` (202 + bounded worker) and single-batch PostHog coalesce; bounded `/events` queue (PR #112).
 - [x] Require dedicated `DURABULL_TELEMETRY_HMAC_SECRET` (remove `BETTER_AUTH_SECRET` fallback; env coordination).
 - [x] `/collect` signature replay LRU within the HMAC tolerance window.
-- [ ] Extract shared `createBoundedAsyncQueue`; queue-drop metric; root barrel migration to `/browser`; telemetry signal docs (P3).
+- [x] Extract shared `createBoundedAsyncQueue`; queue-drop metric; root barrel migration to `/browser`; telemetry signal docs (P3).
+
+## Current Task
+
+Analytics/MCP telemetry P3 follow-up from `tasks/handoff-analytics-mcp-telemetry.md`.
+
+- [x] Map existing bounded queue implementations and telemetry metric patterns.
+- [x] Extract a shared `createBoundedAsyncQueue` helper and cover queue-drop behavior.
+- [x] Migrate browser-side analytics imports away from the root package barrel where appropriate.
+- [x] Document telemetry signals, privacy boundaries, and required environment variables.
+- [x] Run focused tests/lint/typecheck for the touched analytics/API surface.
+
+## Result
+
+- Extracted `/collect`, `/events`, and MCP analytics queue backpressure into a shared bounded async queue helper.
+- Added `telemetry_queue` / `queue_dropped` stdout operational metrics and tests for queue-full behavior.
+- Migrated browser analytics imports to `@durabull/analytics/browser` and constants to `@durabull/analytics/events`.
+- Documented telemetry queue signals, required telemetry env vars, and HTTP telemetry backpressure behavior.
+- Verified focused telemetry tests, affected web tests, web typecheck, and docs lint. API/docs package-wide typecheck still has unrelated current-main failures noted in the handoff.
+- Ran the four-lens parallel review loop, fixed the High queue reset/in-flight correctness finding, and reran the review. Security, performance, correctness, and maintainability reviewers reported no remaining Critical/High issues.

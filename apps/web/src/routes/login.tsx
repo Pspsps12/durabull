@@ -1,4 +1,5 @@
-import { AnalyticsEvents, AuthMethod, trackEvent } from '@durabull/analytics'
+import { trackEvent } from '@durabull/analytics/browser'
+import { AnalyticsEvents, AuthMethod } from '@durabull/analytics/events'
 import {
   buildMcpAuthorizeResumeUrl,
   hasMcpAuthorizeQuery,

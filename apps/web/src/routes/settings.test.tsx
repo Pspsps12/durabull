@@ -30,7 +30,11 @@ vi.mock('@tanstack/react-router', () => ({
   }),
 }))
 
-vi.mock('@durabull/analytics', () => ({
+vi.mock('@durabull/analytics/browser', () => ({
+  trackEvent: mocks.trackEvent,
+}))
+
+vi.mock('@durabull/analytics/events', () => ({
   AnalyticsEvents: {
     DIALOG_CLOSED: 'DIALOG_CLOSED',
     DIALOG_OPENED: 'DIALOG_OPENED',
@@ -40,7 +44,6 @@ vi.mock('@durabull/analytics', () => ({
   DialogType: {
     UNLINK_ACCOUNT: 'UNLINK_ACCOUNT',
   },
-  trackEvent: mocks.trackEvent,
 }))
 
 vi.mock('@/components/app-top-bar', () => ({

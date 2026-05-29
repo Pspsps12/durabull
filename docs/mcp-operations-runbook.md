@@ -119,6 +119,22 @@ Auth failures (`401` / `403`) are returned on the HTTP response; monitor access 
 
 Disable stdout telemetry only if your platform duplicates logs elsewhere: `MCP_TELEMETRY_LOG=false`.
 
+### Structured logs (`telemetry_queue`)
+
+Telemetry ingestion is best-effort and protected by bounded in-process queues. When a telemetry queue is full, the API emits a stdout JSON line with `"type":"telemetry_queue"` and `"signal":"queue_dropped"` before dropping the new item.
+
+| Queue name | Source | Meaning | Operator action |
+| --- | --- | --- | --- |
+| `telemetry_collect` | `POST /api/telemetry/collect` cloud ingestion | Cloud collector cannot enqueue another forwarded batch | Check API CPU/network saturation and PostHog ingestion latency |
+| `telemetry_events` | `POST /api/telemetry/events` local browser telemetry | Self-host/local instance cannot enqueue another product event | Check local API saturation; telemetry loss should not affect product behavior |
+| `mcp_analytics` | MCP product analytics forwarding | MCP analytics event dropped under backpressure | Check MCP traffic spikes and PostHog ingestion latency |
+
+Example log shape:
+
+```json
+{"type":"telemetry_queue","signal":"queue_dropped","queueName":"mcp_analytics","count":1,"dropped":3,"inFlight":8,"queued":512}
+```
+
 ### Per-tool rate limits (60/min default, 30/min heavy tools)
 
 Enforced when `NODE_ENV=production` (skipped in local `development` / `test` unless you run with production `NODE_ENV`).
@@ -149,6 +165,7 @@ Wire your aggregator to count per hour:
 - `mcp_telemetry` where `signal` = `policy_denied`
 - `mcp_telemetry` where `signal` in (`rate_limited_ingress`, `rate_limited_tool`)
 - `mcp_telemetry` where `signal` = `tool_error`
+- `telemetry_queue` where `signal` = `queue_dropped`, grouped by `queueName`
 - HTTP `401` / `403` / `429` on `/mcp` (access logs or edge metrics)
 - `POST /api/auth/mcp/register` volume (dynamic client registration is rate-limited but unauthenticated)
 

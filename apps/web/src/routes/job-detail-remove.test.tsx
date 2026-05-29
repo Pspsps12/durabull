@@ -30,12 +30,15 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
 }))
 
-vi.mock('@durabull/analytics', () => ({
+vi.mock('@durabull/analytics/browser', () => ({
+  trackEvent: trackEventMock,
+}))
+
+vi.mock('@durabull/analytics/events', () => ({
   AnalyticsEvents: {
     JOB_VIEWED: 'JOB_VIEWED',
     JOB_TAB_CHANGED: 'JOB_TAB_CHANGED',
   },
-  trackEvent: trackEventMock,
 }))
 
 vi.mock('@/components/app-top-bar', () => ({
@@ -70,6 +73,13 @@ vi.mock('@/components/queue-name-tag', () => ({
 
 vi.mock('@/components/retry-countdown', () => ({
   RetryCountdown: () => null,
+}))
+
+vi.mock('@/hooks/use-alerts', () => ({
+  useConnectionAlertEvents: () => ({
+    data: { events: [] },
+    isLoading: false,
+  }),
 }))
 
 vi.mock('@/hooks/use-queues', () => ({

@@ -1,4 +1,5 @@
-import { AnalyticsEvents, DialogType, trackEvent } from '@durabull/analytics'
+import { trackEvent } from '@durabull/analytics/browser'
+import { AnalyticsEvents, AnalyticsProperties, DialogType } from '@durabull/analytics/events'
 import { useState, useEffect } from 'react'
 import { AlertTriangle, Trash2, Loader2 } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
@@ -59,11 +60,11 @@ export function DeleteQueueDialog({ queueName, open, onOpenChange }: DeleteQueue
       onOpenChange={(newOpen) => {
         if (newOpen) {
           trackEvent(AnalyticsEvents.DIALOG_OPENED, {
-            dialog_type: DialogType.DELETE_QUEUE,
+            [AnalyticsProperties.DIALOG_TYPE]: DialogType.DELETE_QUEUE,
           })
         } else {
           trackEvent(AnalyticsEvents.DIALOG_CLOSED, {
-            dialog_type: DialogType.DELETE_QUEUE,
+            [AnalyticsProperties.DIALOG_TYPE]: DialogType.DELETE_QUEUE,
           })
         }
         onOpenChange(newOpen)

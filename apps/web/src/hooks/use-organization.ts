@@ -1,9 +1,9 @@
 import {
-  AnalyticsEvents,
   identifyOrganization,
   trackEvent,
   trackOrganizationCreated,
-} from '@durabull/analytics'
+} from '@durabull/analytics/browser'
+import { AnalyticsEvents } from '@durabull/analytics/events'
 import { organization } from '@durabull/auth/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
