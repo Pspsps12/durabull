@@ -21,7 +21,6 @@ export {
 } from './collect-auth'
 export {
   captureAnonymousServerEvent,
-  captureIdentifiedServerEvent,
   captureMcpAnalyticsServerEvent,
   ingestTelemetryCollectBatch,
   isDurabullTelemetryCollectConfigured,

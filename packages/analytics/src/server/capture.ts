@@ -20,8 +20,8 @@ import { validateTelemetryPayload } from './validate'
 
 /**
  * Maximum drift (past or future) allowed for client-supplied event timestamps on
- * the public `/collect` ingest path. Untrusted clients can otherwise backdate or
- * future-date events to pollute analytics time series.
+ * public anonymous ingest paths (`/collect`, `/events`). Untrusted clients can
+ * otherwise backdate or future-date events to pollute analytics time series.
  */
 const MAX_COLLECT_TIMESTAMP_SKEW_MS = 24 * 60 * 60 * 1000
 
@@ -197,7 +197,7 @@ export async function captureAnonymousServerEvent(input: {
   const validated = validateTelemetryPayload(input.event, input.properties, runtimeContext)
   if (!validated.ok) return
 
-  const timestamp = input.timestamp ?? new Date().toISOString()
+  const timestamp = resolveCollectTimestamp(input.timestamp, Date.now())
 
   if (options.collectEnabled) {
     const config = getDurabullPosthogIngestConfig(options)
@@ -237,39 +237,6 @@ export async function captureAnonymousServerEvent(input: {
   })
 }
 
-export async function captureIdentifiedServerEvent(input: {
-  event: string
-  properties: Record<string, unknown>
-  distinctId: string
-  organizationId?: string | null
-  timestamp?: string
-}): Promise<void> {
-  const options = getOptions()
-  if (!options?.enabled) return
-
-  const runtimeContext = options.getRuntimeContext()
-  const validated = validateTelemetryPayload(input.event, input.properties, runtimeContext)
-  if (!validated.ok) return
-
-  const config = getIdentifiedPosthogConfig(options)
-  if (!config) return
-
-  await sendPosthogBatch(
-    config,
-    [
-      buildIdentifiedCapture({
-        event: validated.event,
-        properties: validated.properties,
-        distinctId: input.distinctId,
-        organizationId: input.organizationId,
-        timestamp: input.timestamp,
-        hmacSecret: options.hmacSecret,
-      }),
-    ],
-    { runtimeContext, mergeRuntime: true }
-  )
-}
-
 export async function captureMcpAnalyticsServerEvent(input: {
   event: string
   properties: Record<string, unknown>
@@ -287,7 +254,7 @@ export async function captureMcpAnalyticsServerEvent(input: {
   const validated = validateTelemetryPayload(input.event, input.properties, runtimeContext)
   if (!validated.ok) return
 
-  const timestamp = input.timestamp ?? new Date().toISOString()
+  const timestamp = resolveCollectTimestamp(input.timestamp, Date.now())
   const shouldCaptureAnonymous = input.includeAnonymous && !!input.anonymousInstanceId && !!input.sessionId
   const shouldCaptureIdentified = !!input.identifiedDistinctId
 
@@ -495,9 +462,4 @@ export function resolveIdentifiedDistinctIds(input: {
   }
 
   return { distinctId: null, organizationGroup: null }
-}
-
-/** @deprecated Use getServerAnalyticsOptions().hmacSecret */
-export function getTelemetryHmacSecret(): string | null {
-  return getOptions()?.hmacSecret ?? null
 }
