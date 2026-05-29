@@ -11,6 +11,8 @@ export {
   type ServerAnalyticsRuntimeContext,
 } from './config'
 export {
+  createTelemetryCollectReplayCache,
+  resetTelemetryCollectReplayCacheForTests,
   signTelemetryCollectBody,
   TELEMETRY_COLLECT_SIGNATURE_HEADER,
   TELEMETRY_COLLECT_SIGNATURE_TOLERANCE_SEC,
