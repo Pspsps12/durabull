@@ -1,4 +1,5 @@
-import { AnalyticsEvents, AnalyticsProperties, trackEvent } from '@durabull/analytics'
+import { trackEvent } from '@durabull/analytics/browser'
+import { AnalyticsEvents, AnalyticsProperties } from '@durabull/analytics/events'
 import { RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'

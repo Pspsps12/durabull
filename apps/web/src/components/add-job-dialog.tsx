@@ -1,4 +1,5 @@
-import { AnalyticsEvents, DialogType, trackEvent } from '@durabull/analytics'
+import { trackEvent } from '@durabull/analytics/browser'
+import { AnalyticsEvents, DialogType } from '@durabull/analytics/events'
 import { Loader2, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'

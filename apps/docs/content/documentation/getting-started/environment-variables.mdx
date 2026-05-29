@@ -93,6 +93,17 @@ raw URLs, search patterns, stack traces, or raw error messages.
 Self-hosted deployments do not need a separate collector service or telemetry hostname. The app
 forwards sanitized telemetry to Durabull's existing cloud API.
 
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DURABULL_TELEMETRY_COLLECT_SECRET` | Cloud + self-hosted telemetry forwarding | HMAC signing secret for batches sent to `/api/telemetry/collect` |
+| `DURABULL_TELEMETRY_HMAC_SECRET` | Production telemetry | Dedicated HMAC secret for anonymous instance and distinct identifiers. This is not derived from `BETTER_AUTH_SECRET`. |
+| `DURABULL_CLOUD` | Durabull cloud collector only | Enables cloud-only telemetry collection behavior |
+| `TRUST_PROXY` | Behind a trusted reverse proxy | Honors forwarding headers for rate limits and request context |
+
+Telemetry queue backpressure emits stdout JSON with `type: "telemetry_queue"` and
+`signal: "queue_dropped"`. These operational signals report queue names and counts only; they do not
+include user, organization, Redis, queue, job, key, URL, or payload values.
+
 ## Optional Runtime Toggles
 
 | Variable | Required | Purpose |

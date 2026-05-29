@@ -2,6 +2,8 @@ import {
   captureAnonymousServerEvent,
   tryGetServerAnalyticsOptions,
 } from '@durabull/analytics/server'
+import { createBoundedAsyncQueue } from '../lib/bounded-async-queue'
+import { recordTelemetryQueueDrop } from '../lib/telemetry-queue-metrics'
 
 interface TelemetryEventQueueItem {
   event: string
@@ -12,9 +14,6 @@ interface TelemetryEventQueueItem {
 
 const MAX_EVENTS_IN_FLIGHT = 4
 const MAX_EVENTS_QUEUE_DEPTH = 256
-
-let eventsInFlight = 0
-const pendingEvents: TelemetryEventQueueItem[] = []
 
 type ProcessTelemetryEvent = (input: TelemetryEventQueueItem) => Promise<void>
 
@@ -32,46 +31,30 @@ async function processTelemetryEvent(input: TelemetryEventQueueItem): Promise<vo
   })
 }
 
-function dispatchTelemetryEvent(input: TelemetryEventQueueItem, process: ProcessTelemetryEvent): void {
-  eventsInFlight += 1
-  void process(input)
-    .catch(() => {
-      // Local telemetry must never affect the product experience.
+const eventsQueue = createBoundedAsyncQueue<TelemetryEventQueueItem>({
+  maxInFlight: MAX_EVENTS_IN_FLIGHT,
+  maxQueueDepth: MAX_EVENTS_QUEUE_DEPTH,
+  onDrop: (_input, state) => {
+    recordTelemetryQueueDrop({
+      dropped: state.dropped,
+      inFlight: state.inFlight,
+      queueName: 'telemetry_events',
+      queued: state.queued,
     })
-    .finally(() => {
-      eventsInFlight -= 1
-      flushPendingTelemetryEvents(process)
-    })
-}
-
-function flushPendingTelemetryEvents(process: ProcessTelemetryEvent): void {
-  while (eventsInFlight < MAX_EVENTS_IN_FLIGHT && pendingEvents.length > 0) {
-    const next = pendingEvents.shift()
-    if (!next) break
-    dispatchTelemetryEvent(next, process)
-  }
-}
+  },
+  onError: () => {
+    // Local telemetry must never affect the product experience.
+  },
+})
 
 export function enqueueTelemetryEvent(
   input: TelemetryEventQueueItem,
   process: ProcessTelemetryEvent = processTelemetryEvent
 ): boolean {
-  if (eventsInFlight < MAX_EVENTS_IN_FLIGHT && pendingEvents.length === 0) {
-    dispatchTelemetryEvent(input, process)
-    return true
-  }
-
-  if (pendingEvents.length >= MAX_EVENTS_QUEUE_DEPTH) {
-    return false
-  }
-
-  pendingEvents.push(input)
-  flushPendingTelemetryEvents(process)
-  return true
+  return eventsQueue.enqueue(input, process)
 }
 
 /** Test-only */
 export function resetTelemetryEventsQueueForTests(): void {
-  eventsInFlight = 0
-  pendingEvents.length = 0
+  eventsQueue.resetForTests()
 }

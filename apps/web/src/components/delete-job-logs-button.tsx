@@ -1,4 +1,5 @@
-import { AnalyticsEvents, DialogType, trackEvent } from '@durabull/analytics'
+import { trackEvent } from '@durabull/analytics/browser'
+import { AnalyticsEvents, DialogType } from '@durabull/analytics/events'
 import { AlertTriangle, ChevronDown, Loader2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'

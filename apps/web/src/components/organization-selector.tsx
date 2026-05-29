@@ -1,4 +1,5 @@
-import { AnalyticsEvents, DialogType, trackEvent } from '@durabull/analytics'
+import { trackEvent } from '@durabull/analytics/browser'
+import { AnalyticsEvents, DialogType } from '@durabull/analytics/events'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { AlertCircle, Building2, Check, ChevronsUpDown, Loader2, Plus, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'

@@ -62,7 +62,8 @@ import {
   useResendInvitation,
   useUpdateMemberRole,
 } from '@/hooks/use-organization'
-import { AnalyticsEvents, DialogType, trackEvent } from '@durabull/analytics'
+import { trackEvent } from '@durabull/analytics/browser'
+import { AnalyticsEvents, DialogType } from '@durabull/analytics/events'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/$orgSlug/team')({

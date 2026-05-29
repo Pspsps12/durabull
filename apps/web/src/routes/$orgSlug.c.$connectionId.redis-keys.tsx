@@ -10,7 +10,8 @@ interface RedisKeyInfo {
   memoryBytes?: number
 }
 
-import { AnalyticsEvents, trackEvent } from '@durabull/analytics'
+import { trackEvent } from '@durabull/analytics/browser'
+import { AnalyticsEvents } from '@durabull/analytics/events'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   AlertCircle,

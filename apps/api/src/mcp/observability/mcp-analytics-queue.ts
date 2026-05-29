@@ -1,53 +1,37 @@
+import { createBoundedAsyncQueue } from '../../lib/bounded-async-queue'
+import { recordTelemetryQueueDrop } from '../../lib/telemetry-queue-metrics'
 import type { McpAnalyticsInput } from './mcp-analytics'
 
 const MAX_ANALYTICS_IN_FLIGHT = 8
 const MAX_ANALYTICS_QUEUE_DEPTH = 512
 
-let analyticsInFlight = 0
-const pendingAnalytics: McpAnalyticsInput[] = []
-
 export type ProcessMcpAnalytics = (input: McpAnalyticsInput) => Promise<void>
+
+const analyticsQueue = createBoundedAsyncQueue<McpAnalyticsInput>({
+  maxInFlight: MAX_ANALYTICS_IN_FLIGHT,
+  maxQueueDepth: MAX_ANALYTICS_QUEUE_DEPTH,
+  onDrop: (_input, state) => {
+    recordTelemetryQueueDrop({
+      dropped: state.dropped,
+      inFlight: state.inFlight,
+      queueName: 'mcp_analytics',
+      queued: state.queued,
+    })
+    console.warn('[analytics] MCP analytics queue full; dropping event')
+  },
+  onError: () => {
+    // Analytics must never affect MCP behavior.
+  },
+})
 
 export function enqueueMcpAnalytics(
   input: McpAnalyticsInput,
   process: ProcessMcpAnalytics
 ): void {
-  if (analyticsInFlight < MAX_ANALYTICS_IN_FLIGHT && pendingAnalytics.length === 0) {
-    dispatchMcpAnalytics(input, process)
-    return
-  }
-
-  if (pendingAnalytics.length >= MAX_ANALYTICS_QUEUE_DEPTH) {
-    console.warn('[analytics] MCP analytics queue full; dropping event')
-    return
-  }
-
-  pendingAnalytics.push(input)
-  flushPendingMcpAnalytics(process)
-}
-
-function dispatchMcpAnalytics(input: McpAnalyticsInput, process: ProcessMcpAnalytics): void {
-  analyticsInFlight += 1
-  void process(input)
-    .catch(() => {
-      // Analytics must never affect MCP behavior.
-    })
-    .finally(() => {
-      analyticsInFlight -= 1
-      flushPendingMcpAnalytics(process)
-    })
-}
-
-function flushPendingMcpAnalytics(process: ProcessMcpAnalytics): void {
-  while (analyticsInFlight < MAX_ANALYTICS_IN_FLIGHT && pendingAnalytics.length > 0) {
-    const next = pendingAnalytics.shift()
-    if (!next) break
-    dispatchMcpAnalytics(next, process)
-  }
+  analyticsQueue.enqueue(input, process)
 }
 
 /** Test-only */
 export function resetMcpAnalyticsQueueForTests(): void {
-  analyticsInFlight = 0
-  pendingAnalytics.length = 0
+  analyticsQueue.resetForTests()
 }

@@ -1,7 +1,8 @@
 import { Loader2, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { AnalyticsEvents, DialogType, trackEvent } from '@durabull/analytics'
+import { trackEvent } from '@durabull/analytics/browser'
+import { AnalyticsEvents, DialogType } from '@durabull/analytics/events'
 import { JsonEditor } from '@/components/json-editor'
 import { Button } from '@/components/ui/button'
 import {

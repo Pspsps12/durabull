@@ -1,4 +1,5 @@
-import { AnalyticsEvents, trackEvent } from '@durabull/analytics'
+import { trackEvent } from '@durabull/analytics/browser'
+import { AnalyticsEvents } from '@durabull/analytics/events'
 import { Link } from '@tanstack/react-router'
 import { motion } from 'framer-motion'
 import type { LucideIcon } from 'lucide-react'
