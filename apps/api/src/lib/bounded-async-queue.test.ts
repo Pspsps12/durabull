@@ -3,6 +3,22 @@ import { describe, expect, it, mock } from 'bun:test'
 import { createBoundedAsyncQueue } from './bounded-async-queue'
 
 describe('createBoundedAsyncQueue', () => {
+  it('rejects invalid queue limits at construction time', () => {
+    expect(() =>
+      createBoundedAsyncQueue<string>({
+        maxInFlight: 0,
+        maxQueueDepth: 1,
+      })
+    ).toThrow('maxInFlight must be a positive integer')
+
+    expect(() =>
+      createBoundedAsyncQueue<string>({
+        maxInFlight: 1,
+        maxQueueDepth: -1,
+      })
+    ).toThrow('maxQueueDepth must be a non-negative integer')
+  })
+
   it('bounds pending work and reports drops', () => {
     const onDrop = mock(() => {})
     const queue = createBoundedAsyncQueue<string>({

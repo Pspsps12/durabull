@@ -28,6 +28,14 @@ export function createBoundedAsyncQueue<TInput, TResult = void>({
   onError,
   onResult,
 }: CreateBoundedAsyncQueueOptions<TInput, TResult>) {
+  if (!Number.isInteger(maxInFlight) || maxInFlight < 1) {
+    throw new RangeError('maxInFlight must be a positive integer')
+  }
+
+  if (!Number.isInteger(maxQueueDepth) || maxQueueDepth < 0) {
+    throw new RangeError('maxQueueDepth must be a non-negative integer')
+  }
+
   let inFlight = 0
   let dropped = 0
   let epoch = 0

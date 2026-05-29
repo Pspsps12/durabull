@@ -1,5 +1,5 @@
 import { trackEvent } from '@durabull/analytics/browser'
-import { AnalyticsEvents, DialogType } from '@durabull/analytics/events'
+import { AnalyticsEvents, AnalyticsProperties, DialogType } from '@durabull/analytics/events'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { AlertCircle, Building2, Check, ChevronsUpDown, Loader2, Plus, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -223,11 +223,11 @@ function CreateOrganizationDialog({
       onOpenChange={(newOpen) => {
         if (newOpen) {
           trackEvent(AnalyticsEvents.DIALOG_OPENED, {
-            dialog_type: DialogType.CREATE_ORGANIZATION,
+            [AnalyticsProperties.DIALOG_TYPE]: DialogType.CREATE_ORGANIZATION,
           })
         } else {
           trackEvent(AnalyticsEvents.DIALOG_CLOSED, {
-            dialog_type: DialogType.CREATE_ORGANIZATION,
+            [AnalyticsProperties.DIALOG_TYPE]: DialogType.CREATE_ORGANIZATION,
           })
         }
         onOpenChange(newOpen)

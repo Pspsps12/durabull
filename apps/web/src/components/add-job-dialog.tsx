@@ -1,5 +1,5 @@
 import { trackEvent } from '@durabull/analytics/browser'
-import { AnalyticsEvents, DialogType } from '@durabull/analytics/events'
+import { AnalyticsEvents, AnalyticsProperties, DialogType } from '@durabull/analytics/events'
 import { Loader2, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -107,7 +107,7 @@ export function AddJobDialog({ open, onOpenChange, queueName, onSuccess }: AddJo
       open={open}
       onOpenChange={(newOpen) => {
         trackEvent(newOpen ? AnalyticsEvents.DIALOG_OPENED : AnalyticsEvents.DIALOG_CLOSED, {
-          dialog_type: DialogType.ADD_JOB,
+          [AnalyticsProperties.DIALOG_TYPE]: DialogType.ADD_JOB,
         })
         onOpenChange(newOpen)
       }}

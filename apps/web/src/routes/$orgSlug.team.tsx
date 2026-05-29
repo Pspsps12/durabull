@@ -63,7 +63,7 @@ import {
   useUpdateMemberRole,
 } from '@/hooks/use-organization'
 import { trackEvent } from '@durabull/analytics/browser'
-import { AnalyticsEvents, DialogType } from '@durabull/analytics/events'
+import { AnalyticsEvents, AnalyticsProperties, DialogType } from '@durabull/analytics/events'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/$orgSlug/team')({
@@ -275,7 +275,7 @@ function TeamPage() {
                   canManage={canManageMembers && member.role !== 'owner'}
                   onRemove={() => {
                     trackEvent(AnalyticsEvents.DIALOG_OPENED, {
-                      dialog_type: DialogType.REMOVE_MEMBER,
+                      [AnalyticsProperties.DIALOG_TYPE]: DialogType.REMOVE_MEMBER,
                     })
                     setRemovingMember(member)
                   }}
@@ -308,7 +308,7 @@ function TeamPage() {
                     organizationId={activeOrg?.id ?? ''}
                     onCancel={() => {
                       trackEvent(AnalyticsEvents.DIALOG_OPENED, {
-                        dialog_type: DialogType.CANCEL_INVITATION,
+                        [AnalyticsProperties.DIALOG_TYPE]: DialogType.CANCEL_INVITATION,
                       })
                       setCancelingInvitation(invitation)
                     }}
@@ -325,7 +325,7 @@ function TeamPage() {
         open={inviteDialogOpen}
         onOpenChange={(open) => {
           trackEvent(open ? AnalyticsEvents.DIALOG_OPENED : AnalyticsEvents.DIALOG_CLOSED, {
-            dialog_type: DialogType.INVITE_MEMBER,
+            [AnalyticsProperties.DIALOG_TYPE]: DialogType.INVITE_MEMBER,
           })
           setInviteDialogOpen(open)
         }}
@@ -339,7 +339,7 @@ function TeamPage() {
         onOpenChange={(open) => {
           if (!open) {
             trackEvent(AnalyticsEvents.DIALOG_CLOSED, {
-              dialog_type: DialogType.REMOVE_MEMBER,
+              [AnalyticsProperties.DIALOG_TYPE]: DialogType.REMOVE_MEMBER,
             })
             setRemovingMember(null)
           }
@@ -353,7 +353,7 @@ function TeamPage() {
         onOpenChange={(open) => {
           if (!open) {
             trackEvent(AnalyticsEvents.DIALOG_CLOSED, {
-              dialog_type: DialogType.CANCEL_INVITATION,
+              [AnalyticsProperties.DIALOG_TYPE]: DialogType.CANCEL_INVITATION,
             })
             setCancelingInvitation(null)
           }
