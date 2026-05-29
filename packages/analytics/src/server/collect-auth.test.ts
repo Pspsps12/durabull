@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'bun:test'
+import { beforeEach, describe, expect, it } from 'bun:test'
 
 import {
+  resetTelemetryCollectReplayCacheForTests,
   signTelemetryCollectBody,
   TELEMETRY_COLLECT_SIGNATURE_TOLERANCE_SEC,
   verifyTelemetryCollectSignature,
@@ -13,6 +14,9 @@ const RAW_BODY = JSON.stringify({
 })
 
 describe('telemetry collect auth', () => {
+  beforeEach(() => {
+    resetTelemetryCollectReplayCacheForTests()
+  })
   it('signs and verifies collect payloads', () => {
     const timestamp = 1_700_000_000
     const { signature, timestamp: timestampHeader } = signTelemetryCollectBody(
@@ -79,5 +83,88 @@ describe('telemetry collect auth', () => {
         nowSec: timestamp,
       })
     ).toEqual({ ok: false, error: 'invalid' })
+  })
+
+  it('rejects replayed signatures within the tolerance window', () => {
+    const timestamp = 1_700_000_000
+    const { signature, timestamp: timestampHeader } = signTelemetryCollectBody(
+      SECRET,
+      timestamp,
+      RAW_BODY
+    )
+
+    const input = {
+      secret: SECRET,
+      timestampHeader,
+      signatureHeader: signature,
+      rawBody: RAW_BODY,
+      nowSec: timestamp,
+    }
+
+    expect(verifyTelemetryCollectSignature(input)).toEqual({ ok: true })
+    expect(verifyTelemetryCollectSignature(input)).toEqual({ ok: false, error: 'replay' })
+  })
+
+  it('rejects replayed signatures near the end of the tolerance window', () => {
+    const timestamp = 1_700_000_000
+    const { signature, timestamp: timestampHeader } = signTelemetryCollectBody(
+      SECRET,
+      timestamp,
+      RAW_BODY
+    )
+
+    expect(
+      verifyTelemetryCollectSignature({
+        secret: SECRET,
+        timestampHeader,
+        signatureHeader: signature,
+        rawBody: RAW_BODY,
+        nowSec: timestamp,
+      })
+    ).toEqual({ ok: true })
+
+    expect(
+      verifyTelemetryCollectSignature({
+        secret: SECRET,
+        timestampHeader,
+        signatureHeader: signature,
+        rawBody: RAW_BODY,
+        nowSec: timestamp + TELEMETRY_COLLECT_SIGNATURE_TOLERANCE_SEC - 1,
+      })
+    ).toEqual({ ok: false, error: 'replay' })
+
+    expect(
+      verifyTelemetryCollectSignature({
+        secret: SECRET,
+        timestampHeader,
+        signatureHeader: signature,
+        rawBody: RAW_BODY,
+        nowSec: timestamp + TELEMETRY_COLLECT_SIGNATURE_TOLERANCE_SEC,
+      })
+    ).toEqual({ ok: false, error: 'replay' })
+  })
+
+  it('keeps replay protection for future-dated signatures until the validity window ends', () => {
+    const nowSec = 1_700_000_000
+    const futureTimestamp = nowSec + 200
+    const { signature, timestamp: timestampHeader } = signTelemetryCollectBody(
+      SECRET,
+      futureTimestamp,
+      RAW_BODY
+    )
+
+    const input = {
+      secret: SECRET,
+      timestampHeader,
+      signatureHeader: signature,
+      rawBody: RAW_BODY,
+      nowSec,
+    }
+
+    expect(verifyTelemetryCollectSignature(input)).toEqual({ ok: true })
+    expect(verifyTelemetryCollectSignature({ ...input, nowSec: nowSec + 250 })).toEqual({
+      ok: false,
+      error: 'replay',
+    })
   })
 })

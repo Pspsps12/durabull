@@ -1,8 +1,8 @@
 # Handoff: Analytics package split + MCP product telemetry
 
-**Branch:** `cursor/analytics-collect-auth` (PR #110)  
+**Branch:** `main` (P2 landed locally; open PR when ready)  
 **Last verified:** 2026-05-28 — run full suite after merge with `main` (see Verification)  
-**Timeline:** #107 → #108 → #109 (merged to `main`) → **#110 open** (collect auth + XFF trust)
+**Timeline:** #107 → #108 → #109 → #110 → #112 (all merged) → **P2 complete** → P3 next
 
 ---
 
@@ -13,35 +13,27 @@
 | **PR #107** | Server capture package + MCP PostHog telemetry | ✅ merged |
 | **PR #108** | P0: server runtime on `/collect`, `/events` preflight, PostHog host allowlist | ✅ merged |
 | **PR #109** | MCP org `$groups` fix, fetch timeouts, single-flight instance id, timestamp clamp, hygiene | ✅ merged |
-| **PR #110** | P0-A `/collect` HMAC auth + trusted OSS runtime; P0-B XFF/proxy trust for rate limits | 🚧 **this branch** |
+| **PR #110** | P0-A `/collect` HMAC auth + trusted OSS runtime; P0-B XFF/proxy trust for rate limits | ✅ merged |
+| **PR #112** | P1: PostHog dedupe/coalesce, connection query de-dup, async `/collect` queue, bounded `/events` queue | ✅ merged |
+| **P2 (local)** | Dedicated `DURABULL_TELEMETRY_HMAC_SECRET`; `/collect` signature replay LRU | ✅ done |
 
-**Lesson:** Branch from latest `origin/main` before starting. PR #109 merged while #110 was in flight — rebase/merge required.
+**Lesson:** Branch from latest `origin/main` before starting. Parallel PRs (#109 vs #110) touched the same files — rebase/merge required.
 
 ---
 
-## Completed on PR #110
+## Completed on P2
 
-### P0-A — `/collect` authentication
+### Dedicated telemetry HMAC secret
 
-- `DURABULL_TELEMETRY_COLLECT_SECRET` — HMAC-signed batches (`collect-auth.ts`)
-- Unsigned/invalid → **401**; top-level `runtime` required; cloud uses authenticated client runtime
-- OSS forward signs batches (preserves deployment attribution without reopening spoof hole)
+- `configure-server-analytics.ts` now uses **only** `DURABULL_TELEMETRY_HMAC_SECRET` for distinct_id / instance_key HMAC.
+- `BETTER_AUTH_SECRET` fallback removed — cloud/OSS deploys must set the dedicated secret explicitly.
+- `POSTHOG_KEY` fallback for Durabull telemetry PostHog key remains unchanged.
 
-### P0-B — Rate-limit proxy trust
+### `/collect` signature replay protection
 
-- `TRUST_PROXY` (auto on `DURABULL_CLOUD`); ignore spoofable headers on untrusted ingress
-- Trusted priority: CF-Connecting-IP → X-Real-IP → rightmost XFF hop
-
-### Also merged from #109 (via `main`)
-
-- Timestamp clamp ±24h on `/collect`
-- Fetch timeouts + `redirect: 'manual'` on forward
-- Single-flight + eager instance id warm
-- MCP org `$groups` single-hash fix
-
-### Parallel review on #110
-
-Fixed Critical/High: poisoned inflight promise, XFF leftmost spoof, collect secret decoupled from ingest config, `/events` fire-and-forget (202 always), `apiRateLimiter` retryAfter.
+- `collect-auth.ts`: bounded in-process replay LRU (4096 entries, TTL = signature tolerance window).
+- Replayed signatures within ±300s return `{ ok: false, error: 'replay' }` → route responds **401**.
+- `resetTelemetryCollectReplayCacheForTests()` exported for test isolation.
 
 ---
 
@@ -49,11 +41,11 @@ Fixed Critical/High: poisoned inflight promise, XFF leftmost spoof, collect secr
 
 | Priority | Item |
 |----------|------|
-| P1 | ✅ Done on `main` (2026-05-28): PostHog dedupe/coalesce, delegated connection query de-dup, async `/collect` queue, bounded `/events` queue |
-| P2 | Dedicated `DURABULL_TELEMETRY_HMAC_SECRET` (drop `BETTER_AUTH_SECRET` fallback), signature replay LRU |
+| P1 | ✅ Done (PR #112): PostHog dedupe/coalesce, delegated connection query de-dup, async `/collect` queue, bounded `/events` queue |
+| P2 | ✅ Done (2026-05-28): Dedicated `DURABULL_TELEMETRY_HMAC_SECRET`, signature replay LRU |
 | P3 | Barrel migration, shared queue helper, telemetry signal docs |
 
-**Parallel review loop:** Pass 1 found High items in `/events` backpressure, MCP RPC identity, policy/tools layering, and MCP analytics drop visibility. Fixed them, reran four-lens review, and pass 2 reported **no Critical/High issues**.
+**Parallel review loop (P2):** Pass 1 found Medium replay-cache TTL misalignment and unguarded test reset exports. Fixed both, plus off-by-one at tolerance boundary. Pass 3 reported **no Critical/High issues**.
 
 ---
 
@@ -84,9 +76,11 @@ bun test \
 | Variable | Purpose |
 |----------|---------|
 | `DURABULL_TELEMETRY_COLLECT_SECRET` | HMAC signing for `/collect` (OSS + cloud) |
+| `DURABULL_TELEMETRY_HMAC_SECRET` | **Required** for distinct_id / instance_key HMAC (no auth-secret fallback) |
 | `TRUST_PROXY` | Honor forwarding headers for rate limits |
-| `DURABULL_TELEMETRY_HMAC_SECRET` | distinct_id / instance_key HMAC |
 | `DURABULL_CLOUD` | Enables `/collect` + trusted proxy |
+
+**Cloud deploy note:** Set `DURABULL_TELEMETRY_HMAC_SECRET` explicitly — it is no longer derived from `BETTER_AUTH_SECRET`.
 
 ---
 
@@ -94,3 +88,4 @@ bun test \
 
 - **Always `git fetch origin main` and rebase/merge before opening a telemetry PR** — parallel PRs (#109 vs #110) touched the same files.
 - **Do not `git stash` to peek** while holding uncommitted work — use a worktree or WIP commit.
+- **One deferral item per PR** — P3 should split barrel migration, shared queue helper, and signal docs if they grow large.

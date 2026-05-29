@@ -5,6 +5,7 @@ import { bodyLimit } from 'hono/body-limit'
 import {
   hashTelemetryIdentifier,
   resetServerAnalyticsForTests,
+  resetTelemetryCollectReplayCacheForTests,
   signTelemetryCollectBody,
   TELEMETRY_COLLECT_SIGNATURE_HEADER,
   TELEMETRY_COLLECT_TIMESTAMP_HEADER,
@@ -125,6 +126,7 @@ async function postCollect(
 
 describe('telemetry collect route', () => {
   beforeEach(() => {
+    resetTelemetryCollectReplayCacheForTests()
     mutableEnv.APP_BASE_URL = 'https://app.durabull.io'
     mutableEnv.BETTER_AUTH_SECRET = undefined
     mutableEnv.CI = false
@@ -155,10 +157,8 @@ describe('telemetry collect route', () => {
     globalThis.fetch = originalFetch
   })
 
-  it('can use the existing cloud API PostHog and auth secrets without extra telemetry setup', async () => {
-    mutableEnv.BETTER_AUTH_SECRET = HMAC_SECRET
+  it('can use POSTHOG_KEY when the dedicated telemetry PostHog key is unset', async () => {
     mutableEnv.POSTHOG_KEY = POSTHOG_KEY
-    mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = undefined
     mutableEnv.DURABULL_TELEMETRY_POSTHOG_KEY = undefined
     bootstrapServerAnalytics()
     const fetchMock = mock(async () => new Response(null, { status: 200 }))
@@ -178,6 +178,33 @@ describe('telemetry collect route', () => {
     expect(body.batch[0].properties.instance_key).toBe(
       hashTelemetryIdentifier(INSTANCE_ID, HMAC_SECRET)
     )
+  })
+
+  it('does not fall back to BETTER_AUTH_SECRET for telemetry HMAC', async () => {
+    mutableEnv.BETTER_AUTH_SECRET = HMAC_SECRET
+    mutableEnv.DURABULL_TELEMETRY_HMAC_SECRET = undefined
+    bootstrapServerAnalytics()
+    const fetchMock = mock(async () => new Response(null, { status: 200 }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const app = createTelemetryRouteApp()
+
+    const response = await postCollect(app, collectPayload())
+
+    expect(response.status).toBe(503)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects replayed signed collect requests', async () => {
+    const app = createTelemetryRouteApp()
+    const body = collectPayload()
+    const signed = signedCollectRequest(body)
+
+    const first = await app.request('/collect', signed)
+    expect(first.status).toBe(202)
+
+    const replay = await app.request('/collect', signed)
+    expect(replay.status).toBe(401)
+    expect(await replay.json()).toEqual({ error: 'Unauthorized telemetry collect request' })
   })
 
   it('forwards canonical sanitized events to PostHog batch with HMAC identifiers', async () => {

@@ -52,6 +52,7 @@ export function tryGetServerAnalyticsOptions(): ServerAnalyticsOptions | null {
 
 /** Test-only: reset configured options between cases. */
 export function resetServerAnalyticsForTests(): void {
+  if (process.env.NODE_ENV !== 'test') return
   configuredOptions = null
 }
 

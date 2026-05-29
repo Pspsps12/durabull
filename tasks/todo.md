@@ -169,7 +169,9 @@ Post-#108 telemetry/analytics follow-ups (see `tasks/handoff-analytics-mcp-telem
 
 ### Deferred to dedicated follow-up PRs (documented, not hacked)
 
-- `/collect` authentication / signed batches — also resolves OSS→cloud forwarded-runtime re-stamping fidelity loss and unauthenticated abuse.
-- Rate-limit `X-Forwarded-For` trust (High security; cross-cutting `rate-limit.ts`, needs trusted-proxy config).
-- Require dedicated `DURABULL_TELEMETRY_HMAC_SECRET` in prod (remove `BETTER_AUTH_SECRET` fallback; env coordination).
-- Async `/collect` (202 + bounded worker) and single-batch PostHog coalesce; extract shared `createBoundedAsyncQueue`; queue-drop metric; root barrel migration to `/browser`.
+- [x] `/collect` authentication / signed batches — also resolves OSS→cloud forwarded-runtime re-stamping fidelity loss and unauthenticated abuse (PR #110).
+- [x] Rate-limit `X-Forwarded-For` trust (High security; cross-cutting `rate-limit.ts`, needs trusted-proxy config) (PR #110).
+- [x] Async `/collect` (202 + bounded worker) and single-batch PostHog coalesce; bounded `/events` queue (PR #112).
+- [x] Require dedicated `DURABULL_TELEMETRY_HMAC_SECRET` (remove `BETTER_AUTH_SECRET` fallback; env coordination).
+- [x] `/collect` signature replay LRU within the HMAC tolerance window.
+- [ ] Extract shared `createBoundedAsyncQueue`; queue-drop metric; root barrel migration to `/browser`; telemetry signal docs (P3).
