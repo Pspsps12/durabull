@@ -123,7 +123,14 @@ export async function sendPosthogBatch(
     signal: AbortSignal.timeout(POSTHOG_FETCH_TIMEOUT_MS),
   })
 
-  if (response.status >= 300 && response.status < 400) return false
+  const isRedirect = response.status >= 300 && response.status < 400
 
+  try {
+    await response.body?.cancel()
+  } catch {
+    // Socket cleanup is best-effort only.
+  }
+
+  if (isRedirect) return false
   return response.ok
 }

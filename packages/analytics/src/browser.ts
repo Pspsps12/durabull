@@ -1,7 +1,7 @@
 /**
  * Browser / React analytics (PostHog JS SDK).
  *
- * Prefer `@durabull/analytics/browser` or `@durabull/analytics/react` in app code.
+ * Prefer `@durabull/analytics/browser` in app code.
  */
 export {
   configureDurabullTelemetry,

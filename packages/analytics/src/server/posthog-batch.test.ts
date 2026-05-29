@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 
-import { isAllowedPosthogHostname, resolvePosthogBatchUrl } from './posthog-batch'
+import {
+  isAllowedPosthogHostname,
+  resolvePosthogBatchUrl,
+  sendPosthogBatch,
+  type PosthogBatchCapture,
+} from './posthog-batch'
 
 describe('isAllowedPosthogHostname', () => {
   it('allows official PostHog ingest hosts', () => {
@@ -34,5 +39,69 @@ describe('resolvePosthogBatchUrl', () => {
 
   it('rejects malformed URLs', () => {
     expect(resolvePosthogBatchUrl('http://[::1')).toBeNull()
+  })
+})
+
+describe('sendPosthogBatch', () => {
+  const originalFetch = globalThis.fetch
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('cancels the response body after sending the batch', async () => {
+    const cancel = mock(async () => {})
+    const captures: PosthogBatchCapture[] = [
+      {
+        event: 'mcp_tool_called',
+        properties: { tool_name: 'list_jobs' },
+        distinctId: 'distinct-1',
+        processPersonProfile: false,
+      },
+    ]
+
+    globalThis.fetch = (async () => {
+      return {
+        ok: true,
+        status: 200,
+        body: { cancel },
+      } as unknown as Response
+    }) as typeof fetch
+
+    const accepted = await sendPosthogBatch(
+      { posthogBatchUrl: 'https://us.i.posthog.com/batch/', posthogKey: 'phc_test' },
+      captures
+    )
+
+    expect(accepted).toBe(true)
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns false for redirect responses', async () => {
+    const cancel = mock(async () => {})
+    const captures: PosthogBatchCapture[] = [
+      {
+        event: 'mcp_tool_called',
+        properties: { tool_name: 'list_jobs' },
+        distinctId: 'distinct-1',
+        processPersonProfile: false,
+      },
+    ]
+
+    globalThis.fetch = (async () => {
+      return {
+        ok: false,
+        status: 302,
+        body: { cancel },
+      } as unknown as Response
+    }) as typeof fetch
+
+    const accepted = await sendPosthogBatch(
+      { posthogBatchUrl: 'https://us.i.posthog.com/batch/', posthogKey: 'phc_test' },
+      captures
+    )
+
+    expect(accepted).toBe(false)
+    expect(cancel).toHaveBeenCalledTimes(1)
   })
 })
